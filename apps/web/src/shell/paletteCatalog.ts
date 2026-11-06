@@ -1,6 +1,7 @@
 import {
 	type RemixiconComponentType,
 	RiAddLine,
+	RiBugLine,
 	RiChatNewLine,
 	RiCheckDoubleLine,
 	RiEdit2Line,
@@ -19,7 +20,6 @@ import {
 	RiLayoutRightLine,
 	RiListCheck3,
 	RiMailUnreadLine,
-	RiNewspaperLine,
 	RiNodeTree,
 	RiSearchEyeLine,
 	RiSettings3Line,
@@ -50,7 +50,7 @@ const TOOL_ICONS: Record<PaletteTool, RemixiconComponentType> = {
 	files: RiFolderLine,
 	review: RiFileList3Line,
 	plan: RiListCheck3,
-	issues: RiNewspaperLine,
+	issues: RiBugLine,
 };
 
 export interface PaletteCatalogDeps {

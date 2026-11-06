@@ -1,6 +1,8 @@
 import {
 	RiBookOpenFill,
 	RiBookOpenLine,
+	RiBugFill,
+	RiBugLine,
 	RiChat2Fill,
 	RiChat2Line,
 	RiDiscussFill,
@@ -14,8 +16,6 @@ import {
 	RiLayout2Fill,
 	RiLayout2Line,
 	RiListCheck3,
-	RiNewspaperFill,
-	RiNewspaperLine,
 	RiTaskFill,
 	RiTaskLine,
 	RiTerminalBoxFill,
@@ -54,7 +54,7 @@ export function tabIcon(tab: LayoutTab, active = false, cls = "size-14 shrink-0"
 				case "review":
 					return active ? <RiDiscussFill className={cls} /> : <RiDiscussLine className={cls} />;
 				case "issues":
-					return active ? <RiNewspaperFill className={cls} /> : <RiNewspaperLine className={cls} />;
+					return active ? <RiBugFill className={cls} /> : <RiBugLine className={cls} />;
 				case "plan":
 					return active ? <RiTaskFill className={cls} /> : <RiTaskLine className={cls} />;
 				default:

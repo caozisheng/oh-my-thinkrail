@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { RiNewspaperFill, RiNewspaperLine } from "@remixicon/react";
+import { RiBugFill, RiBugLine } from "@remixicon/react";
 import { isValidElement, type ReactElement } from "react";
 import { tabIcon } from "./tabIcon";
 import type { LayoutTab } from "./types";
@@ -18,11 +18,11 @@ test("every tool icon swaps between Line and Fill when it becomes active", () =>
 	}
 });
 
-test("the Issues tool is a newspaper: hollow at rest, filled when selected", () => {
+test("the Issues tool is a bug: hollow at rest, filled when selected", () => {
 	const atRest = icon("issues");
 	const active = icon("issues", true);
-	expect(atRest.type).toBe(RiNewspaperLine);
-	expect(active.type).toBe(RiNewspaperFill);
+	expect(atRest.type).toBe(RiBugLine);
+	expect(active.type).toBe(RiBugFill);
 	// The rail's icon size travels through unchanged; only the glyph differs.
 	expect(atRest.props.className).toBe("size-14 shrink-0");
 	expect(active.props.className).toBe(atRest.props.className);
