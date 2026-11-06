@@ -5,7 +5,7 @@ import {
 	IssueAssociationDialog,
 	notifyIssueAssociation,
 	type ProjectOpenGesture,
-	shouldPromptAssociation,
+	shouldOfferAssociation,
 	supportsIssueAuth,
 } from "../issues";
 import { selectSupportsProjectClone, useAppStore } from "../store";
@@ -70,8 +70,23 @@ export function useOpenProject(
 	 * Every failure is silent: the project stays open, the setup intent is untouched, and
 	 * `explainOpenFailure` never sees an association error.
 	 */
-	const offerAssociation = async (project: Project, isCurrent: () => boolean) => {
+	const offerAssociation = async (
+		project: Project,
+		isCurrent: () => boolean,
+		gesture: ProjectOpenGesture,
+	) => {
 		if (!supportsAssociation || !isCurrent()) return;
+		let associated = false;
+		try {
+			associated =
+				(await getTransport().request("issues.connection", { projectId: project.id })) !== null;
+		} catch {
+			// A host that cannot answer keeps the previous behaviour: offer the association once.
+			associated = false;
+		}
+		if (!supportsAssociation || !isCurrent()) return;
+		// One tracker per project: an existing association is changed from the Issues tool instead.
+		if (!shouldOfferAssociation(gesture, associated)) return;
 		let repositoryUrl: string | null = null;
 		try {
 			({ repositoryUrl } = await getTransport().request("issues.repositoryAddress", {
@@ -94,8 +109,8 @@ export function useOpenProject(
 		useAppStore.getState().applyProjectUpdated(project);
 		if (!isCurrent()) return;
 		await onOpened(project, intent);
-		if (!isCurrent() || !shouldPromptAssociation(gesture)) return;
-		await offerAssociation(project, isCurrent);
+		if (!isCurrent()) return;
+		await offerAssociation(project, isCurrent, gesture);
 	};
 
 	const openProjectForIntent = async (rawPath: string, isCurrent: () => boolean) => {

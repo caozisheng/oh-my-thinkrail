@@ -127,6 +127,58 @@ describe("github Issues through the same service", () => {
 		]);
 	});
 
+	test("one project holds one tracker: switching provider replaces and retires the old key", async () => {
+		const deleted: string[] = [];
+		const vault = new Map<string, string>();
+		const credentialStore = {
+			get: async (id: string) => vault.get(id) ?? null,
+			set: async (id: string, token: string) => {
+				vault.set(id, token);
+			},
+			delete: async (id: string) => {
+				deleted.push(id);
+				vault.delete(id);
+			},
+		};
+		let stored: IssueStoredBinding[] = [];
+		const persistence = {
+			load: async () => structuredClone(stored),
+			save: async (binding: IssueStoredBinding) => {
+				stored = [
+					...stored.filter((row) => row.projectId !== binding.projectId),
+					structuredClone(binding),
+				];
+			},
+		};
+		const fetcher = async (url: string) => {
+			if (url.startsWith("https://api.github.com"))
+				return url.includes("/issues?") ? Response.json([githubIssue]) : Response.json(repository);
+			return url.includes("/issues?")
+				? Response.json([issue], { headers: { "x-next-page": "" } })
+				: Response.json({ id: 7, path_with_namespace: "team/repo" });
+		};
+		const service = await createIssuesService({ persistence, credentialStore, fetch: fetcher });
+		await service.connect("local", { ...githubInput });
+		const first = stored[0]?.credentialId;
+		expect(stored).toHaveLength(1);
+		expect(stored[0]?.instanceUrl).toBe("https://github.com");
+
+		await service.connect("local", input);
+		expect(stored).toHaveLength(1);
+		expect(stored[0]?.instanceUrl).toBe("https://gitlab.example");
+		expect(stored[0]?.remoteProjectId).toBe("7");
+		expect(stored[0]?.cleanupCredentialIds).toEqual([]);
+		expect(deleted).toHaveLength(1);
+		expect(deleted[0]).toBe(first);
+		expect(await service.connection("local")).toMatchObject({
+			instanceUrl: "https://gitlab.example",
+			remoteProjectId: "7",
+			connected: true,
+		});
+		const listed = await service.list("local");
+		expect(listed.issues[0]?.reference.provider).toBe("gitlab");
+	});
+
 	test("a github reference reaches reads but never the GitLab-only workflow surface", async () => {
 		const { fetcher } = githubFixture();
 		const service = await createIssuesService({

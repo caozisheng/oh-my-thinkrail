@@ -34,6 +34,7 @@ import {
 	issueConnectionInput,
 	issueHttpConsent,
 	issueKey,
+	issueProviderOf,
 	issueSnapshotAfterLoad,
 	issueStartupLocale,
 	loadIssueSnapshot,
@@ -42,6 +43,7 @@ import {
 	resolveIssueConnectionAddress,
 	runIssueAction,
 	safeIssueUrl,
+	shouldOfferAssociation,
 	shouldPromptAssociation,
 	submitConnection,
 	submitDisconnect,
@@ -1043,6 +1045,31 @@ test("an action failure shows beside the row that raised it", () => {
 		onRunAction: async () => ({ ok: true, launch: { workspaceId: "w1", sessionId: "s1" } }),
 	});
 	expect(otherRow).not.toContain('data-testid="issue-action-error"');
+});
+
+test("a project already associated with one tracker is never offered a second one", () => {
+	// One association per project: create gestures never prompt, and neither does an existing binding.
+	expect(shouldOfferAssociation("create", false)).toBe(false);
+	expect(shouldOfferAssociation("open", true)).toBe(false);
+	expect(shouldOfferAssociation("clone", true)).toBe(false);
+	expect(shouldOfferAssociation("open", false)).toBe(true);
+	expect(shouldOfferAssociation("clone", false)).toBe(true);
+});
+
+test("the connected state names the tracker it is associated with", () => {
+	expect(issueProviderOf("https://github.com")).toBe("github");
+	expect(issueProviderOf("https://gitlab.com")).toBe("gitlab");
+	expect(issueProviderOf("https://gitlab.example.com")).toBe("gitlab");
+	const connected = renderIssues({
+		connection: {
+			projectId: "p",
+			instanceUrl: "https://github.com",
+			remoteProjectId: "42",
+			connected: true,
+		},
+	});
+	expect(connected).toContain('data-testid="issues-state"');
+	expect(connected).toContain("Connected to GitHub");
 });
 
 test("GitHub association needs a host that can address GitHub references", () => {
