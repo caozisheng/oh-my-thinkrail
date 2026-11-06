@@ -1,7 +1,8 @@
 import { isLocalePreference } from "./domain";
 
+export type IssueProvider = "gitlab" | "github";
 export interface IssueReference {
-	provider: "gitlab";
+	provider: IssueProvider;
 	instanceUrl: string;
 	projectId: string;
 	number: number;
@@ -83,6 +84,19 @@ export function canonicalIssueInstanceUrl(value: unknown): string | null {
 		return null;
 	}
 }
+/**
+ * One rule for every consumer: `github.com` is GitHub, every other host is GitLab. Null reports an
+ * instance that is not a canonical credential-free HTTP(S) URL, never a guessed provider.
+ */
+export function issueProviderForInstanceUrl(value: unknown): IssueProvider | null {
+	const canonical = canonicalIssueInstanceUrl(value);
+	if (canonical === null) return null;
+	try {
+		return new URL(canonical).hostname.toLowerCase() === "github.com" ? "github" : "gitlab";
+	} catch {
+		return null;
+	}
+}
 /** Fail closed for invalid instances; never resolves a hostname to infer loopback. */
 export function requiresIssueHttpConsent(instance: string): boolean {
 	const canonical = canonicalIssueInstanceUrl(instance);
@@ -118,11 +132,54 @@ export function hasIssueHttpConsent(input: IssueConnectionInput, stored?: unknow
 		(consent) => httpConsent(consent) && consent.instanceUrl === canonical,
 	);
 }
+function issuePath(projectPath: string): string[] | null {
+	const parts = projectPath.split("/");
+	return parts.length >= 2 &&
+		parts.every((part) => part && part !== "." && part !== ".." && !/[\s%?#@]/.test(part))
+		? parts
+		: null;
+}
+
+/** The one credential-free issue URL each provider publishes; never built from caller text. */
+export function issueWebUrl(
+	provider: IssueProvider,
+	instanceUrl: string,
+	projectPath: string,
+	number: number,
+): string | null {
+	const parts = issuePath(projectPath);
+	if (parts === null || !Number.isSafeInteger(number) || number <= 0) return null;
+	const canonical = canonicalIssueInstanceUrl(instanceUrl);
+	if (canonical === null || issueProviderForInstanceUrl(canonical) !== provider) return null;
+	return provider === "github"
+		? `https://github.com/${parts.join("/")}/issues/${number}`
+		: `${canonical}/${parts.join("/")}/-/issues/${number}`;
+}
+
+/** Structural check of a provider issue URL against its reference; the numeric id is not a path. */
+export function isIssueWebUrl(value: unknown, reference: IssueReference): boolean {
+	if (typeof value !== "string" || canonicalIssueInstanceUrl(value) !== value) return false;
+	const suffix = `/issues/${reference.number}`;
+	if (providerOf(reference) === "github") {
+		const prefix = "https://github.com/";
+		if (!value.startsWith(prefix) || !value.endsWith(suffix)) return false;
+		const parts = value.slice(prefix.length, -suffix.length).split("/");
+		return parts.length === 2 && issuePath(parts.join("/")) !== null;
+	}
+	const prefix = `${reference.instanceUrl}/`;
+	const gitlabSuffix = `/-/issues/${reference.number}`;
+	if (!value.startsWith(prefix) || !value.endsWith(gitlabSuffix)) return false;
+	const parts = value.slice(prefix.length, -gitlabSuffix.length).split("/");
+	return issuePath(parts.join("/")) !== null;
+}
+function providerOf(reference: IssueReference): IssueProvider {
+	return issueProviderForInstanceUrl(reference.instanceUrl) ?? "gitlab";
+}
+
 export function isIssueReference(value: unknown): value is IssueReference {
 	return (
 		record(value) &&
-		value.provider === "gitlab" &&
-		canonicalIssueInstanceUrl(value.instanceUrl) !== null &&
+		value.provider === issueProviderForInstanceUrl(value.instanceUrl) &&
 		typeof value.projectId === "string" &&
 		value.projectId.trim().length > 0 &&
 		typeof value.number === "number" &&
