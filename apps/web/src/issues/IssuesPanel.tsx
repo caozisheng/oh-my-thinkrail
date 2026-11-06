@@ -24,6 +24,7 @@ import {
 	type IssuePanelError,
 	issueActions,
 	issueKey,
+	issueProviderOf,
 	reconnectOutcome,
 	safeIssueUrl,
 	submitDisconnect,
@@ -106,6 +107,11 @@ function IssueActionRow({ issue, capabilities, pending, error, onRun }: IssueAct
 	);
 }
 
+const PROVIDER_KEY = {
+	github: "issues.provider.github",
+	gitlab: "issues.provider.gitlab",
+} as const;
+
 const stages: IssueStage[] = ["backlog", "in-progress", "in-review", "closed"];
 const STAGE_KEY = {
 	backlog: "issues.stage.backlog",
@@ -137,6 +143,7 @@ export function IssuesPanel({
 	// Nothing reaches the host until the user confirms this issue's implementation gate.
 	const { reconnecting, snapshotError } = state;
 	const showForm = !connection?.connected || reconnecting;
+	const provider = connection ? issueProviderOf(connection.instanceUrl) : null;
 	const failure = actionError ?? state.actionError ?? snapshotError;
 
 	useEffect(() => {
@@ -212,7 +219,11 @@ export function IssuesPanel({
 				<div className="flex flex-col gap-4">
 					{(connection.connected || authSupported) && (
 						<p data-testid="issues-state" className="break-words text-text-muted">
-							{connection.connected ? t("issues.connected") : t("issues.reconnectHint")}
+							{connection.connected && provider
+								? t("issues.connectedTo", { provider: t(PROVIDER_KEY[provider]) })
+								: connection.connected
+									? t("issues.connected")
+									: t("issues.reconnectHint")}
 						</p>
 					)}
 					<p className="break-words text-text-muted">

@@ -27,6 +27,12 @@ bindings and atomically upserts one stored binding by local project id. Stored b
 public bindings with optional UUID `credentialId`, exact canonical `httpConsentInstanceUrl`, and
 at most 32 distinct UUID `cleanupCredentialIds` (never the active key). Explicit projections expose
 only public binding fields plus connection status; opaque credential IDs are not public DTOs.
+A local project holds exactly one binding, keyed by its local project id: associating a different
+instance, provider or remote project replaces that row and retires the previous credential instead of
+adding a second association, so a project is GitHub, GitLab or unassociated — never both. Records keyed
+by the previous reference (sessions, receipts, workspace ownership) simply stop resolving through
+`remoteFor`, which compares the live binding exactly.
+
 `connection`, `connect`, async `disconnect`, and `list` expose the lifecycle; `restore(projectId)` is
 a server-only lazy asynchronous seam, not a wire contract. Host composition supplies both adapters.
 

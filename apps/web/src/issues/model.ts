@@ -10,6 +10,7 @@ import {
 	type IssueConnection,
 	type IssueConnectionInput,
 	type IssueList,
+	type IssueProvider,
 	type IssueReference,
 	type IssueSessionLaunch,
 	type IssueSummary,
@@ -66,6 +67,19 @@ export type ProjectOpenGesture = "open" | "init" | "clone" | "create";
 
 export function shouldPromptAssociation(gesture: ProjectOpenGesture): boolean {
 	return gesture !== "create";
+}
+
+/**
+ * A project holds at most one Issue association, so the post-open prompt appears only while the
+ * project has none: switching GitHub and GitLab goes through Disconnect first.
+ */
+export function shouldOfferAssociation(gesture: ProjectOpenGesture, associated: boolean): boolean {
+	return shouldPromptAssociation(gesture) && !associated;
+}
+
+/** Which tracker an instance URL belongs to, for the connected state's label. */
+export function issueProviderOf(instanceUrl: string): IssueProvider | null {
+	return issueProviderForInstanceUrl(instanceUrl);
 }
 
 export function safeIssueUrl(value: string): string | undefined {

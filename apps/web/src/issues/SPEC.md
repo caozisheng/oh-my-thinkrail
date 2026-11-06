@@ -43,6 +43,12 @@ connection, then list only when connected; connect refreshes the list. Refresh i
 stage mutations.
 
 **Dual entry.** A project can be associated from the Issues tool (the panel form) or from the prompt the
+A project holds at most one Issue association. `shouldOfferAssociation(gesture, associated)` gates the
+post-open prompt: a create gesture never prompts, and an already-associated project never prompts again,
+so switching between GitHub and GitLab goes through Disconnect in the Issues tool instead of a silent
+second association. The connected state names the tracker (`issues.connectedTo` with a provider label)
+next to the instance and remote project it is bound to.
+
 The provider is derived, never chosen in the UI: `resolveIssueRepositoryAddress` keeps requiring an
 explicit instance for every host except `github.com` and `gitlab.com`, and `associationFormState`
 marks a GitHub target with `issues.githubUnsupported` — clearing `input` and blocking submit — when the

@@ -4,8 +4,10 @@ export type { IssuesPanelProps } from "./IssuesPanel";
 export { IssuesPanel } from "./IssuesPanel";
 export { IssuesTool } from "./IssuesTool";
 export {
+	issueProviderOf,
 	notifyIssueAssociation,
 	type ProjectOpenGesture,
+	shouldOfferAssociation,
 	shouldPromptAssociation,
 	supportsIssueAuth,
 	supportsIssues,
