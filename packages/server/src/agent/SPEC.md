@@ -886,20 +886,32 @@ re-opened transcripts provider-valid.
     The bound Issue tools (`issueTools.ts`) are always registered for top-level sessions by the named
     `issue-tools` inline extension in `sharedFactories`, shared by source/dev and bundled CLI/desktop
     loaders, never by the curated child extension set. `issue_context` accepts exactly `{}`;
-    `issue_record_summary` accepts exactly `{ operationId, summary }`. Both schemas forbid additional
+    `issue_record_summary` accepts `{ operationId, summary, recovery? }`. Both schemas forbid additional
     properties and execute-time validation enforces the same keys. Operation IDs are 1–128 ASCII
     characters, starting with an alphanumeric and otherwise allowing alphanumerics, `.`, `_`, `:`, `-`;
     summaries must be nonblank and at most 32,000 UTF-8 bytes (not JavaScript string length), and are
     passed through unchanged. Neither tool accepts an issue reference, project, path, session or token.
     Session identity comes only from `ctx.sessionManager.getSessionId()`. The host is injected via
     `setIssueToolHost` with `IssueToolHost.context(sessionId): Promise<string>` and
-    `recordSummary(sessionId, operationId, summary): Promise<{ noteId: number; url?: string }>`;
+    `recordSummary(sessionId, operationId, summary, recovery?): Promise<{ noteId: number; url?: string }>`;
     the host owns association lookup, authorization, safe context/receipt projection and publication.
     Agent imports no host/issues implementation. The default host is unavailable and a `null` setter
     restores it. Invalid input throws a static `RANGE_INVALID` CodedError before dispatch; all host
-    failures collapse to a fresh static `RESOURCE_UNAVAILABLE` CodedError without a cause, raw message
+    failures collapse to a fresh static `RESOURCE_UNAVAILABLE` CodedError, except
+    `ISSUE_SUMMARY_RECOVERY_REQUIRED` retains a static actionable message. Neither has a cause, raw message
     or log. Context returns host text, summary returns the host receipt as JSON text and details.
-    Only the setter and host type are exported through the agent barrel; tool factories and the
+
+    Summary `recovery` is exactly `reconcile` or `retry-confirmed-unpublished`. Both require explicit
+    HUMAN confirmation in tool instructions and the Tomato skill; selecting the enum represents that
+    confirmation, not agent inference. Reconciliation uses the original operation/body and never publishes;
+    exact-body receipt matching does not prove original authorship, so the human must confirm adopting
+    that receipt. Retry requires human confirmation that the original request/process ended and remote
+    publication did not happen, and authorization to retry. Absence, errors and timeouts are insufficient.
+    Legacy intents may retry once with fresh zero exact matches and a durable exclusive retry fence;
+    already-retried intents cannot resend, including after restart. Never change operation ID to bypass
+    uncertainty. Normal validation and sanitized errors apply to both options.
+
+    Only the setter, host type and recovery type are exported through the agent barrel; tool factories and the
     extension remain module-internal integration helpers. There is no Issue `before_agent_start` hook
     or global prompt guideline: this seam has no synchronous bound-association lookup, so ordinary
     sessions receive only the tools' descriptions, never an unconditional Issue-workflow rule.

@@ -195,3 +195,38 @@ test("the shared resource loader registers issue tools as a named inline extensi
 		rmSync(root, { recursive: true, force: true });
 	}
 }, 30_000);
+
+test("recovery is an exact optional enum delegated unchanged and safely classified", async () => {
+	const description = createIssueRecordSummaryTool().description;
+	expect(description).toContain("explicit HUMAN confirmation before either recovery mode");
+	expect(description).toContain("an agent must not infer it");
+	expect(description).toContain("does not prove original authorship");
+	expect(description).toContain("Absence, errors and timeouts are NOT proof");
+	const { host, calls } = fakeHost();
+	setIssueToolHost(host);
+	for (const recovery of ["reconcile", "retry-confirmed-unpublished"]) {
+		const params = { operationId: "op", summary: "body", recovery };
+		expect(Check(createIssueRecordSummaryTool().parameters, params)).toBe(true);
+		await record(params);
+	}
+	expect(calls).toEqual([
+		["own-session", "op", "body", "reconcile"],
+		["own-session", "op", "body", "retry-confirmed-unpublished"],
+	]);
+	for (const recovery of [undefined, null, "retry", true]) {
+		await expect(record({ operationId: "op", summary: "body", recovery })).rejects.toMatchObject({
+			code: "RANGE_INVALID",
+		});
+	}
+	setIssueToolHost({
+		...host,
+		recordSummary: async () => {
+			throw new CodedError("ISSUE_SUMMARY_RECOVERY_REQUIRED", "secret provider body");
+		},
+	});
+	await expectClosedFailure(
+		record({ operationId: "op", summary: "body" }),
+		"ISSUE_SUMMARY_RECOVERY_REQUIRED",
+		"Issue summary requires reconciliation. Obtain explicit human confirmation before either recovery mode; reuse the original operationId and exact summary. Retry requires human confirmation that the original request/process ended without remote publication and authorization to retry. Absence, errors and timeouts are not proof.",
+	);
+});

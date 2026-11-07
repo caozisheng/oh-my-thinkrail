@@ -1097,11 +1097,29 @@ even torn or empty, requires explicit reconciliation. The service never dispatch
 SHA-256 digest before invoking `send` exactly once. The callback returns a positive safe-integer
 confirmed note ID. A flushed completion stores only the digest, operation/session identity and note
 ID, not the raw summary body. The same completed operation/body returns its note ID without another
-send; changed bodies and any pending/invalid journal tail stop. Both summary bodies (128 KiB UTF-8)
-and record sizes (16 KiB) are bounded; at most 1,000 summary operations are retained per session.
-Cross-process arbitration is exclusive `wx` creation of the next immutable intent, not a process-local
-lock. A callback failure, process crash or failed completion leaves the intent permanently in place;
-no timeout, takeover, deletion or automatic replay exists. No fallible unlock/unlink follows commit.
+send; changed bodies and invalid journal tails stop. Unresolved publication raises
+`ISSUE_SUMMARY_RECOVERY_REQUIRED`. The existing summary call accepts optional `reconcile` recovery:
+it requires the original operation ID/body and fresh complete bound remote notes, and completes only
+from one exact body/SHA-256 match with a real positive note ID unused by other receipts. Zero or
+multiple matches never send. Legacy intents are eligible for read-only reconciliation across restarts.
+
+Both recovery enum values represent mandatory explicit HUMAN confirmation, not an inference by an
+agent. For `reconcile`, the human confirms adopting the matching receipt: exact-body matching does
+not prove the original author (the remote model supplies no authorship evidence).
+`retry-confirmed-unpublished` confirms that the original request/process ended, remote publication
+did not happen, and the human authorizes retry. Absence, local errors and timeouts are NOT such
+confirmation. This implementation authorization is not authorization to reset live state.
+Legacy intents without extra markers are eligible under that same explicit confirmation contract.
+Retry requires zero fresh exact matches and exclusive/flushed `.retry` audit/fence creation before
+one send. No `.failed` marker is needed: callback failure alone proves neither remote nonpublication
+nor termination; independent human confirmation supplies the prerequisite instead. One recovery send
+per intent is allowed; uncertainty after it can only be reconciled to a published note. Retry markers
+contain the same session/operation/digest identity, not bodies or credentials. No automatic replay,
+timeout takeover, invented IDs, deletion or overwrite exists. Concurrent completions accept only the
+identical receipt. Bodies (128 KiB UTF-8), records (16 KiB) and operations (1,000/session) remain bounded.
+Exclusive `wx` intent/retry creation arbitrates across processes. Remote reads are observations, not
+compare-and-swap; callers must not assert confirmation for an in-flight original request. The host
+cannot independently verify human confirmation; the enum carries it through the existing tool.
 
 Immutable exclusive files deliberately replace rename-based replacement: rename could overwrite a
 competitor's claim. Success requires file fsync/close and directory/root flush where supported;
