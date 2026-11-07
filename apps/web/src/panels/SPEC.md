@@ -622,9 +622,15 @@ a project picker, the prompt hero, and the reused
   **Shift+Enter** inserts a newline. **Worktree-mode submit on a v103+ host** = `workspace.startCreate({
   projectId, baseRef, kickoff })`, where the kickoff always travels — text, any attached images, and the held
   model + effort only when picked explicitly — so the host can start the chat even if this window closes. The
-  dialog folds the returned creation (keeping the full prompt locally, see [[submodule-web-store]]), expands
-  the project and refreshes its `workspace.list` (fire-and-forget), **selects the creation and closes at
-  once**: the checkout runs in the background ([[submodule-server-workspaces]]) and the user may keep working
+  dialog treats the returned creation as a replayable **acceptance receipt**, never a current snapshot.
+  The shared `creationReceipt.ts` continuation (also used by Retry) re-reads `workspace.listCreations` and
+  the project's `workspace.list`, installing through the store's connection/identity fence so a push or
+  reconnect hydration received after the reads began wins. The full prompt is held separately in the store,
+  not installed by overwriting the creation. Start expands the project, selects an already-known creation
+  and closes at once; after reconciliation it selects the current creation or completed workspace only
+  while the captured selection still holds. Retry reconciles without taking focus. A failed read leaves
+  the held projection intact and toasts; reconnect can repair it. Thus a cached running receipt cannot
+  resurrect a completed creation and permanently hide its workspace. The checkout runs in the background ([[submodule-server-workspaces]]) and the user may keep working
   anywhere. A rejected `startCreate` (an invalid ref, an unknown project) keeps the dialog open with a
   `store.toast.error`. Against an **older host** the dialog falls back to `workspace.create` → set active →
   `session.create({ workspaceId, model?, thinkingLevel? })` → fire-and-forget `prompt` with an optimistic user

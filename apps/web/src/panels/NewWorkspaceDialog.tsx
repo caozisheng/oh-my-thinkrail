@@ -86,6 +86,7 @@ import {
 import { createSessionWithSkillBaseline, errorText, getTransport } from "@/transport";
 import { BranchPicker } from "./BranchPicker";
 import { useBranchList } from "./branches";
+import { reconcileCreationReceipt } from "./creationReceipt";
 import { enterDefaultWorkspace } from "./defaultWorkspace";
 
 type WorkspaceTarget = "worktree" | "default";
@@ -424,10 +425,12 @@ export function NewWorkspaceDialog({
 				return null;
 			});
 			if (!creation) return;
-			const store = useAppStore.getState();
-			store.applyWorkspaceCreation(creation, { text, attachments });
-			void refreshProjectWorkspaces(creation.projectId).catch(() => {});
-			store.selectCreation(creation.id);
+			void reconcileCreationReceipt(creation, {
+				select: true,
+				sentPrompt: { text, attachments },
+			}).catch((err: unknown) =>
+				toast.error(errorText(err), t("panels.newWorkspace.createFailed")),
+			);
 			onOpenChange(false);
 			return;
 		} else {

@@ -50,7 +50,7 @@ jobs:
           no-cache: true
       - run: bun install --frozen-lockfile
       - name: Check merged protocol, release and upstream regressions
-        run: bun test packages/contracts/src/wsProtocol.test.ts ./.github/scripts/windows-release.test.ts packages/shared/src/windowsIdentity.test.ts packages/artifact-tests/src/windowsIdentity.test.ts apps/desktop/src/buildConfig.test.ts apps/cli/src/args.test.ts
+        run: bun test packages/contracts/src/wsProtocol.test.ts ./.github/scripts/windows-release.test.ts packages/shared/src/windowsIdentity.test.ts packages/artifact-tests/src/windowsIdentity.test.ts apps/desktop/src/buildConfig.test.ts apps/cli/src/args.test.ts apps/web/src/panels/creationReceipt.test.ts
       - run: bun test packages/spec-graph
       - run: bun test packages/pi-background-commands
       - run: bun test packages/server/src/subprocess

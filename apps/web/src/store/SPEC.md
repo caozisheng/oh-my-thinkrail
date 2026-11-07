@@ -157,7 +157,13 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   The store owns no URL/history/storage access — `navigation` owns serialization and drivers. It owns the
   **background-creation slice** (v111): `workspaceCreations` by id, folded from `workspace.creationChanged`
   (`applyWorkspaceCreation`, which also raises one error toast when a running creation turns `failed`) and
-  replaced on hydration (`setWorkspaceCreations`), and **`activeCreationId`** — mutually exclusive with
+  replaced on hydration (`setWorkspaceCreations`). Acceptance responses from start/retry are receipts,
+  not writers of this projection. `rememberCreationPrompt` retains the local prompt independently (and
+  enriches an already queued matching handoff); `reconcileCreationReceipt` installs freshly read creations
+  and project workspaces only on the captured connection generation and unchanged projection identities.
+  Changed/removed pushes and hydration invalidate the creations identity, including an unseen removal;
+  project workspace writes invalidate that project's list identity. A read cannot undo a later push.
+  No second creation cache or receipt-derived running state exists. The slice also owns **`activeCreationId`** — mutually exclusive with
   `activeWorkspaceId`: `selectCreation` clears the workspace, and every workspace activation, `selectProject`,
   `selectMain` and project reconciliation clears the creation. **`applyWorkspaceCreationRemoved` is the whole
   removal reaction**: if that creation was selected it activates the new workspace (or lands on its project

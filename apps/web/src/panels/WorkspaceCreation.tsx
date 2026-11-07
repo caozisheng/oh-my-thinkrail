@@ -13,6 +13,7 @@ import { cn } from "@thinkrail/ui/utils";
 import { useEffect } from "react";
 import { toast, useAppStore } from "../store";
 import { errorText, getTransport } from "../transport";
+import { reconcileCreationReceipt } from "./creationReceipt";
 import { openChatInTab } from "./openChat";
 
 const HOVER_CONTROL_CLASS =
@@ -45,7 +46,7 @@ function statusReason(t: Translator, creation: WorkspaceCreation): string | null
 export function retryCreation(id: string): void {
 	getTransport()
 		.request("workspace.retryCreation", { id })
-		.then((creation) => useAppStore.getState().applyWorkspaceCreation(creation))
+		.then((creation) => reconcileCreationReceipt(creation))
 		.catch((err: unknown) =>
 			toast.error(errorText(err), translate("panels.workspaceCreation.retryFailed")),
 		);

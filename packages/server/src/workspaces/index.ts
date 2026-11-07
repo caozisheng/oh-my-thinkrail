@@ -18,9 +18,9 @@ export {
 } from "./creations";
 export {
 	backfillWorkspaceActivity,
+	completeInitialTerminalReservation,
 	createWorkspaceAtPath,
 	createWorkspaceAtPathWithBranch,
-	completeInitialTerminalReservation,
 	ensureWorkspaceScratchDir,
 	forgetWorkspace,
 	getWorkspace,

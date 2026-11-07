@@ -1335,6 +1335,13 @@ interface AppState {
 		creation: WorkspaceCreation,
 		sentPrompt?: { text: string; attachments: ChatAttachment[] },
 	) => void;
+	rememberCreationPrompt: (id: string, prompt: NonNullable<CreationChatHandoff["sentPrompt"]>) => void;
+	reconcileCreationReceipt: (
+		read: Pick<AppState, "connectionGeneration" | "workspaceCreations" | "workspaces">,
+		projectId: string,
+		creations: WorkspaceCreation[],
+		workspaces: Workspace[],
+	) => void;
 	applyWorkspaceCreationRemoved: (removed: WorkspaceCreationRemoved) => void;
 	selectCreation: (id: string) => void;
 	landOnFinishedCreation: (projectId: string, id: string) => void;
@@ -3670,9 +3677,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 				t("panels.newWorkspace.createFailed"),
 			);
 	},
+	rememberCreationPrompt: (id, prompt) =>
+		set((state) => ({
+			sentCreationPrompts: { ...state.sentCreationPrompts, [id]: prompt },
+			...(state.creationChatToOpen?.workspaceId === id
+				? { creationChatToOpen: { ...state.creationChatToOpen, sentPrompt: prompt } }
+				: {}),
+		})),
+	reconcileCreationReceipt: (read, projectId, creations, workspaces) => {
+		const state = get();
+		if (state.connectionGeneration !== read.connectionGeneration) return;
+		if (state.workspaces[projectId] === read.workspaces[projectId])
+			state.setWorkspaces(projectId, workspaces);
+		if (get().workspaceCreations === read.workspaceCreations)
+			get().setWorkspaceCreations(creations);
+	},
 	applyWorkspaceCreationRemoved: (removed) => {
 		const state = get();
-		if (!state.workspaceCreations[removed.id] && state.activeCreationId !== removed.id) return;
+		if (!state.workspaceCreations[removed.id] && state.activeCreationId !== removed.id) {
+			set({
+				workspaceCreations: { ...state.workspaceCreations },
+				sentCreationPrompts: omitKey(state.sentCreationPrompts, removed.id),
+			});
+			return;
+		}
 		const wasActive = state.activeCreationId === removed.id;
 		const sentPrompt = state.sentCreationPrompts[removed.id];
 		set({
