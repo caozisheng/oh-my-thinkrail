@@ -230,12 +230,16 @@ import {
 import { forgetWorkspaceTurns, listTurns } from "../turns";
 import { ensureWatch, stopWatch } from "../watch";
 import {
+	awaitWorkspaceCreation,
+	type CreationHandoff,
 	createWorkspace,
+	dismissWorkspaceCreation,
 	ensureWorkspaceScratchDir,
 	forgetWorkspace,
 	getWorkspace,
 	listAllWorkspaceRecords,
 	listExistingWorktrees,
+	listWorkspaceCreations,
 	listWorkspaceRecords,
 	listWorkspaces,
 	openExistingWorktree,
@@ -243,12 +247,14 @@ import {
 	recordWorkspaceActivity,
 	refreshUserOwnedWorkspace,
 	renameWorkspace,
+	retryWorkspaceCreation,
 	settleWorkspace,
 	setWorkspaceDiffBase,
 	setWorkspaceReview,
 	setWorkspaceSkillOverride,
 	setWorkspaceSubagentMaxConcurrent,
 	setWorkspaceSubagentsOverride,
+	startWorkspaceCreation,
 	unsettleWorkspace,
 	workspaceDiffStats,
 } from "../workspaces";
@@ -481,6 +487,36 @@ async function sendUserMessage(
 	}
 	return { ok: true };
 }
+
+const creationClients = new Map<string, string>();
+
+export const workspaceCreationHandoff: CreationHandoff = async (workspace, kickoff) => {
+	const clientKey = creationClients.get(workspace.id) ?? "";
+	creationClients.delete(workspace.id);
+	provisionInitialTerminal(workspace);
+	if (!kickoff) return {};
+	await ensureWatch(workspace.id, { prewarm: false });
+	const { sessionId } = await createHostSession({
+		workspaceId: workspace.id,
+		...(kickoff.model ? { model: kickoff.model } : {}),
+		...(kickoff.thinkingLevel ? { thinkingLevel: kickoff.thinkingLevel } : {}),
+	});
+	if (!kickoff.text && !kickoff.images?.length) return { sessionId };
+	let preflighted: () => void = () => {};
+	const preflight = new Promise<void>((resolve) => {
+		preflighted = resolve;
+	});
+	const sent = sendUserMessage("prompt", sessionId, kickoff.text, clientKey, () =>
+		promptSession(sessionId, kickoff.text, kickoff.images, { onPreflight: preflighted }),
+	);
+	sent.catch(() => {});
+	try {
+		await Promise.race([preflight, sent]);
+		return { sessionId };
+	} catch (err) {
+		return { sessionId, kickoffError: err instanceof Error ? err.message : String(err) };
+	}
+};
 
 function revealDataFolder(dir: string) {
 	mkdirSync(dir, { recursive: true });
@@ -750,12 +786,30 @@ const handlers: WsHandlers = {
 		}
 		return updated;
 	},
-	"workspace.create": async (p) => {
-		return provisionInitialTerminal(
-			await observeSetupAction("worktree_create", () =>
-				createWorkspace(p.projectId, p.name, p.baseRef),
-			),
+	"workspace.create": (p) =>
+		observeSetupAction("worktree_create", () => createWorkspace(p.projectId, p.name, p.baseRef)),
+	"workspace.startCreate": (p, ctx) => {
+		const creation = startWorkspaceCreation(p.projectId, {
+			...(p.name ? { name: p.name } : {}),
+			...(p.baseRef ? { baseRef: p.baseRef } : {}),
+			...(p.kickoff ? { kickoff: p.kickoff } : {}),
+		});
+		creationClients.set(creation.id, ctx.clientKey);
+		void observeSetupAction("worktree_create", () => awaitWorkspaceCreation(creation.id)).catch(
+			() => {},
 		);
+		return creation;
+	},
+	"workspace.listCreations": () => listWorkspaceCreations(),
+	"workspace.retryCreation": (p, ctx) => {
+		const creation = retryWorkspaceCreation(p.id);
+		creationClients.set(creation.id, ctx.clientKey);
+		return creation;
+	},
+	"workspace.dismissCreation": async (p) => {
+		const dismissed = await dismissWorkspaceCreation(p.id);
+		creationClients.delete(p.id);
+		return dismissed;
 	},
 	"workspace.listExisting": (params) => listExistingWorktrees(params.projectId),
 	"workspace.openExisting": async (p) => {

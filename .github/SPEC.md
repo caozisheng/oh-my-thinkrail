@@ -11,8 +11,8 @@ depends-on: [module-cli, module-desktop, module-shared, module-repo-scripts, mod
 
 Public PR gates, contribution templates, and reusable native build recipes. Release orchestration,
 signing/notary credentials,
-source authorization, tags, checksums, and publication belong to `JetBrains/thinkrail-signing`.
-This module owns the public action inputs/outputs and artifact/version contract consumed by that private
+source authorization, tags, checksums, and signed upstream publication belong to `JetBrains/thinkrail-signing`.
+This fork separately owns unsigned Windows-only manual releases described below. This module owns the public action inputs/outputs and artifact/version contract consumed by that private
 pipeline.
 
 ## Boundary
@@ -22,25 +22,29 @@ pipeline.
   interface consumed by the private release controller.
 - **Consumes:** CLI and desktop build commands, [[module-artifact-tests]] smoke entrypoints, shared
   version stamping, root conformance/unit/browser commands, git, and native platform tools.
-- **Forbidden:** product runtime logic; another public release controller; public signing credentials;
-  publication before required signing and verification; checksums over pre-signing bytes; or a
+- **Forbidden:** product runtime logic; a public controller for signed upstream releases; public signing credentials;
+  publication before required verification (and signing for signed upstream releases); checksums over pre-signing bytes; or a
   release-only application build path that bypasses normal package commands.
 
 ## CI
 
 ### Fork development policy: Windows only
 
-During active fork development, only `ci.yml` and `build-preview.yml` remain active. CI retains
+During active fork development, `ci.yml`, `build-preview.yml`, and the manual Windows release workflow remain active. CI retains
 Windows lint/typecheck, existing Windows-targeted unit checks and native CLI/desktop smoke; the
 `CI passed` aggregate requires all three jobs to succeed (no allowed skipped jobs). Full POSIX
 unit, source/browser, binary-browser and desktop-browser suites are temporarily suspended, not
 claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by active workflows.
 
+The synchronized upstream cross-platform CI recipe is retained fully commented in
+`ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
+but are not invoked by active workflows. Restoring Linux execution is deferred, not a deletion.
+
 Website deploy/preview/cleanup and npm publication recipes are retained as `.yml.disabled` files
 and therefore do not run. Restoring them and the broader CI matrix is a deliberate later change;
 the historical cross-platform policy below describes that suspended coverage, not active jobs.
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
-there is no automatic tag, GitHub Release or npm publication.
+there is no push-triggered tag, GitHub Release or npm publication.
 
 ### Suspended cross-platform coverage
 
@@ -93,8 +97,14 @@ artifact configs alike), a test that passes on that retry is reported flaky and 
 no job is re-run automatically. They install Chromium without `--with-deps`: the runner image already
 carries its shared libraries, and the extra apt packages (CJK/Thai/X fonts) feed no assertion while their
 Ubuntu-mirror download was the slowest step of the job, often for minutes. A missing library fails
-Chromium's launch loudly. The browsers themselves are not cached: the Playwright CDN download takes seconds,
-no slower than an Actions-cache restore of the same bytes. Jobs download only Chromium's headless shell,
+Chromium's launch loudly. The one exception is the source no-agent E2E job, which also runs the
+questionnaire specs under WebKit. The image lacks WebKit's libraries, so that job installs the packages
+Playwright's `install-deps --dry-run webkit` reports missing, minus its font and X-server group
+(`fonts-*`, `xfonts-*`, `ttf-*`, `xvfb`), not `--with-deps`, which always adds that group. Those fonts
+feed no assertion, and the Azure mirror trickled one of them for minutes, past the wait deadline, in two of
+four shard runs; apt also gets a 20 s HTTP timeout with five retries for outright stalls. The browsers
+themselves are not cached: the Playwright CDN download takes seconds, no slower than an Actions-cache
+restore of the same bytes. Jobs download only Chromium's headless shell,
 the one binary headless tests launch, and start it in the background right after `bun install`; a wait
 step joins it, failing with its status, just before the browser tests, so the download overlaps the build
 instead of preceding it.
@@ -144,6 +154,21 @@ job on main every PR and merge group kept its own copy, about half of the reposi
 `build-preview.yml` runs manually or on pushes to this fork's feature branch. It uploads unsigned
 Windows CLI and desktop preview bundles, retained for 14 days. It never publishes npm packages,
 tags, GitHub Releases or signed installers; protected release/signing gates remain separate.
+
+## Fork Windows releases
+
+`release-windows-desktop.yml` is manually triggered and builds only unsigned Windows x64 Desktop.
+The upstream version is resolved once from `JetBrains/thinkrail`'s latest published non-prerelease
+Release and must be a `vX.Y.Z` or `X.Y.Z` tag. It labels the current fork checkout, not upstream
+source: the release version is `X.Y.Z.<first 8 hex of fork SHA>`. Full fork SHA and upstream Release
+provenance accompany the installer ZIP and SHA-256 checksum. Shared version stamping stays in the
+disposable build checkout; the fork build carries no upstream analytics project key or update feed.
+
+Expanded-app and first-install smoke are required before a separate contents-write job publishes a
+Release targeting the full fork SHA. Existing tags or releases are rejected rather than replaced;
+runs serialize without cancelling an active release. No signing credentials, CLI artifacts, updater
+payloads or other operating systems are part of this path. Downloads and release notes explicitly
+identify the unsigned independent fork and the Windows SmartScreen risk.
 
 ## Native build contract
 

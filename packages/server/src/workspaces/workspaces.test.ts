@@ -17,11 +17,11 @@ import { delimiter, join, relative, resolve } from "node:path";
 import type { Workspace, WsParams } from "@thinkrail/contracts";
 import { WORKSPACE_CONTEXT_DIR } from "@thinkrail/shared/paths";
 import { setSyncGitTimeoutForTests } from "../git";
+import { createWorkspace } from "./creations";
 import { createWorkspaceAtPathWithBranch, listGitWorktrees } from "./index";
 import {
 	backfillWorkspaceActivity,
 	completeInitialTerminalReservation,
-	createWorkspace,
 	createWorkspaceAtPath,
 	ensureWorkspaceScratchDir,
 	forgetWorkspace,
