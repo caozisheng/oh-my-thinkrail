@@ -85,7 +85,7 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 			guard();
 			return prompt;
 		},
-		async recordSummary(sessionId, operationId, summary) {
+		async recordSummary(sessionId, operationId, summary, recovery) {
 			if (
 				!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(operationId) ||
 				typeof summary !== "string" ||
@@ -96,14 +96,23 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 			const found = await binding(sessionId);
 			const { remote, checked } = await access(found, found);
 			const noteId = await checked(() =>
-				options
-					.store()
-					.recordSummary(
-						sessionId,
-						operationId,
-						summary,
-						async () => (await checked(() => remote.addNote(found.reference.number, summary))).id,
-					),
+				options.store().recordSummary(
+					sessionId,
+					operationId,
+					summary,
+					async () => {
+						try {
+							return (await checked(() => remote.addNote(found.reference.number, summary))).id;
+						} catch {
+							throw new CodedError(
+								"ISSUE_SUMMARY_RECOVERY_REQUIRED",
+								"Issue summary requires reconciliation.",
+							);
+						}
+					},
+					recovery,
+					() => checked(() => remote.notes(found.reference.number)),
+				),
 			);
 			return { noteId };
 		},

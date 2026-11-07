@@ -84,6 +84,22 @@ result is uncertain, stop and report the recording blocker; do not claim the han
 blindly retry an uncertain write. If the tool is absent, report that the required handoff could not
 be recorded. No successful terminal state is possible until the record is confirmed.
 
+### Recover an uncertain summary only with explicit human confirmation
+
+Keep the ORIGINAL `operationId` and EXACT summary. Never use a new operation ID to bypass uncertainty.
+Before using either recovery mode, obtain explicit **HUMAN confirmation**; selecting the `recovery`
+enum represents that confirmation. Implementation permission alone is not permission to reset live state.
+
+- `reconcile` never sends: the human must confirm adopting a unique exact-body remote receipt.
+  Matching body text does not prove the original author; the remote model provides no authorship evidence.
+- `retry-confirmed-unpublished` requires the human to confirm that the original request/process ended
+  and remote publication did not happen, and explicitly authorize retry. The agent cannot infer these
+  facts from an absent comment, local error, timeout, or restart. Do not select this mode for an in-flight
+  original request. Legacy intents can retry once under this contract with fresh zero exact matches
+  and a durable exclusive retry fence. Already-retried intents cannot resend; only reconcile them.
+
+Without the required confirmation, remain blocked. Never edit/delete journal state or bypass the tool.
+
 ## Side-effect limits
 
 Do not automatically modify workflow/approval labels, approve a stage, close the Issue, push, create

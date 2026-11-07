@@ -684,3 +684,52 @@ for (const stage of ["design", "implementation"] as const)
 		expect(f.prompts).toHaveLength(1);
 		expect(f.created).toBe(1);
 	}, 60000);
+
+test("bound summary recovery reads fresh notes and never republishes legacy uncertainty", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const launched = await f.host.beginDesign({ ...f.target, locale: "en" });
+	const path = join(
+		f.dir,
+		"issue-sessions",
+		createHash("sha256").update(launched.sessionId).digest("hex"),
+		"1.intent",
+	);
+	writeFileSync(
+		path,
+		JSON.stringify({
+			sessionId: launched.sessionId,
+			operationId: "legacy",
+			digest: createHash("sha256").update("Published summary").digest("hex"),
+		}),
+	);
+	await expect(
+		f.host.agentSessions.recordSummary(launched.sessionId, "legacy", "Published summary"),
+	).rejects.toMatchObject({ code: "ISSUE_SUMMARY_RECOVERY_REQUIRED" });
+	await expect(
+		f.host.agentSessions.recordSummary(
+			launched.sessionId,
+			"legacy",
+			"Published summary",
+			"reconcile",
+		),
+	).rejects.toThrow();
+	expect(f.notes).toHaveLength(0);
+	f.notes.push({ id: 71, body: "Published summary", created_at: "2026-01-01T00:00:00Z" });
+	expect(
+		await f.host.agentSessions.recordSummary(
+			launched.sessionId,
+			"legacy",
+			"Published summary",
+			"reconcile",
+		),
+	).toEqual({ noteId: 71 });
+	expect(
+		await createIssuesHost(f.options).agentSessions.recordSummary(
+			launched.sessionId,
+			"legacy",
+			"Published summary",
+		),
+	).toEqual({ noteId: 71 });
+	expect(f.notes).toHaveLength(1);
+});

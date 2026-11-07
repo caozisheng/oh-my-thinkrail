@@ -5,6 +5,8 @@ import { type Static, Type } from "typebox";
 export const ISSUE_CONTEXT_TOOL_NAME = "issue_context";
 export const ISSUE_RECORD_SUMMARY_TOOL_NAME = "issue_record_summary";
 
+export type IssueSummaryRecovery = "reconcile" | "retry-confirmed-unpublished";
+
 const EmptyParamsSchema = Type.Object({}, { additionalProperties: false });
 const RecordSummarySchema = Type.Object(
 	{
@@ -13,6 +15,9 @@ const RecordSummarySchema = Type.Object(
 			maxLength: 128,
 			pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
 		}),
+		recovery: Type.Optional(
+			Type.Union([Type.Literal("reconcile"), Type.Literal("retry-confirmed-unpublished")]),
+		),
 		summary: Type.String({
 			minLength: 1,
 			maxLength: 32_000,
@@ -29,7 +34,12 @@ type SummaryResult = { noteId: number; url?: string };
 
 export interface IssueToolHost {
 	context(sessionId: string): Promise<string>;
-	recordSummary(sessionId: string, operationId: string, summary: string): Promise<SummaryResult>;
+	recordSummary(
+		sessionId: string,
+		operationId: string,
+		summary: string,
+		recovery?: IssueSummaryRecovery,
+	): Promise<SummaryResult>;
 }
 
 const UNAVAILABLE_MESSAGE = "Issue tools are unavailable for this session.";
@@ -63,7 +73,13 @@ function validRecordSummaryParams(value: unknown): value is RecordSummaryParams 
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
 	const params = value as Record<string, unknown>;
 	if (
-		Reflect.ownKeys(params).length !== 2 ||
+		Reflect.ownKeys(params).some(
+			(key) =>
+				!["operationId", "summary", "recovery"].includes(String(key)) || typeof key !== "string",
+		) ||
+		(Object.hasOwn(params, "recovery") &&
+			params.recovery !== "reconcile" &&
+			params.recovery !== "retry-confirmed-unpublished") ||
 		!Object.hasOwn(params, "operationId") ||
 		!Object.hasOwn(params, "summary") ||
 		typeof params.operationId !== "string" ||
@@ -103,7 +119,7 @@ export function createIssueRecordSummaryTool(): ToolDefinition<
 		name: ISSUE_RECORD_SUMMARY_TOOL_NAME,
 		label: "Record Issue Summary",
 		description:
-			"Before handing off Issue work, publish a concise summary of decisions, results, validation and next steps. Generate a unique operationId for each summary; reuse it only to retry the identical summary. Confirm the returned noteId before yielding.",
+			"Before handing off Issue work, publish a concise summary of decisions, results, validation and next steps. Generate a unique operationId for each summary; reuse it only to retry the identical summary. Confirm the returned noteId before yielding. On recovery-required, obtain explicit HUMAN confirmation before either recovery mode, then reuse the ORIGINAL operationId and EXACT summary. Selecting recovery represents that confirmation; an agent must not infer it. reconcile only recovers a unique exact-body receipt without sending; it does not prove original authorship, so the human must confirm adopting that receipt. retry-confirmed-unpublished requires human confirmation that the original request/process ended and remote publication did not happen, plus authorization to retry. Absence, errors and timeouts are NOT proof. Legacy intents can retry once with that confirmation and fresh zero exact matches; already-retried attempts cannot resend. Never change operationId to bypass uncertainty.",
 		parameters: RecordSummarySchema,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!validRecordSummaryParams(params)) throw invalid();
@@ -112,12 +128,19 @@ export function createIssueRecordSummaryTool(): ToolDefinition<
 					ctx.sessionManager.getSessionId(),
 					params.operationId,
 					params.summary,
+					...(params.recovery ? [params.recovery] : []),
 				);
 				return {
 					content: [{ type: "text", text: JSON.stringify(result) }],
 					details: result,
 				};
-			} catch {
+			} catch (error) {
+				if (error instanceof CodedError && error.code === "ISSUE_SUMMARY_RECOVERY_REQUIRED") {
+					throw new CodedError(
+						"ISSUE_SUMMARY_RECOVERY_REQUIRED",
+						"Issue summary requires reconciliation. Obtain explicit human confirmation before either recovery mode; reuse the original operationId and exact summary. Retry requires human confirmation that the original request/process ended without remote publication and authorization to retry. Absence, errors and timeouts are not proof.",
+					);
+				}
 				throw unavailable();
 			}
 		},

@@ -29,6 +29,14 @@ export interface IssueSessionAssociation {
 	locale: string;
 }
 
+type SummaryRecovery = "reconcile" | "retry-confirmed-unpublished";
+function recoveryRequired(): never {
+	throw new CodedError(
+		"ISSUE_SUMMARY_RECOVERY_REQUIRED",
+		"Issue summary requires reconciliation. Obtain explicit human confirmation before either recovery mode; reuse the original operationId and exact summary. Retry requires human confirmation that the original request/process ended without remote publication and authorization to retry. Absence, errors and timeouts are not proof.",
+	);
+}
+
 const maxBytes = 16384;
 const maxSummaries = 1000;
 function stop(): never {
@@ -119,7 +127,7 @@ function flushDirectory(path: string): void {
 	}
 }
 
-/** Existing private trusted root only. No credentials, recovery, replay or agent dispatch. */
+/** Existing private trusted root only. No credentials, automatic replay or agent dispatch. */
 export function createIssueSessionStore(root: string) {
 	const dir = resolve(root);
 	function folder(sessionId: string): string {
@@ -201,8 +209,19 @@ export function createIssueSessionStore(root: string) {
 	async function guarded<T>(run: () => T | Promise<T>): Promise<T> {
 		try {
 			return await run();
-		} catch {
+		} catch (error) {
+			if (error instanceof CodedError && error.code === "ISSUE_SUMMARY_RECOVERY_REQUIRED")
+				throw error;
 			return stop();
+		}
+	}
+	function complete(path: string, revision: number, receipt: unknown): void {
+		const target = join(path, `${revision}.completed`);
+		try {
+			write(target, receipt, path);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			if (JSON.stringify(read(target)) !== JSON.stringify(receipt)) stop();
 		}
 	}
 	return {
@@ -303,30 +322,42 @@ export function createIssueSessionStore(root: string) {
 			operationId: string,
 			body: string,
 			send: () => Promise<number>,
+			recovery?: SummaryRecovery,
+			notes?: () => Promise<{ id: number; body: string }[]>,
 		): Promise<number> {
-			const intent = await guarded(() => {
+			const intent = await guarded(async () => {
 				const { path } = required(sessionId);
 				if (
 					!operationID(operationId) ||
 					typeof body !== "string" ||
 					body.length === 0 ||
 					Buffer.byteLength(body) > 131072 ||
-					typeof send !== "function"
+					typeof send !== "function" ||
+					(recovery !== undefined &&
+						recovery !== "reconcile" &&
+						recovery !== "retry-confirmed-unpublished")
 				)
 					stop();
 				const digest = hash(body);
 				const entries = readdirSync(path);
 				if (
-					entries.length > maxSummaries * 2 + 3 ||
+					entries.length > maxSummaries * 3 + 3 ||
 					entries.some(
 						(name) =>
 							!["bind.json", "startup.pending", "startup.completed"].includes(name) &&
-							!/^[1-9][0-9]*\.(intent|completed)$/.test(name),
+							!/^[1-9][0-9]*\.(intent|completed|retry)$/.test(name),
 					)
 				)
 					stop();
 				const intents = entries.filter((name) => name.endsWith(".intent"));
 				let confirmed: number | undefined;
+				const usedNoteIds = new Set<number>();
+				let unresolved:
+					| {
+							revision: number;
+							pending: { sessionId: string; operationId: string; digest: string };
+					  }
+					| undefined;
 				for (let n = 1; n <= intents.length; n++) {
 					const pending = read(join(path, `${n}.intent`));
 					if (
@@ -337,7 +368,19 @@ export function createIssueSessionStore(root: string) {
 						!/^[a-f0-9]{64}$/.test(pending.digest)
 					)
 						stop();
+					for (const suffix of ["retry"]) {
+						const audit = read(join(path, `${n}.${suffix}`));
+						if (audit !== null && JSON.stringify(audit) !== JSON.stringify(pending)) stop();
+					}
 					const completed = read(join(path, `${n}.completed`));
+					if (completed === null) {
+						if (n !== intents.length || unresolved) stop();
+						unresolved = {
+							revision: n,
+							pending: { sessionId, operationId: pending.operationId, digest: pending.digest },
+						};
+						continue;
+					}
 					if (
 						!exact(completed, ["sessionId", "operationId", "digest", "noteId"]) ||
 						completed.sessionId !== sessionId ||
@@ -348,18 +391,59 @@ export function createIssueSessionStore(root: string) {
 						completed.noteId < 1
 					)
 						stop();
+					usedNoteIds.add(completed.noteId);
 					if (pending.operationId === operationId) {
 						if (pending.digest !== digest || confirmed !== undefined) stop();
 						confirmed = completed.noteId;
 					}
 				}
 				if (
-					entries.filter((name) => /^[1-9][0-9]*\.completed$/.test(name)).length !== intents.length
+					entries.filter((name) => /^[1-9][0-9]*\.completed$/.test(name)).length !==
+						intents.length - (unresolved ? 1 : 0) ||
+					entries.some(
+						(name) =>
+							/\.(retry)$/.test(name) && !entries.includes(name.replace(/\.(retry)$/, ".intent")),
+					)
 				)
 					stop();
 				flushDirectory(path);
 				flushDirectory(dir);
+				if (unresolved) {
+					const { revision, pending } = unresolved;
+					if (
+						pending.operationId !== operationId ||
+						pending.digest !== digest ||
+						confirmed !== undefined
+					)
+						recoveryRequired();
+					if (!recovery || !notes) recoveryRequired();
+					const matches = (await notes()).filter(
+						(note) => note.body === body && hash(note.body) === digest,
+					);
+					if (matches.length === 1 && matches[0]) {
+						const noteId = matches[0].id;
+						if (!Number.isSafeInteger(noteId) || noteId < 1 || usedNoteIds.has(noteId))
+							recoveryRequired();
+						complete(path, revision, { ...pending, noteId });
+						return { confirmed: noteId };
+					}
+					if (
+						matches.length ||
+						recovery !== "retry-confirmed-unpublished" ||
+						read(join(path, `${revision}.retry`)) !== null
+					)
+						recoveryRequired();
+					const completed = read(join(path, `${revision}.completed`));
+					if (completed !== null) recoveryRequired();
+					try {
+						write(join(path, `${revision}.retry`), pending, path);
+					} catch {
+						recoveryRequired();
+					}
+					return { path, revision, pending, retry: true };
+				}
 				if (confirmed !== undefined) return { confirmed };
+				if (recovery) recoveryRequired();
 				if (intents.length >= maxSummaries) stop();
 				const pending = { sessionId, operationId, digest };
 				const revision = intents.length + 1;
@@ -367,17 +451,15 @@ export function createIssueSessionStore(root: string) {
 				return { path, revision, pending };
 			});
 			if (intent.confirmed !== undefined) return intent.confirmed;
-			// Exactly one attempt, outside guarded: provider errors may propagate, intent always remains.
+			if (!intent.path || !intent.pending) return stop();
+			const { path, revision, pending } = intent;
+			if (intent.retry && read(join(path, `${revision}.completed`)) !== null) recoveryRequired();
 			const noteId = await send();
 			return guarded(() => {
-				if (!Number.isSafeInteger(noteId) || noteId < 1 || !intent.path || !intent.pending) stop();
+				if (!Number.isSafeInteger(noteId) || noteId < 1) stop();
 				directory(dir);
-				directory(intent.path);
-				write(
-					join(intent.path, `${intent.revision}.completed`),
-					{ ...intent.pending, noteId },
-					intent.path,
-				);
+				directory(path);
+				complete(path, revision, { ...pending, noteId });
 				return noteId;
 			});
 		},

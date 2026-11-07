@@ -287,3 +287,181 @@ test("startup completion requires an intent and survives restart", async () => {
 	await store.completeStartup("session");
 	expect(await createIssueSessionStore(root).reserveStartup("session")).toBe(false);
 });
+
+async function legacyPending(root: string) {
+	const store = createIssueSessionStore(root);
+	await store.bind(association());
+	writeFileSync(
+		join(folder(root), "1.intent"),
+		JSON.stringify({
+			sessionId: "session",
+			operationId: "op",
+			digest: createHash("sha256").update("body").digest("hex"),
+		}),
+	);
+	return store;
+}
+
+test("legacy intent reconciles an exact unique real note across restart without sending", async () => {
+	const { root } = setup();
+	const store = await legacyPending(root);
+	let sends = 0;
+	const send = async () => {
+		sends++;
+		return 99;
+	};
+	expect(
+		await store.recordSummary("session", "op", "body", send, "reconcile", async () => [
+			{ id: 21, body: "body" },
+		]),
+	).toBe(21);
+	expect(await createIssueSessionStore(root).recordSummary("session", "op", "body", send)).toBe(21);
+	expect(await store.recordSummary("session", "next", "next", send)).toBe(99);
+	expect(sends).toBe(1);
+});
+
+test("recovery refuses default, mismatch, duplicate and reconcile absence without sending", async () => {
+	const { root } = setup();
+	const store = await legacyPending(root);
+	let sends = 0;
+	const send = async () => {
+		sends++;
+		return 99;
+	};
+	for (const notes of [
+		[],
+		[{ id: 1, body: "different" }],
+		[
+			{ id: 1, body: "body" },
+			{ id: 2, body: "body" },
+		],
+	]) {
+		await expect(
+			store.recordSummary("session", "op", "body", send, "reconcile", async () => notes),
+		).rejects.toMatchObject({ code: "ISSUE_SUMMARY_RECOVERY_REQUIRED" });
+	}
+	await expect(
+		store.recordSummary("session", "op", "changed", send, "reconcile", async () => [
+			{ id: 1, body: "changed" },
+		]),
+	).rejects.toThrow();
+	await expect(
+		store.recordSummary("session", "new", "body", send, "reconcile", async () => [
+			{ id: 1, body: "body" },
+		]),
+	).rejects.toThrow();
+	await expect(store.recordSummary("session", "op", "body", send)).rejects.toMatchObject({
+		code: "ISSUE_SUMMARY_RECOVERY_REQUIRED",
+	});
+	await expect(
+		store.recordSummary("session", "op", "body", send, "retry-confirmed-unpublished", async () => [
+			{ id: 1, body: "body" },
+			{ id: 2, body: "body" },
+		]),
+	).rejects.toThrow();
+	await expect(
+		store.recordSummary("session", "op", "body", send, "reconcile", async () => {
+			throw Error("read failed");
+		}),
+	).rejects.toThrow();
+	expect(sends).toBe(0);
+});
+
+test("human-confirmed legacy unpublished retry is durably fenced across concurrent stores and restart", async () => {
+	const { root } = setup();
+	const store = await legacyPending(root);
+	// The recovery enum represents mandatory explicit human confirmation, not inferred absence.
+	let sends = 0;
+	const send = async () => {
+		sends++;
+		await Bun.sleep(5);
+		throw Error("uncertain retry");
+	};
+	await Promise.allSettled(
+		[store, createIssueSessionStore(root)].map((s) =>
+			s.recordSummary("session", "op", "body", send, "retry-confirmed-unpublished", async () => []),
+		),
+	);
+	expect(sends).toBe(1);
+	await expect(
+		createIssueSessionStore(root).recordSummary(
+			"session",
+			"op",
+			"body",
+			send,
+			"retry-confirmed-unpublished",
+			async () => [],
+		),
+	).rejects.toThrow();
+	expect(sends).toBe(1);
+	expect(
+		await createIssueSessionStore(root).recordSummary(
+			"session",
+			"op",
+			"body",
+			send,
+			"reconcile",
+			async () => [{ id: 31, body: "body" }],
+		),
+	).toBe(31);
+});
+
+test("human-confirmed legacy retry publishes once and preserves its audit identity", async () => {
+	const { root } = setup();
+	await legacyPending(root);
+	const store = createIssueSessionStore(root);
+	expect(
+		await store.recordSummary(
+			"session",
+			"op",
+			"body",
+			async () => 12,
+			"retry-confirmed-unpublished",
+			async () => [],
+		),
+	).toBe(12);
+	expect(readFileSync(join(folder(root), "1.retry"), "utf8")).toBe(
+		readFileSync(join(folder(root), "1.intent"), "utf8"),
+	);
+	expect(
+		await createIssueSessionStore(root).recordSummary("session", "op", "body", async () => 99),
+	).toBe(12);
+});
+
+test("concurrent reconciliation accepts only identical receipts and never reuses an older note ID", async () => {
+	const { root } = setup();
+	const store = await legacyPending(root);
+	const results = await Promise.all(
+		[store, createIssueSessionStore(root)].map((s) =>
+			s.recordSummary(
+				"session",
+				"op",
+				"body",
+				async () => {
+					throw Error("must not send");
+				},
+				"reconcile",
+				async () => {
+					await Bun.sleep(5);
+					return [{ id: 21, body: "body" }];
+				},
+			),
+		),
+	);
+	expect(results).toEqual([21, 21]);
+	await expect(
+		store.recordSummary("session", "next", "body", async () => {
+			throw Error("uncertain");
+		}),
+	).rejects.toThrow();
+	await expect(
+		store.recordSummary(
+			"session",
+			"next",
+			"body",
+			async () => 22,
+			"reconcile",
+			async () => [{ id: 21, body: "body" }],
+		),
+	).rejects.toMatchObject({ code: "ISSUE_SUMMARY_RECOVERY_REQUIRED" });
+});

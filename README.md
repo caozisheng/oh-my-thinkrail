@@ -31,6 +31,15 @@ token. It includes:
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.
   The skill requires confirmed summary publication before handoff; automatic turn-end posting is not enforced.
+  If publication is uncertain, reuse the original operation ID and exact summary with
+  `issue_record_summary`'s `recovery: "reconcile"` to recover a unique matching published comment.
+  Both recovery modes require explicit **human confirmation**; selecting the recovery enum represents
+  that confirmation, never an agent inference. For `reconcile`, the human confirms adopting the exact-body
+  receipt, which does not prove original authorship. `retry-confirmed-unpublished` requires human
+  confirmation that the original request/process ended and remote publication did not happen, plus
+  authorization to retry. Absence, errors and timeouts are not proof. Legacy intents can retry once
+  with that confirmation, fresh zero exact matches and a durable exclusive retry fence; uncertainty
+  after retry can only be reconciled, including after restart.
 
 Starting implementation does not require design approval and does not change Issue labels. Approval
 and Issue closure remain in the tracker. Automated push/MR/CI/merge delivery is not implemented.

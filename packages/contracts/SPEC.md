@@ -1431,3 +1431,6 @@ existing exact canonical action reference. No preference sentinel, path, prompt,
 provider configuration or token is accepted. The host starts the stage agent in the supplied language;
 the browser only navigates the returned launch. Existing v104/v108 methods retain their shapes
 and floors and open sessions without the new automatic startup guarantee. No other Issues floor changes.
+
+`WsErrorCode.ISSUE_SUMMARY_RECOVERY_REQUIRED` distinguishes unresolved bound-summary publication
+from generic unavailability; it authorizes no retry and adds no wire method or protocol floor.
