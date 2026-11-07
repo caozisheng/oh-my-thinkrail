@@ -950,6 +950,10 @@ operations itself.
 
 ### Issue actions (v104)
 
+Design and implementation launches require only the provider-neutral read capability. GitLab-only
+workflow capabilities are resolved lazily by the workflow methods that use them, never as a prerequisite
+for launching either stage. Both providers use the same workspace/session coordinator and startup path.
+
 `createIssuesHost` composes `issuesActions.ts` with the **same lazy IssuesService** as connection/list.
 Its closed methods are `launchDesign`, `launchImplementation`, `publishDesign`,
 `publishImplementation`, `validateDesign`, `validateImplementation`, plus the v106 `approveDesign` /
