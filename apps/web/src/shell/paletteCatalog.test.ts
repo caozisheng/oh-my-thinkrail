@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RiListCheck2 } from "@remixicon/react";
+import { RiBugLine } from "@remixicon/react";
 import type { Workspace } from "@thinkrail/contracts";
 import { currentTranslator } from "@thinkrail/locales/react";
 import { commandItems } from "../search";
@@ -73,7 +73,7 @@ describe("palette project and Settings commands", () => {
 		expect(command?.title).toBe(
 			catalog.t("commands.view.showTool", { tool: catalog.t("workbench.tool.issues") }),
 		);
-		expect(command?.icon).toBe(RiListCheck2);
+		expect(command?.icon).toBe(RiBugLine);
 		command?.run();
 		expect(calls).toEqual([["w1", "issues"]]);
 		expect(row("view.show.issues", deps({ activeWorkspace: null }))).toBeUndefined();
