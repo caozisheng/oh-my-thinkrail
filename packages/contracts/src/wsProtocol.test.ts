@@ -11,6 +11,7 @@ import {
 import {
 	AGENT_REVIEW_SETTING_PROTOCOL_VERSION,
 	ANALYTICS_CONSENT_PROTOCOL_VERSION,
+	ASK_DISCUSS_PROTOCOL_VERSION,
 	BRANCH_STATUS_PROTOCOL_VERSION,
 	CHANGE_MUTATIONS_PROTOCOL_VERSION,
 	CHAT_RESOURCES_PROTOCOL_VERSION,
@@ -22,6 +23,7 @@ import {
 	customMessageText,
 	DEFAULT_MODEL_PROTOCOL_VERSION,
 	EXTENSION_CATALOG_PROTOCOL_VERSION,
+	EXTENSION_SETTINGS_PROTOCOL_VERSION,
 	FEEDBACK_SURVEY_PROTOCOL_VERSION,
 	FONTS_PROTOCOL_VERSION,
 	GITHUB_STAR_PROTOCOL_VERSION,
@@ -72,6 +74,7 @@ import {
 	TURN_CHANGES_PROTOCOL_VERSION,
 	USER_THEMES_PROTOCOL_VERSION,
 	WINDOWS_SHELL_SETTINGS_PROTOCOL_VERSION,
+	WORKSPACE_CREATION_PROTOCOL_VERSION,
 	WORKSPACE_READ_STATE_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 	WS_CHANNELS,
@@ -257,6 +260,17 @@ test("user-selectable fonts are pinned to v102", () => {
 	expect(WS_METHODS.fontsInstalled).toBe("fonts.installed");
 	expect(WS_METHODS.fontsReveal).toBe("fonts.reveal");
 	expect(WS_CHANNELS.fontsChanged).toBe("fonts.changed");
+});
+
+test("background workspace creation is pinned to v111", () => {
+	expect(WORKSPACE_CREATION_PROTOCOL_VERSION).toBe(111);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(WORKSPACE_CREATION_PROTOCOL_VERSION);
+	expect(WS_METHODS.workspaceStartCreate).toBe("workspace.startCreate");
+	expect(WS_METHODS.workspaceListCreations).toBe("workspace.listCreations");
+	expect(WS_METHODS.workspaceRetryCreation).toBe("workspace.retryCreation");
+	expect(WS_METHODS.workspaceDismissCreation).toBe("workspace.dismissCreation");
+	expect(WS_CHANNELS.workspaceCreationChanged).toBe("workspace.creationChanged");
+	expect(WS_CHANNELS.workspaceCreationRemoved).toBe("workspace.creationRemoved");
 });
 
 test("user theme files are pinned to v92", () => {
@@ -594,7 +608,7 @@ test("the repository-address hint is registered at the v105 Issues auth floor", 
 });
 
 test("six closed Issue actions are registered at v104", () => {
-	expect(PROTOCOL_VERSION).toBe(110);
+	expect(PROTOCOL_VERSION).toBe(112);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
 	expect(WS_METHODS.issuesLaunchDesign).toBe("issues.launchDesign");
@@ -607,7 +621,7 @@ test("six closed Issue actions are registered at v104", () => {
 
 test("app-originated Issue approvals are registered at v106", () => {
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
-	expect(PROTOCOL_VERSION).toBe(110);
+	expect(PROTOCOL_VERSION).toBe(112);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
@@ -632,7 +646,7 @@ test("app-originated Issue approvals are registered at v106", () => {
 
 test("the approved-design read is registered at v107", () => {
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
-	expect(PROTOCOL_VERSION).toBe(110);
+	expect(PROTOCOL_VERSION).toBe(112);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
@@ -657,7 +671,7 @@ test("the approved-design read is registered at v107", () => {
 
 test("the implementation start is registered at v108", () => {
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
-	expect(PROTOCOL_VERSION).toBe(110);
+	expect(PROTOCOL_VERSION).toBe(112);
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
@@ -685,7 +699,7 @@ test("the implementation start is registered at v108", () => {
 
 test("GitHub Issues changes the wire contract at v110", () => {
 	expect(ISSUES_GITHUB_PROTOCOL_VERSION).toBe(110);
-	expect(PROTOCOL_VERSION).toBe(ISSUES_GITHUB_PROTOCOL_VERSION);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(ISSUES_GITHUB_PROTOCOL_VERSION);
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
 	const github: WsMethodMap["issues.beginDesign"] = {
 		params: {
@@ -705,7 +719,7 @@ test("GitHub Issues changes the wire contract at v110", () => {
 
 test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
-	expect(PROTOCOL_VERSION).toBe(110);
+	expect(PROTOCOL_VERSION).toBe(112);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
 	expect(WS_METHODS.issuesBeginDesign).toBe("issues.beginDesign");
@@ -725,4 +739,16 @@ test("localized startup adds v109 methods without moving legacy floors", () => {
 	};
 	const implementation: WsMethodMap["issues.beginImplementation"] = design;
 	expect(implementation.params.locale).toBe("zh-CN");
+});
+
+test("extension settings are pinned to v112", () => {
+	expect(EXTENSION_SETTINGS_PROTOCOL_VERSION).toBe(112);
+	expect(PROTOCOL_VERSION).toBe(112);
+	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
+});
+
+test("ask_user_question discuss answers are pinned to v112, after background workspace creation", () => {
+	expect(ASK_DISCUSS_PROTOCOL_VERSION).toBe(112);
+	expect(ASK_DISCUSS_PROTOCOL_VERSION).toBeGreaterThan(WORKSPACE_CREATION_PROTOCOL_VERSION);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(ASK_DISCUSS_PROTOCOL_VERSION);
 });

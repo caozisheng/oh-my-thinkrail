@@ -36,6 +36,14 @@ label presentation. Approval receipts, design/implementation publication and mer
 now and are refused on GitHub; GitHub Enterprise Server and complete cross-machine handoffs remain
 project goals. Existing upstream GitHub pull-request features are separate from Issues integration.
 
+## Inherited IDE capabilities
+
+Workspaces use Git worktrees; managed checkout creation runs in the background with progress so large
+repositories do not freeze the host. The shared IDE includes editor tabs, terminals, GitHub PR controls,
+provider configuration, and extension settings. Structured agent questions support rich previews,
+per-option notes, and a Discuss action. These upstream capabilities remain separate from this fork's
+Issue association and Tomato sessions.
+
 ## Windows Desktop releases
 
 Run **Actions → Release Windows desktop → Run workflow** and select the branch to build (the
