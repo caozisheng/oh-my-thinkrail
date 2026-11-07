@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packages/shared/assets/icon.svg" alt="OMT — oh-my-thinkrail" width="160" height="160" />
+</p>
+
 # oh-my-thinkrail
 
 A fork of [ThinkRail](https://github.com/JetBrains/thinkrail), adapted for the **Tomato workflow** and
