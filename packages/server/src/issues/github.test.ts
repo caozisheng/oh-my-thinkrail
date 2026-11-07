@@ -176,6 +176,23 @@ describe("GitHub Issue reads", () => {
 		]);
 	});
 
+	test("Unicode handoff content stays in the JSON body and never becomes a header", async () => {
+		const body = "交接摘要：已修复中文评论发布。\n验证通过 ✅";
+		const { remote, calls } = client((url, init) => {
+			const request = new Request(url, init);
+			expect(request.headers.get("Content-Type")).toBe("application/json");
+			expect(request.headers.has("body")).toBe(false);
+			return Response.json({ id: 9, body, created_at: "2026-01-02T00:00:00Z" });
+		});
+		expect(await remote.addNote(7, body)).toEqual({
+			id: 9,
+			body,
+			createdAt: "2026-01-02T00:00:00Z",
+		});
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.init.body).toBe(JSON.stringify({ body }));
+	});
+
 	test("credential, permission and missing-repository responses keep distinct readable reasons", async () => {
 		for (const [status, reason] of [
 			[401, "credential"],
