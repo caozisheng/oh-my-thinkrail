@@ -56,12 +56,13 @@ primitive. The shared shadcn primitives live in [[module-ui]] (`@thinkrail/ui/*`
 - **`RunningIcon.tsx`** — the store-free **“ThinkRail is working” badge**: the brand monogram inside a
   rounded-square frame, drawn in `currentColor` so it sizes with `size-*` and colours with `text-*` like a
   Remix icon, with the accessible label “Agent working”. While motion is allowed, the frame (two halves
-  leaving a gap on the left and meeting on the right) and the six letter strokes of the monogram draw and
+  leaving a gap on the left and meeting on the right) and the seven letter strokes of the OMT monogram draw and
   erase on one 3.263s cycle (`loader-*` keyframes in `index.css`); a beat with only the frame showing is
   part of the design. Each letter stroke is a wide line clipped to its region of `BRAND_MARK_SEGMENTS`, the
   same segments `BRAND_MARK_PATH` is joined from, so the fully drawn badge is the shell's mark rather than a
-  second copy that could drift. Only the stroke centre-lines, the frame, and the small gap between the R's
-  stem and top bar (the stem stroke stops short) are local animation geometry. Reduced motion leaves every
+  second copy that could drift. Only the stroke centre-lines and frame are local animation geometry;
+  the reference's double-line O/M/T silhouette comes from the shared master. Legacy `loader-r-*` /
+  `loader-t-*` names retain the existing animation timing, not the old lettering. Reduced motion leaves every
   stroke at its fully drawn dash: the static, complete badge. This loader replaced a ring with a lapping
   train and a pulsing monogram; before that the row's own identity glyph breathed, dropped because a
   dimming folder reads as “disabled” at 14px. Callers pass only size/colour classes and decide from

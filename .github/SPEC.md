@@ -17,7 +17,7 @@ pipeline.
 
 ## Boundary
 
-- **Owns:** public CI/site workflows, contribution templates, native build recipes, version calculation,
+- **Owns:** public CI workflows, contribution templates, native build recipes, version calculation,
   and the artifact
   interface consumed by the private release controller.
 - **Consumes:** CLI and desktop build commands, [[module-artifact-tests]] smoke entrypoints, shared
@@ -40,9 +40,10 @@ The synchronized upstream cross-platform CI recipe is retained fully commented i
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
 but are not invoked by active workflows. Restoring Linux execution is deferred, not a deletion.
 
-Website deploy/preview/cleanup and npm publication recipes are retained as `.yml.disabled` files
-and therefore do not run. Restoring them and the broader CI matrix is a deliberate later change;
-the historical cross-platform policy below describes that suspended coverage, not active jobs.
+Website deploy/preview/cleanup workflows are removed: website deployment belongs to the upstream
+ThinkRail repository, not this fork. The npm publication recipe remains as a `.yml.disabled` file
+and therefore does not run. Restoring npm publication or the broader CI matrix is a deliberate later
+change; the historical cross-platform policy below describes that suspended coverage, not active jobs.
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 
@@ -346,5 +347,5 @@ The `install.ps1` suite starts PowerShell once in a warm-up hook with its own bu
 the first `powershell.exe` launch on a fresh hosted runner has taken up to 31 s (2–14 s in passing runs),
 a one-time environment cost that no single test's budget should absorb.
 
-Website deployment contains no signing credentials. CODEOWNERS and the main-branch rules protect the
-public recipes; local builds and public PR jobs never publish user-facing release artifacts.
+CODEOWNERS and the main-branch rules protect the public recipes; local builds and public PR jobs
+never publish user-facing release artifacts.
