@@ -57,7 +57,7 @@ convention; their boundary is held by convention + spec. Sibling edges live here
 | `lib` | shared path/array primitives + highlighting | yes | [lib/SPEC.md](src/lib/SPEC.md) |
 
 Leaf utilities without their own spec: `constants/` (branding — the product name, storage/event prefixes, and the one
-`BRAND_MARK_SEGMENTS` monogram regions, joined into the `BRAND_MARK_PATH` the shell logo fills and clipped to by the components' working badge), `clientPreferences.ts` (feature-neutral
+`BRAND_MARK_SEGMENTS` OMT regions (generated from the shared SVG master), joined into the `BRAND_MARK_PATH` the shell logo fills and clipped to by the components' working badge), `clientPreferences.ts` (feature-neutral
 access to the optional native stable string adapter, and `firstPaintPreferenceStorage` — that adapter, else
 `localStorage` — which the theme and font first-paint hints share), and `styles/` — which holds the three
 design-system SOURCES (`typography.json`, `colors.json`, `spacing.json`), their generated CSS, and the
@@ -68,7 +68,7 @@ Outside `src/`, **[`scripts/`](scripts/SPEC.md)** is the build-time generator mo
 never ships, and turns those three JSON sources into `styles/generated/` (plus the vendored provider
 marks into `chat/generated/`).
 `index.html` names the product and links the local, symbol-only SVG favicon derived from the same
-ThinkRail artwork as the shell logo (compact enough for browser-tab sizes and light/dark browser chrome).
+transparent neon-green OMT artwork as the shell logo (compact enough for browser-tab sizes and light/dark browser chrome).
 `main.tsx` is the entry/composition root — it synchronously builds the bundled theme catalog, resolves and
 applies the versioned first-paint theme-preference hint (including the current system color scheme) pre-React,
 initializes transport and its client error reporting (window listeners + the error-boundary reporter

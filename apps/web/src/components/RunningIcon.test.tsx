@@ -20,8 +20,8 @@ test("running icon is the store-free, labeled, theme-coloured stroke-drawn monog
 	])
 		expect(markup).toContain(`motion-safe:animate-${cls}`);
 	expect(markup.match(/motion-safe:animate-loader-frame/g)).toHaveLength(2);
-	expect(markup.match(/stroke="currentColor"/g)).toHaveLength(8);
-	expect(markup.match(/stroke-dasharray="1000 1000"/g)).toHaveLength(8);
+	expect(markup.match(/stroke="currentColor"/g)).toHaveLength(9);
+	expect(markup.match(/stroke-dasharray="1000 1000"/g)).toHaveLength(9);
 	expect(markup).not.toMatch(/stroke-dashoffset/);
 	expect(markup).not.toContain("motion-reduce:");
 	expect(markup).not.toMatch(/#[0-9a-f]{3,8}\b|style="/i);

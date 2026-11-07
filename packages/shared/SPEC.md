@@ -129,13 +129,15 @@ bundled into `apps/web`. Exposed through explicit subpath exports, not a barrel.
   An unknown channel or a part above 65535 throws, so a
   release build fails rather than ship wrong properties. The CLI compile, the desktop `postBuild` and
   both Windows smokes (CLI and desktop) derive from it, so they cannot disagree.
-- **/assets** — the native icon set: the hand-authored `icon.svg` and the rasters generated from it.
+- **/assets** — the native icon set: the reference-traced OMT master `icon.svg` and the rasters generated from it.
   Never hand-edit a raster; regenerate them with `bun run --cwd packages/shared generate-icons`
   (`@resvg/resvg-js` rasterizes straight from the vector, `resedit` packs the ICO). The outputs are the
   macOS iconset, the Linux 512 px PNG, and the Windows ICO, whose path `windowsIconPath` exports.
-  - **Artwork.** The mark keeps its rounded-square silhouette: the ThinkRail glyph in the dark-family
-    brand green (`#8dff4f`) on a solid black tile. Translucent glass, highlights, and decorative edging
-    are excluded so small taskbar frames stay crisp.
+  - **Artwork.** The OMT double-line lettering is traced from the supplied 623×366 reference, not a font
+    substitution. It uses the existing neon green (`#8dff4f`) on a transparent background: no black tile,
+    glass, highlights or decorative edging. The same generator writes the web favicon and pure
+    `brandMark.generated.ts` geometry; the shell and animated working badge consume those regions.
+    Browser code never imports this host-only package. Website artwork and terminal startup art are separate.
   - **ICO frames.** PNG-compressed at 256/128/80/72/64/56/48/40/36/32/28/24/20/16: Microsoft's
     documented minimum (16/24/32/48/256), plus 64/128 and every small and big icon size Windows asks for
     between 125% and 250% scaling. `LoadImage` picks the closest frame that does not exceed the requested
