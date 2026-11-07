@@ -136,10 +136,7 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 		deadline: number,
 		write?: { method: "POST"; body: Record<string, unknown> },
 	): Promise<{ value: unknown; next: string | null }> {
-		const payload = write && {
-			"Content-Type": "application/json",
-			body: JSON.stringify(write.body),
-		};
+		const payload = write && { body: JSON.stringify(write.body) };
 		if (payload?.body.includes(escapedToken) || payload?.body.includes(encodedToken)) invalid();
 		const remaining = deadline - Date.now();
 		if (remaining <= 0) unavailable();
@@ -153,7 +150,7 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 					Authorization: `Bearer ${token}`,
 					Accept: "application/vnd.github+json",
 					"X-GitHub-Api-Version": "2022-11-28",
-					...payload,
+					...(payload ? { "Content-Type": "application/json" } : {}),
 				},
 				redirect: "error",
 				signal: controller.signal,
