@@ -271,6 +271,11 @@ the claim protocol and framing protections.
 
 ## Deploy
 
+Website deployment is owned by the upstream ThinkRail repository. This fork keeps the website source
+and local build tooling but has no website deployment, PR preview, or preview-cleanup workflows.
+The hosting and workflow descriptions below document upstream infrastructure only; references to
+`site.yml` and `site-preview.yml` do not name workflows present in this fork.
+
 Cloudflare Pages project `thinkrail-website` owns production and previews for the static artifact and
 claim Functions. Pinned Wrangler `4.124.0` deploys from `apps/website` so its configuration,
 `functions/`, and `dist` artifact form one deployment. The top-level `ATTRIBUTION_DB` serves production
