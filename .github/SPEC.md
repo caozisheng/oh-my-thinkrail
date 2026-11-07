@@ -36,6 +36,10 @@ Windows lint/typecheck, existing Windows-targeted unit checks and native CLI/des
 unit, source/browser, binary-browser and desktop-browser suites are temporarily suspended, not
 claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by active workflows.
 
+The synchronized upstream cross-platform CI recipe is retained fully commented in
+`ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
+but are not invoked by active workflows. Restoring Linux execution is deferred, not a deletion.
+
 Website deploy/preview/cleanup and npm publication recipes are retained as `.yml.disabled` files
 and therefore do not run. Restoring them and the broader CI matrix is a deliberate later change;
 the historical cross-platform policy below describes that suspended coverage, not active jobs.
