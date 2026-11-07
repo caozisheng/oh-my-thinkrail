@@ -6,12 +6,22 @@ import { reconcileCreationReceipt } from "./creationReceipt";
 
 const initial = useAppStore.getState();
 const receipt: WorkspaceCreation = {
-	id: "c1", projectId: "p1", name: "workspace-1", branch: "workspace-1",
-	baseBranch: "main", state: "running", phase: "checking-out", startedAt: 1,
+	id: "c1",
+	projectId: "p1",
+	name: "workspace-1",
+	branch: "workspace-1",
+	baseBranch: "main",
+	state: "running",
+	phase: "checking-out",
+	startedAt: 1,
 };
 const workspace: Workspace = {
-	id: "c1", projectId: "p1", name: "workspace-1", branch: "workspace-1",
-	baseBranch: "main", worktreePath: "/w/workspace-1",
+	id: "c1",
+	projectId: "p1",
+	name: "workspace-1",
+	branch: "workspace-1",
+	baseBranch: "main",
+	worktreePath: "/w/workspace-1",
 };
 const prompt = { text: "held locally", attachments: [] };
 let finishCreations: (rows: WorkspaceCreation[]) => void;
@@ -21,10 +31,14 @@ let restore = () => {};
 beforeEach(() => {
 	useAppStore.setState(initial, true);
 	useAppStore.setState({ selectedProjectId: "p1", workspaces: { p1: [] } });
-	const creations = new Promise<WorkspaceCreation[]>((resolve) => { finishCreations = resolve; });
-	const workspaces = new Promise<Workspace[]>((resolve) => { finishWorkspaces = resolve; });
+	const creations = new Promise<WorkspaceCreation[]>((resolve) => {
+		finishCreations = resolve;
+	});
+	const workspaces = new Promise<Workspace[]>((resolve) => {
+		finishWorkspaces = resolve;
+	});
 	const transport = {
-		request: (method: string) => method === "workspace.listCreations" ? creations : workspaces,
+		request: (method: string) => (method === "workspace.listCreations" ? creations : workspaces),
 	} as unknown as ReturnType<typeof wireTransport.getTransport>;
 	const spy = spyOn(wireTransport, "getTransport").mockReturnValue(transport);
 	restore = () => spy.mockRestore();
@@ -42,14 +56,18 @@ for (const path of ["start", "retry"] as const) {
 		store.selectCreation(receipt.id);
 		store.setWorkspaces("p1", [workspace]);
 		store.setWorkspaceCreations([]);
-		const pending = reconcileCreationReceipt(receipt, path === "start"
-			? { select: true, sentPrompt: prompt } : {});
+		const pending = reconcileCreationReceipt(
+			receipt,
+			path === "start" ? { select: true, sentPrompt: prompt } : {},
+		);
 		expect(useAppStore.getState().workspaceCreations).toEqual({});
 		finishCreations([]);
 		finishWorkspaces([workspace]);
 		await pending;
 		expect(useAppStore.getState()).toMatchObject({
-			workspaceCreations: {}, activeCreationId: null, activeWorkspaceId: receipt.id,
+			workspaceCreations: {},
+			activeCreationId: null,
+			activeWorkspaceId: receipt.id,
 			sentCreationPrompts: {},
 		});
 	});
@@ -58,15 +76,19 @@ for (const path of ["start", "retry"] as const) {
 		const store = useAppStore.getState();
 		store.applyWorkspaceCreation(receipt);
 		store.selectCreation(receipt.id);
-		const pending = reconcileCreationReceipt(receipt, path === "start"
-			? { select: true, sentPrompt: prompt } : {});
+		const pending = reconcileCreationReceipt(
+			receipt,
+			path === "start" ? { select: true, sentPrompt: prompt } : {},
+		);
 		store.addWorkspace(workspace);
 		store.applyWorkspaceCreationRemoved({ id: receipt.id, projectId: "p1", workspace });
 		finishCreations([receipt]);
 		finishWorkspaces([]);
 		await pending;
 		expect(useAppStore.getState()).toMatchObject({
-			workspaceCreations: {}, activeCreationId: null, activeWorkspaceId: receipt.id,
+			workspaceCreations: {},
+			activeCreationId: null,
+			activeWorkspaceId: receipt.id,
 			workspaces: { p1: [workspace] },
 		});
 	});

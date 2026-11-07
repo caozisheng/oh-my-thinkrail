@@ -1335,7 +1335,10 @@ interface AppState {
 		creation: WorkspaceCreation,
 		sentPrompt?: { text: string; attachments: ChatAttachment[] },
 	) => void;
-	rememberCreationPrompt: (id: string, prompt: NonNullable<CreationChatHandoff["sentPrompt"]>) => void;
+	rememberCreationPrompt: (
+		id: string,
+		prompt: NonNullable<CreationChatHandoff["sentPrompt"]>,
+	) => void;
 	reconcileCreationReceipt: (
 		read: Pick<AppState, "connectionGeneration" | "workspaceCreations" | "workspaces">,
 		projectId: string,
