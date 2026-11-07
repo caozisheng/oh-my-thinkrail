@@ -9,6 +9,24 @@ import * as ResEdit from "resedit";
 const assetsDir = join(import.meta.dir, "..", "assets");
 const svg = readFileSync(join(assetsDir, "icon.svg"));
 
+// Web receives generated pure geometry, not a dependency on the host-only package.
+const artwork = svg.toString("utf8");
+const viewBox = artwork.match(/viewBox="([^"]+)"/)?.[1];
+const segments = [...artwork.matchAll(/<path id="(\w+)" fill="#8dff4f" d="([^"]+)"/g)];
+if (!viewBox || segments.length !== 5) throw new Error("Expected five OMT reference regions");
+const webDir = join(import.meta.dir, "../../../apps/web");
+writeFileSync(join(webDir, "public/favicon.svg"), artwork);
+writeFileSync(
+	join(webDir, "src/constants/brandMark.generated.ts"),
+	`// Generated from packages/shared/assets/icon.svg; do not edit.
+export const BRAND_MARK_SEGMENTS = {
+${segments.map(([, name, d]) => `	${name}: ${JSON.stringify(d)},`).join(String.fromCharCode(10))}
+} as const;
+export const BRAND_MARK_PATH = Object.values(BRAND_MARK_SEGMENTS).join("");
+export const BRAND_MARK_VIEW_BOX = ${JSON.stringify(viewBox)};
+`,
+);
+
 function renderPng(size: number): Buffer {
 	const resvg = new Resvg(svg, { fitTo: { mode: "width", value: size } });
 	return resvg.render().asPng();
