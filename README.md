@@ -40,6 +40,27 @@ label presentation. Approval receipts, design/implementation publication and mer
 now and are refused on GitHub; GitHub Enterprise Server and complete cross-machine handoffs remain
 project goals. Existing upstream GitHub pull-request features are separate from Issues integration.
 
+## GitHub and GitLab Issues
+
+Both providers support listing Issues, reading their descriptions and comments, starting **Design**
+and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
+Issue cards, labels and Tomato stage grouping use the same presentation on both providers; GitHub pull
+requests are excluded from the Issue list.
+
+To connect, enter a **Repository address** and a personal access token in the Issues tool:
+
+- `https://github.com/owner/repository.git` selects GitHub automatically. Classic and fine-grained PATs
+  are accepted; the token needs access to the repository and Issues read/write permission to publish
+  comments. GitHub Issues requires host protocol v110 or newer.
+- GitLab addresses select GitLab, including self-hosted instances with a confirmed instance URL.
+- Each local project has at most one Issue association: GitHub, GitLab, or none. Disconnect the current
+  association before switching trackers in the UI.
+
+The connection token remains in the host OS credential vault, never in agent prompts. GitHub Enterprise
+Server and SSH/SCP repository addresses are not supported by this association flow. Approval and
+publication workflow APIs remain GitLab-only as described above; ordinary Design/Implement startup does
+not require those APIs on either provider.
+
 ## Inherited IDE capabilities
 
 Workspaces use Git worktrees; managed checkout creation runs in the background with progress so large
