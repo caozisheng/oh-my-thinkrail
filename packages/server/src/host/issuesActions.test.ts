@@ -24,7 +24,7 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
-function fixture() {
+function fixture(provider: "gitlab" | "github" = "gitlab") {
 	const dir = mkdtempSync(join(tmpdir(), "issue-actions-"));
 	dirs.push(dir);
 	process.env.THINKRAIL_DATA_DIR = dir;
@@ -42,8 +42,8 @@ function fixture() {
 	);
 	saveProjects([{ id: "one", name: "one", slug: "one", path: dir, lastOpened: 1, trusted: true }]);
 	const reference = {
-		provider: "gitlab" as const,
-		instanceUrl: "https://gitlab.example",
+		provider,
+		instanceUrl: provider === "github" ? "https://github.com" : "https://gitlab.example",
 		projectId: "42",
 		number: 1,
 	};
@@ -119,6 +119,19 @@ function fixture() {
 			}
 			result = issue;
 		} else result = { id: 42, path_with_namespace: "group/repo" };
+		if (provider === "github") {
+			if (path.endsWith("/comments")) result = notes;
+			else if (path.endsWith("/issues/1"))
+				result = {
+					number: issue.iid,
+					title: issue.title,
+					body: issue.description,
+					state: "open",
+					labels: issue.labels,
+					updated_at: issue.updated_at,
+				};
+			else result = { id: 42, full_name: "group/repo" };
+		}
 		return new Response(JSON.stringify(result));
 	}) as typeof fetch;
 	const savedTokens = new Map<string, string>();
@@ -236,6 +249,23 @@ for (const [name, launch] of [
 		expect(await launch(restored, f.target)).toEqual(first);
 		expect(f.createdTitles).toEqual(["Task"]);
 		expect(f.created).toBe(1);
+	});
+}
+
+for (const stage of ["design", "implementation"] as const) {
+	test(`GitHub ${stage} starts and reopens through the same coordinator as GitLab`, async () => {
+		const f = fixture("github");
+		await f.host.connect({ projectId: "one", input: f.input });
+		const target = { ...f.target, locale: "en" };
+		const launch = () =>
+			stage === "design" ? f.host.beginDesign(target) : f.host.beginImplementation(target);
+		const first = await launch();
+		expect(await launch()).toEqual(first);
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
+		expect(f.prompts[0]?.prompt).toContain("https://github.com/group/repo/issues/1");
+		expect(f.prompts[0]?.prompt).toContain(`Session stage: ${stage}`);
+		expect(existsSync(join(f.dir, ".worktrees", "issue-1"))).toBe(stage === "implementation");
 	});
 }
 

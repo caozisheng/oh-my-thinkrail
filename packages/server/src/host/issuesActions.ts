@@ -150,7 +150,8 @@ export function createIssuesActions(
 		await issues.restore(projectId);
 		if (trusted(projectId).path !== initialProject.path) stop();
 		const remote = issues.remoteFor(projectId, reference);
-		const workflowRemote = issues.workflowFor(projectId, reference);
+		// Design/implementation startup uses only the neutral read port. Resolve the GitLab-only
+		// workflow capability only if a workflow operation actually needs it.
 		let pinned: WorkspaceHandle | undefined;
 		let startupPrompt: string | undefined;
 		const startup =
@@ -200,13 +201,15 @@ export function createIssuesActions(
 			reference,
 			async (ports) => {
 				guard();
+				const workflowRemote = (): ReturnType<typeof issues.workflowFor> =>
+					issues.workflowFor(projectId, reference);
 				const wrapped: WorkflowRemote = {
 					issue: (...a) => checked(() => remote.issue(...a)),
 					notes: (...a) => checked(() => remote.notes(...a)),
-					labelEvents: (...a) => checked(() => workflowRemote.labelEvents(...a)),
-					member: (...a) => checked(() => workflowRemote.member(...a)),
-					currentUser: (...a) => checked(() => workflowRemote.currentUser(...a)),
-					updateIssue: (...a) => checked(() => workflowRemote.updateIssue(...a)),
+					labelEvents: (...a) => checked(() => workflowRemote().labelEvents(...a)),
+					member: (...a) => checked(() => workflowRemote().member(...a)),
+					currentUser: (...a) => checked(() => workflowRemote().currentUser(...a)),
+					updateIssue: (...a) => checked(() => workflowRemote().updateIssue(...a)),
 					addNote: (...a) => checked(() => remote.addNote(...a)),
 				};
 				function find(query: { workspaceId: string } | { worktreePath: string }) {
