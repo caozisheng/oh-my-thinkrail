@@ -25,7 +25,7 @@ test("selects real Bun and preserves the physical runtime resources without reti
 	expect(result.exitCode).toBe(0);
 	const config = JSON.parse(result.stdout.toString());
 	expect(config.app).toEqual({
-		name: "ThinkRail",
+		name: "oh-my-thinkrail",
 		identifier: "ai.thinkrail.app",
 		version,
 	});
