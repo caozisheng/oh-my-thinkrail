@@ -805,7 +805,11 @@ stored. No new tool parameter, no new `status`/`anchorState` enum value.
 ## Issues read composition (v103)
 
 `issues.ts` lazily creates the public issues service for `issues.connection`, `issues.connect`,
-`issues.disconnect`, and `issues.list`. The adapter validates unknown params itself (exact request
+`issues.disconnect`, and `issues.list`. The separate v113 `issues.content` read validates an exact
+`IssueTarget` and local project membership without requiring trust, restores the connection, then
+projects the service's binding-checked body and verified web URL. It reads no comments, session or
+workflow state, and performs no writes. Clients below `ISSUES_CONTENT_PROTOCOL_VERSION` are refused
+before delegation. The adapter validates unknown params itself (exact request
 keys, nonblank local project id, and the contracts connection-input guard with exact input keys),
 because the dispatcher only casts (the connection input may carry only an exact-instance
 `httpConsent`). It checks membership through `projects.getProjects` and requires **no** project trust:

@@ -29,6 +29,10 @@ export interface IssueSummary {
 	stage: IssueStage;
 	updatedAt: string;
 }
+export interface IssueContent {
+	description: string;
+	url: string;
+}
 export interface IssueList {
 	issues: IssueSummary[];
 	fetchedAt: string;

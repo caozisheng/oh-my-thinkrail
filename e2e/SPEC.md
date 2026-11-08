@@ -116,6 +116,12 @@ No GitLab HTTP, credential vault, provider or agent execution occurs: these are 
 checks, not evidence of model startup or host once-only semantics. Host unit/HTTP fixtures own those
 contracts.
 
+`issues-preview.spec.ts` intercepts only Issue RPC replies to exercise GitHub/GitLab inline bodies,
+single expansion, stale reply rejection, empty closed issues, failure/retry, refresh collapse and the
+v113 compatibility floor. It does not access a real tracker or execute an agent; host unit fixtures
+cover binding and protocol validation. Its ordinary project-open fixture still requires Git to be
+available in the hermetic host environment.
+
 ## Repository cloning
 
 `clone-project.spec.ts` clones disposable local `file:` repositories through the Welcome and rail menus,

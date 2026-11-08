@@ -87,6 +87,7 @@ import type {
 	IssueApprovalResult,
 	IssueConnection,
 	IssueConnectionInput,
+	IssueContent,
 	IssueDesignApproval,
 	IssueDesignPublicationInput,
 	IssueImplementationTarget,
@@ -149,7 +150,8 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 112;
+export const PROTOCOL_VERSION = 113;
+export const ISSUES_CONTENT_PROTOCOL_VERSION = 113;
 export const WORKSPACE_CREATION_PROTOCOL_VERSION = 111;
 export const EXTENSION_SETTINGS_PROTOCOL_VERSION = 112;
 export const ASK_DISCUSS_PROTOCOL_VERSION = 112;
@@ -290,6 +292,7 @@ export const WS_METHODS = {
 	issuesDesignApproval: "issues.designApproval",
 	issuesDisconnect: "issues.disconnect",
 	issuesList: "issues.list",
+	issuesContent: "issues.content",
 	issuesBeginDesign: "issues.beginDesign",
 	issuesBeginImplementation: "issues.beginImplementation",
 	issuesLaunchDesign: "issues.launchDesign",
@@ -796,6 +799,7 @@ export interface WsMethodMap {
 	};
 	"issues.disconnect": { params: { projectId: string }; result: { ok: true } };
 	"issues.list": { params: { projectId: string }; result: IssueList };
+	"issues.content": { params: IssueTarget; result: IssueContent };
 	"issues.repositoryAddress": { params: { projectId: string }; result: IssueRepositoryAddress };
 	"project.open": { params: { path: string }; result: Project };
 	"project.list": { params: Record<string, never>; result: Project[] };
