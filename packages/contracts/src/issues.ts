@@ -33,6 +33,20 @@ export interface IssueContent {
 	description: string;
 	url: string;
 }
+export interface IssueComment {
+	id: number;
+	body: string;
+	createdAt: string;
+	author: { name: string; username: string } | null;
+}
+export interface IssueDetail {
+	reference: IssueReference;
+	title: string;
+	url: string;
+	description: string;
+	comments: IssueComment[];
+	fetchedAt: string;
+}
 export interface IssueList {
 	issues: IssueSummary[];
 	fetchedAt: string;

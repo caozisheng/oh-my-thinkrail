@@ -130,3 +130,35 @@ test("body states use local loading, empty and retry messages", () => {
 		if (status === "error") expect(html).toContain("Retry");
 	}
 });
+
+test("eye preview appends full comments after the body using the same image renderer", () => {
+	const html = renderToStaticMarkup(
+		<IssueBody
+			id="body"
+			onRetry={() => {}}
+			preview={{
+				key: "42",
+				identity: "fixture",
+				status: "ready",
+				content: {
+					url: base,
+					description: "**Body first**",
+					comments: [
+						{
+							id: 1,
+							body: `**Comment last**
+
+<img src="https://good.example/comment.png" alt="attachment">`,
+							createdAt: "2026-01-01T00:00:00Z",
+							author: { name: "Alice", username: "alice" },
+						},
+					],
+				},
+			}}
+		/>,
+	);
+	expect(html).toContain("Alice");
+	expect(html).toContain("<strong>Comment last</strong>");
+	expect(html.indexOf("Body first")).toBeLessThan(html.indexOf("Comment last"));
+	expect(html).toContain('src="https://good.example/comment.png"');
+});

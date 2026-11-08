@@ -33,6 +33,11 @@ host cannot write that vault, so it gets no vault-persistence hint and no reconn
 ## Inline body preview
 
 At v113 a title-row eye button precedes design/implementation and lazily reads `issues.content`.
+At v114 the same eye, title link, card and bounded preview layout remain unchanged; opening reads
+`issues.detail` and appends all ordinary comments after the description, oldest first, with author
+and time. Body and comments share the same Markdown/attachment renderer. Empty descriptions do not
+hide comments. No separate detail navigation or Back control exists. A failed complete read offers
+Retry, never partial comments. Earlier v113 hosts retain description-only previews.
 Folded uses the open eye; expanded uses the closed eye and soft-primary styling. Closed issues may
 also be previewed. Older hosts keep a disabled eye with an upgrade tooltip. `IssuesTool` owns one
 expanded item and its request, without global state, persistence or cross-item caching. Collapse,

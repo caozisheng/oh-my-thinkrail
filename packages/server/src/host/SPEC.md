@@ -802,6 +802,13 @@ sessionId }` — **landed**. The wire `stale?: boolean` is derived by the host p
 stored. No new tool parameter, no new `status`/`anchorState` enum value.
 
 
+## Issue detail read (v114)
+
+`issues.detail` accepts the exact shared `IssueTarget`, checks local project membership (not trust),
+restores the host-owned connection, and delegates complete reads to the Issues service. The dispatcher
+refuses clients below `ISSUES_DETAIL_PROTOCOL_VERSION = 114` before delegation. No caller credentials,
+paths, actor, workflow version or remote mutation are accepted.
+
 ## Issues read composition (v103)
 
 `issues.ts` lazily creates the public issues service for `issues.connection`, `issues.connect`,

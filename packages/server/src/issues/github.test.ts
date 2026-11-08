@@ -160,12 +160,14 @@ describe("GitHub Issue reads", () => {
 			return Response.json([{ id: 8, body: "hello", created_at: "2026-01-01T00:00:00Z" }]);
 		});
 		expect(await remote.notes(7)).toEqual([
-			{ id: 8, body: "hello", createdAt: "2026-01-01T00:00:00Z" },
+			{ id: 8, body: "hello", createdAt: "2026-01-01T00:00:00Z", author: null, system: false },
 		]);
 		expect(await remote.addNote(7, "handoff")).toEqual({
 			id: 9,
 			body: "handoff",
 			createdAt: "2026-01-02T00:00:00Z",
+			author: null,
+			system: false,
 		});
 		expect(writes).toEqual([
 			{
@@ -188,6 +190,8 @@ describe("GitHub Issue reads", () => {
 			id: 9,
 			body,
 			createdAt: "2026-01-02T00:00:00Z",
+			author: null,
+			system: false,
 		});
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.init.body).toBe(JSON.stringify({ body }));

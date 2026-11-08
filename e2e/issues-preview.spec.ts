@@ -32,7 +32,7 @@ for (const provider of ["github", "gitlab"] as const) {
 					reply({ projectId, instanceUrl, remoteProjectId: "7", connected: true });
 				} else if (frame.method === "issues.list")
 					reply({ issues, fetchedAt: "2026-01-01T00:00:00Z" });
-				else if (frame.method === "issues.content") {
+				else if (frame.method === "issues.detail") {
 					reads++;
 					expect(frame.params.projectId).toBe(projectId);
 					const number = frame.params.reference.number;
@@ -45,6 +45,14 @@ for (const provider of ["github", "gitlab"] as const) {
 											? "**Body one**\n\n[Safe link](https://example.com)\n\n<script>evil()</script>"
 											: "",
 									url: issues[number - 1]?.url,
+									comments: [
+										{
+											id: 1,
+											body: "Full comment",
+											author: { name: "Alice", username: "alice" },
+											createdAt: "2026-01-01T00:00:00Z",
+										},
+									],
 								});
 					if (reads === 1) delayed = send;
 					else send();
@@ -77,6 +85,12 @@ for (const provider of ["github", "gitlab"] as const) {
 		await page.getByTestId("issue-body").getByRole("button", { name: "Retry" }).click();
 		await expect(page.getByTestId("issue-body").locator("strong")).toHaveText("Body one");
 		await expect(page.getByTestId("issue-body").locator("script")).toHaveCount(0);
+		await expect(page.getByTestId("issue-body")).toContainText("Full comment");
+		await expect(page.getByTestId("issue-body")).toContainText("Alice");
+		await expect(page.getByRole("link", { name: "#1 Preview fixture 1" })).toHaveAttribute(
+			"target",
+			"_blank",
+		);
 		await expect(page.getByTestId("issue-body").getByRole("link")).toHaveAttribute(
 			"rel",
 			"noopener noreferrer",

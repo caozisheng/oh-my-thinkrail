@@ -20,6 +20,7 @@ import {
 	ISSUES_AUTH_PROTOCOL_VERSION,
 	ISSUES_CONTENT_PROTOCOL_VERSION,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
+	ISSUES_DETAIL_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
@@ -274,6 +275,7 @@ import {
 	issuesConnection,
 	issuesContent,
 	issuesDesignApproval,
+	issuesDetail,
 	issuesDisconnect,
 	issuesLaunchDesign,
 	issuesLaunchImplementation,
@@ -1197,6 +1199,14 @@ const handlers: WsHandlers = {
 				"Issue content requires a newer protocol version.",
 			);
 		return issuesContent(p);
+	},
+	"issues.detail": (p, ctx) => {
+		if (ctx.protocolVersion !== undefined && ctx.protocolVersion < ISSUES_DETAIL_PROTOCOL_VERSION)
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Issue details are unavailable for this protocol version.",
+			);
+		return issuesDetail(p);
 	},
 	"issues.launchDesign": withIssuesActionsProtocol((p) => issuesLaunchDesign(p)),
 	"issues.launchImplementation": withIssuesActionsProtocol((p) => issuesLaunchImplementation(p)),

@@ -1,11 +1,14 @@
 import type {
 	IssueConnectionInput,
-	IssueContent,
 	IssueReference,
 	IssueSessionLaunch,
 	IssueSummary,
 } from "@thinkrail/contracts";
-import { ISSUES_CONTENT_PROTOCOL_VERSION, isIssueWebUrl } from "@thinkrail/contracts";
+import {
+	ISSUES_CONTENT_PROTOCOL_VERSION,
+	ISSUES_DETAIL_PROTOCOL_VERSION,
+	isIssueWebUrl,
+} from "@thinkrail/contracts";
 import { localeOf, useT } from "@thinkrail/locales/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuietScrollArea } from "../components/QuietScrollArea";
@@ -42,9 +45,15 @@ type SnapshotPatch = Partial<Omit<IssueToolSnapshot, "identity">>;
 async function readIssueContent(
 	projectId: string,
 	reference: IssueReference,
-): Promise<IssueContent | null> {
+	version: number | null,
+): Promise<IssuePreview["content"] | null> {
 	try {
-		const content = await getTransport().request("issues.content", { projectId, reference });
+		const content = await getTransport().request(
+			version !== null && version >= ISSUES_DETAIL_PROTOCOL_VERSION
+				? "issues.detail"
+				: "issues.content",
+			{ projectId, reference },
+		);
 		return typeof content.description === "string" && isIssueWebUrl(content.url, reference)
 			? content
 			: null;
@@ -106,7 +115,7 @@ export function IssuesTool({
 		if (close) return;
 		const sequence = previewSequence.current;
 		setPreview({ key, identity, status: "loading" });
-		const content = await readIssueContent(projectId, issue.reference);
+		const content = await readIssueContent(projectId, issue.reference, version);
 		if (sequence !== previewSequence.current) return;
 		setPreview(
 			content ? { key, identity, status: "ready", content } : { key, identity, status: "error" },

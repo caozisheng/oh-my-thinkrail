@@ -53,6 +53,12 @@ project goals. Existing upstream GitHub pull-request features are separate from 
 
 Both providers support listing Issues, reading their descriptions and comments, starting **Design**
 and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
+With host protocol v114 or newer, the existing eye-button preview shows the complete Issue:
+its description followed by all ordinary comments, authors, timestamps and Markdown attachments.
+The title remains an external link, and the preview keeps its original expand/collapse layout.
+Incomplete reads report an error rather than silently truncating comments. Comment writing/editing
+is not included. Hosts on v113 retain the description-only eye preview.
+
 Issue cards, labels and Tomato stage grouping use the same presentation on both providers; GitHub pull
 requests are excluded from the Issue list. On host protocol v113 or newer, the eye button previews
 an Issue's Markdown body and images in place, including closed Issues. Only one body is expanded at a

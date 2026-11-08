@@ -20,6 +20,8 @@ export interface IssueNote {
 	id: number;
 	body: string;
 	createdAt: string;
+	author?: { name: string; username: string } | null;
+	system?: boolean;
 }
 export interface IssueLabelEvent {
 	id: number;
