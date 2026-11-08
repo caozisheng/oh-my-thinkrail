@@ -3,6 +3,7 @@ import { useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { issueHtmlImages } from "./htmlImages";
 
 export type IssuePreview = {
 	key: string;
@@ -52,7 +53,7 @@ export function IssueBody({
 			) : (
 				<div className="tr-prose-chat min-w-0 [&_a]:text-primary [&_a]:underline [&_img]:h-auto [&_img]:max-w-full [&_p]:my-8 [&_ul]:list-disc [&_ul]:pl-16 [&_ol]:list-decimal [&_ol]:pl-16 [&_pre]:overflow-auto [&_table]:border-collapse [&_td]:border [&_td]:border-border-muted [&_td]:p-4 [&_th]:border [&_th]:border-border-muted [&_th]:p-4">
 					<ReactMarkdown
-						remarkPlugins={[remarkGfm]}
+						remarkPlugins={[remarkGfm, issueHtmlImages]}
 						skipHtml
 						urlTransform={(url) => issueResourceUrl(url, preview.content?.url ?? "")}
 						components={{

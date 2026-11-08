@@ -40,7 +40,11 @@ switch, refresh, disconnect and project/connection changes invalidate pending re
 be collapsed; failures offer local manual retry and empty bodies show localized copy.
 
 The internal props-driven body renderer uses react-markdown and remark-gfm without chat rendering
-dependencies, raw HTML execution, Mermaid or syntax highlighting. Its bounded region scrolls internally,
+dependencies, raw HTML execution, Mermaid or syntax highlighting. GitHub-generated HTML `img`
+standalone HTML blocks are parsed inertly with parse5 and projected into ordinary image nodes using
+only `src` and `alt`. Inline raw HTML remains skipped; complete Markdown HTML blocks preserve parser
+context rather than joining separately tokenized inline fragments. Image event/style/dimension attributes and other HTML elements are discarded. Script/style/template,
+iframe and noscript contents never supply images. The same resource URL guard applies to both syntaxes. Its bounded region scrolls internally,
 images fit its width, and failed images retain alt text. Links open with noopener/noreferrer. Only
 credential-free HTTP(S) resources are accepted; relative paths resolve against the host's validated
 provider issue URL. Browser image requests carry no PAT and use no proxy; private attachments may fail.
