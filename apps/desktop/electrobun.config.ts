@@ -7,7 +7,7 @@ const bun = { entrypoint: "src/index.ts", version: "1.4.4" };
 
 export default {
 	app: {
-		name: "ThinkRail",
+		name: "oh-my-thinkrail",
 		identifier: "ai.thinkrail.app",
 		version,
 	},

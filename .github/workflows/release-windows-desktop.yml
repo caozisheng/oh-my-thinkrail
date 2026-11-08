@@ -54,7 +54,7 @@ jobs:
           echo "Electrobun tar: $(command -v tar)"
           bun run desktop:package:stable
       - name: Smoke stable installer
-        run: bun run smoke:desktop:installer apps/desktop/artifacts/win-x64-ThinkRail-Setup.zip stable
+        run: bun run smoke:desktop:installer apps/desktop/artifacts/win-x64-oh-my-thinkrail-Setup.zip stable
       - name: Collect versioned installer, checksum and build provenance
         run: bun .github/scripts/windows-release.ts collect
       - uses: actions/upload-artifact@v5
