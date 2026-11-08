@@ -4,12 +4,14 @@ import type {
 	IssueSessionLaunch,
 	IssueSummary,
 } from "@thinkrail/contracts";
+import { ISSUES_CONTENT_PROTOCOL_VERSION, isIssueWebUrl } from "@thinkrail/contracts";
 import { localeOf, useT } from "@thinkrail/locales/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
 import { useAppStore } from "../store";
 import { getTransport } from "../transport";
+import type { IssuePreview } from "./IssueBody";
 import { IssuesPanel } from "./IssuesPanel";
 import {
 	type ConnectResult,
@@ -73,6 +75,35 @@ export function IssuesTool({
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}`;
 	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
 	const requestSequence = useRef(0);
+	const previewSequence = useRef(0);
+	const [preview, setPreview] = useState<IssuePreview | null>(null);
+	const previewSupported = version !== null && version >= ISSUES_CONTENT_PROTOCOL_VERSION;
+	const activePreview = preview?.identity === identity ? preview : null;
+	const clearPreview = useCallback(() => {
+		previewSequence.current++;
+		setPreview(null);
+	}, []);
+	const togglePreview = async (issue: IssueSummary, retry = false) => {
+		if (!previewSupported || status !== "connected") return;
+		const key = issueKey(issue);
+		const close = activePreview?.key === key && !retry;
+		clearPreview();
+		if (close) return;
+		const sequence = previewSequence.current;
+		setPreview({ key, identity, status: "loading" });
+		try {
+			const content = await getTransport().request("issues.content", {
+				projectId,
+				reference: issue.reference,
+			});
+			if (sequence !== previewSequence.current) return;
+			if (typeof content.description !== "string" || !isIssueWebUrl(content.url, issue.reference))
+				throw new Error("Invalid issue content");
+			setPreview({ key, identity, status: "ready", content });
+		} catch {
+			if (sequence === previewSequence.current) setPreview({ key, identity, status: "error" });
+		}
+	};
 
 	const update = useCallback(
 		(previous: IssueToolSnapshot | null, patch: SnapshotPatch): IssueToolSnapshot =>
@@ -83,6 +114,7 @@ export function IssuesTool({
 	const refresh = useCallback(
 		async (input?: IssueConnectionInput): Promise<ConnectResult> => {
 			if (!supported || status !== "connected") return { ok: false, error: "connect" };
+			clearPreview();
 			const sequence = ++requestSequence.current;
 			const current = () => sequence === requestSequence.current;
 			setActionError(null);
@@ -102,11 +134,12 @@ export function IssuesTool({
 			setSnapshot((previous) => issueSnapshotAfterLoad(previous, identity, result));
 			return result.error === "connect" ? { ok: false, error: "connect" } : { ok: true };
 		},
-		[identity, projectId, status, supported, update],
+		[identity, projectId, status, supported, update, clearPreview],
 	);
 
 	const disconnect = useCallback(async () => {
 		if (!supported || status !== "connected") return;
+		clearPreview();
 		const sequence = ++requestSequence.current;
 		setSnapshot((previous) =>
 			previous ? update(previous, { pending: true, error: null }) : previous,
@@ -122,12 +155,13 @@ export function IssuesTool({
 		}
 		if (sequence !== requestSequence.current) return;
 		await refresh();
-	}, [projectId, refresh, status, supported, update]);
+	}, [projectId, refresh, status, supported, update, clearPreview]);
 
 	useEffect(() => {
 		void refresh();
 		return () => {
 			requestSequence.current++;
+			previewSequence.current++;
 		};
 	}, [refresh]);
 
@@ -177,6 +211,14 @@ export function IssuesTool({
 		<QuietScrollArea className="h-full">
 			<IssuesPanel
 				key={`${identity}:${active?.connection?.connected === true}`}
+				previewSupported={previewSupported}
+				preview={activePreview}
+				onTogglePreview={(issue) => {
+					void togglePreview(issue);
+				}}
+				onRetryPreview={(issue) => {
+					void togglePreview(issue, true);
+				}}
 				connection={active?.connection ?? null}
 				issues={active?.issues ?? []}
 				pending={active?.pending ?? true}

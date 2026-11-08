@@ -1,4 +1,10 @@
-import { type RemixiconComponentType, RiCodeBoxLine, RiQuillPenLine } from "@remixicon/react";
+import {
+	type RemixiconComponentType,
+	RiCodeBoxLine,
+	RiEyeLine,
+	RiEyeOffLine,
+	RiQuillPenLine,
+} from "@remixicon/react";
 import type {
 	IssueConnection,
 	IssueConnectionInput,
@@ -10,8 +16,9 @@ import type { MessageKey } from "@thinkrail/locales";
 import { useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
-import { useEffect, useReducer } from "react";
+import { useEffect, useId, useReducer } from "react";
 import { IssueAssociationForm } from "./IssueAssociationForm";
+import { IssueBody, type IssuePreview } from "./IssueBody";
 import {
 	associationPanelState,
 	type ConnectResult,
@@ -31,6 +38,10 @@ import {
 } from "./model";
 
 export interface IssuesPanelProps {
+	previewSupported?: boolean;
+	preview?: IssuePreview | null;
+	onTogglePreview?: (issue: IssueSummary) => void;
+	onRetryPreview?: (issue: IssueSummary) => void;
 	connection: IssueConnection | null;
 	issues: readonly IssueSummary[];
 	pending: boolean;
@@ -137,8 +148,13 @@ export function IssuesPanel({
 	actionError,
 	actionErrorIssue,
 	onTrustProject,
+	previewSupported,
+	preview,
+	onTogglePreview,
+	onRetryPreview,
 }: IssuesPanelProps) {
 	const t = useT();
+	const previewId = useId();
 	const [state, dispatch] = useReducer(reconnectOutcome, error ?? null, associationPanelState);
 	// Nothing reaches the host until the user confirms this issue's implementation gate.
 	const { reconnecting, snapshotError } = state;
@@ -279,6 +295,32 @@ export function IssuesPanel({
 									>
 										#{issue.reference.number} {issue.title}
 									</a>
+									{onTogglePreview && (
+										<TooltipProvider>
+											<IconButton
+												size="s"
+												icon={preview?.key === issueKey(issue) ? RiEyeOffLine : RiEyeLine}
+												variant={preview?.key === issueKey(issue) ? "soft-primary" : "ghost"}
+												label={t(
+													preview?.key === issueKey(issue)
+														? "issues.previewClose"
+														: "issues.previewOpen",
+												)}
+												tooltip={t(
+													previewSupported
+														? preview?.key === issueKey(issue)
+															? "issues.previewClose"
+															: "issues.previewOpen"
+														: "issues.previewUnsupported",
+												)}
+												disabled={!previewSupported || pending}
+												aria-expanded={preview?.key === issueKey(issue)}
+												aria-controls={preview?.key === issueKey(issue) ? previewId : undefined}
+												data-testid="issue-preview-toggle"
+												onClick={() => onTogglePreview(issue)}
+											/>
+										</TooltipProvider>
+									)}
 									{onRunAction && (
 										<IssueActionRow
 											issue={issue}
@@ -289,6 +331,13 @@ export function IssuesPanel({
 										/>
 									)}
 								</div>
+								{preview?.key === issueKey(issue) && onTogglePreview && (
+									<IssueBody
+										id={previewId}
+										preview={preview}
+										onRetry={() => onRetryPreview?.(issue)}
+									/>
+								)}
 								<p className="text-text-subtle">{t(STAGE_KEY[stage])}</p>
 								{issue.labels.length > 0 && (
 									<p className="break-words text-text-muted">{issue.labels.join(" · ")}</p>

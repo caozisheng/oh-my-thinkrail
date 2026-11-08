@@ -54,7 +54,10 @@ project goals. Existing upstream GitHub pull-request features are separate from 
 Both providers support listing Issues, reading their descriptions and comments, starting **Design**
 and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
 Issue cards, labels and Tomato stage grouping use the same presentation on both providers; GitHub pull
-requests are excluded from the Issue list.
+requests are excluded from the Issue list. On host protocol v113 or newer, the eye button previews
+an Issue's Markdown body and images in place, including closed Issues. Only one body is expanded at a
+time; refresh collapses it. The preview does not include comments; use the title link for the full
+provider page. Private attachment images may require access through the provider website.
 
 To connect, enter a **Repository address** and a personal access token in the Issues tool:
 
