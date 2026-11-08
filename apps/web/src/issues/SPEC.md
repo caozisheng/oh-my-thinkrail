@@ -30,6 +30,21 @@ and restores it after a restart, so the form says exactly that and never calls t
 missing or locked vault shows a reconnect step instead of pretending the association is live. A v103/v104
 host cannot write that vault, so it gets no vault-persistence hint and no reconnect invitation.
 
+## Inline body preview
+
+At v113 a title-row eye button precedes design/implementation and lazily reads `issues.content`.
+Folded uses the open eye; expanded uses the closed eye and soft-primary styling. Closed issues may
+also be previewed. Older hosts keep a disabled eye with an upgrade tooltip. `IssuesTool` owns one
+expanded item and its request, without global state, persistence or cross-item caching. Collapse,
+switch, refresh, disconnect and project/connection changes invalidate pending replies. Loading may
+be collapsed; failures offer local manual retry and empty bodies show localized copy.
+
+The internal props-driven body renderer uses react-markdown and remark-gfm without chat rendering
+dependencies, raw HTML execution, Mermaid or syntax highlighting. Its bounded region scrolls internally,
+images fit its width, and failed images retain alt text. Links open with noopener/noreferrer. Only
+credential-free HTTP(S) resources are accepted; relative paths resolve against the host's validated
+provider issue URL. Browser image requests carry no PAT and use no proxy; private attachments may fail.
+
 ## Behavior
 
 Host protocol v103 gates the read/connection RPCs (`issues.connection`, `issues.list`,
