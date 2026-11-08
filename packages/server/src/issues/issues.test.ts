@@ -259,8 +259,14 @@ describe("GitLab reads", () => {
 				const page = new URL(String(url)).searchParams.get("page");
 				if (String(url).includes("/notes"))
 					return Response.json([
-						{ id: 8, body: "hello", created_at: "2026-11-04T00:00:01Z", author: { name: "Alice", username: "alice" }, system: false },
-				]);
+						{
+							id: 8,
+							body: "hello",
+							created_at: "2026-11-04T00:00:01Z",
+							author: { name: "Alice", username: "alice" },
+							system: false,
+						},
+					]);
 				return Response.json(
 					[
 						{
@@ -277,7 +283,13 @@ describe("GitLab reads", () => {
 		});
 		expect((await client.labelEvents(42)).map((e) => e.id)).toEqual([1, 2]);
 		expect(await client.notes(42)).toEqual([
-			{ id: 8, body: "hello", createdAt: "2026-11-04T00:00:01Z", author: { name: "Alice", username: "alice" }, system: false },
+			{
+				id: 8,
+				body: "hello",
+				createdAt: "2026-11-04T00:00:01Z",
+				author: { name: "Alice", username: "alice" },
+				system: false,
+			},
 		]);
 		expect(await client.member(7)).toEqual({ userId: 7, accessLevel: 30 });
 		expect(urls[0]).toContain("/sub/api/v4/projects/group%2Frepo/issues/42/resource_label_events");
@@ -365,7 +377,15 @@ describe("GitLab reads", () => {
 			fetch: (request) =>
 				Response.json(
 					new URL(request.url).pathname.endsWith("notes")
-						? [{ id: 3, body: "handoff", created_at: "2026-11-04T00:00:00Z", author: null, system: false }]
+						? [
+								{
+									id: 3,
+									body: "handoff",
+									created_at: "2026-11-04T00:00:00Z",
+									author: null,
+									system: false,
+								},
+							]
 						: {
 								iid: 42,
 								title: "Task",
