@@ -107,7 +107,14 @@ function issue(value: unknown): IssueRecord | null {
 }
 function note(value: unknown): IssueNote {
 	const v = record(value);
-	return { id: positive(v.id), body: text(v.body), createdAt: timestamp(v.created_at) };
+	const user = v.user == null ? null : record(v.user);
+	return {
+		id: positive(v.id),
+		body: text(v.body),
+		createdAt: timestamp(v.created_at),
+		author: user ? { name: text(user.login), username: text(user.login) } : null,
+		system: false,
+	};
 }
 function nextPage(link: string | null): string | null {
 	if (!link) return null;

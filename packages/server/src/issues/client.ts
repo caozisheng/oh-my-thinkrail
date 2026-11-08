@@ -198,7 +198,14 @@ function matchingIid<T extends { iid: number }>(parse: (value: unknown) => T, ii
 }
 function note(value: unknown): GitLabNote {
 	const v = record(value);
-	return { id: id(v.id), body: text(v.body), createdAt: timestamp(v.created_at) };
+	const author = v.author == null ? null : record(v.author);
+	return {
+		id: id(v.id),
+		body: text(v.body),
+		createdAt: timestamp(v.created_at),
+		author: author ? { name: text(author.name), username: text(author.username) } : null,
+		system: v.system === true,
+	};
 }
 function labelEvent(value: unknown): GitLabLabelEvent {
 	const v = record(value);
