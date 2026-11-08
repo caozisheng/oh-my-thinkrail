@@ -71,10 +71,11 @@ function installerExecutable(): string {
 		mkdirSync(mount, { recursive: true });
 		run(["hdiutil", "attach", artifact, "-nobrowse", "-readonly", "-mountpoint", mount]);
 		try {
-			const appName = channel === "stable" ? "ThinkRail.app" : `ThinkRail-${channel}.app`;
+			const appName =
+				channel === "stable" ? "oh-my-thinkrail.app" : `oh-my-thinkrail-${channel}.app`;
 			const app = join(mount, appName);
 			if (!existsSync(app)) throw new Error(`desktop DMG does not contain ${appName}`);
-			const installed = join(root, "ThinkRail.app");
+			const installed = join(root, "oh-my-thinkrail.app");
 			cpSync(app, installed, { recursive: true });
 			return join(installed, "Contents", "MacOS", "launcher");
 		} finally {
@@ -151,7 +152,7 @@ function installerExitError(code: number): Error | undefined {
 
 function installedLauncherPath(): string {
 	return process.platform === "darwin"
-		? join(root, "ThinkRail.app", "Contents", "MacOS", "launcher")
+		? join(root, "oh-my-thinkrail.app", "Contents", "MacOS", "launcher")
 		: join(
 				root,
 				process.platform === "win32" ? "local" : "xdg-data",

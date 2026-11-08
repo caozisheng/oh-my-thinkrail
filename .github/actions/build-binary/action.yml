@@ -185,28 +185,28 @@ runs:
               *) arch='x64' ;;
             esac
             platform="macos-$arch"
-            source="${prefix}${platform}-ThinkRail${suffix}.dmg"
+            source="${prefix}${platform}-oh-my-thinkrail${suffix}.dmg"
             name="thinkrail-desktop-darwin-$arch.dmg"
-            update_archive_name="${environment}-${platform}-ThinkRail${suffix}.app.tar.zst"
+            update_archive_name="${environment}-${platform}-oh-my-thinkrail${suffix}.app.tar.zst"
             app_archive_path="apps/desktop/artifacts/$update_archive_name"
             ;;
           bun-windows-x64)
             platform='win-x64'
-            source="${prefix}${platform}-ThinkRail-Setup${suffix}.zip"
+            source="${prefix}${platform}-oh-my-thinkrail-Setup${suffix}.zip"
             name='thinkrail-desktop-windows-x64.zip'
-            update_archive_name="${environment}-${platform}-ThinkRail${suffix}.tar.zst"
+            update_archive_name="${environment}-${platform}-oh-my-thinkrail${suffix}.tar.zst"
             ;;
           bun-linux-x64)
             platform='linux-x64'
-            source="${prefix}${platform}-ThinkRail${suffix}-Setup.tar.gz"
+            source="${prefix}${platform}-oh-my-thinkrail${suffix}-Setup.tar.gz"
             name='thinkrail-desktop-linux-x64.tar.gz'
-            update_archive_name="${environment}-${platform}-ThinkRail${suffix}.tar.zst"
+            update_archive_name="${environment}-${platform}-oh-my-thinkrail${suffix}.tar.zst"
             ;;
           bun-linux-arm64)
             platform='linux-arm64'
-            source="${prefix}${platform}-ThinkRail${suffix}-Setup.tar.gz"
+            source="${prefix}${platform}-oh-my-thinkrail${suffix}-Setup.tar.gz"
             name='thinkrail-desktop-linux-arm64.tar.gz'
-            update_archive_name="${environment}-${platform}-ThinkRail${suffix}.tar.zst"
+            update_archive_name="${environment}-${platform}-oh-my-thinkrail${suffix}.tar.zst"
             ;;
           *) echo "::error::unsupported desktop target $TARGET"; exit 1 ;;
         esac
