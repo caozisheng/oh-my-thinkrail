@@ -1,5 +1,6 @@
 import type {
 	IssueConnectionInput,
+	IssueContent,
 	IssueReference,
 	IssueSessionLaunch,
 	IssueSummary,
@@ -37,6 +38,20 @@ import {
 } from "./model";
 
 type SnapshotPatch = Partial<Omit<IssueToolSnapshot, "identity">>;
+
+async function readIssueContent(
+	projectId: string,
+	reference: IssueReference,
+): Promise<IssueContent | null> {
+	try {
+		const content = await getTransport().request("issues.content", { projectId, reference });
+		return typeof content.description === "string" && isIssueWebUrl(content.url, reference)
+			? content
+			: null;
+	} catch {
+		return null;
+	}
+}
 
 export function IssuesTool({
 	projectId,
@@ -91,18 +106,11 @@ export function IssuesTool({
 		if (close) return;
 		const sequence = previewSequence.current;
 		setPreview({ key, identity, status: "loading" });
-		try {
-			const content = await getTransport().request("issues.content", {
-				projectId,
-				reference: issue.reference,
-			});
-			if (sequence !== previewSequence.current) return;
-			if (typeof content.description !== "string" || !isIssueWebUrl(content.url, issue.reference))
-				throw new Error("Invalid issue content");
-			setPreview({ key, identity, status: "ready", content });
-		} catch {
-			if (sequence === previewSequence.current) setPreview({ key, identity, status: "error" });
-		}
+		const content = await readIssueContent(projectId, issue.reference);
+		if (sequence !== previewSequence.current) return;
+		setPreview(
+			content ? { key, identity, status: "ready", content } : { key, identity, status: "error" },
+		);
 	};
 
 	const update = useCallback(
