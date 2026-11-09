@@ -774,3 +774,29 @@ test("bound summary recovery reads fresh notes and never republishes legacy unce
 	).toEqual({ noteId: 71 });
 	expect(f.notes).toHaveLength(1);
 });
+
+test("a stored Default record serves design launches without resolving folder truth", async () => {
+	const f = fixture();
+	const workspaces = await import("../workspaces");
+	const project = {
+		id: "one",
+		projectId: "one",
+		kind: "default" as const,
+		name: "Default",
+		branch: "main",
+		worktreePath: f.dir,
+		baseBranch: "main",
+		createdAt: 0,
+	};
+	const { saveWorkspaces } = await import("../persistence");
+	saveWorkspaces([project]);
+	const listSpy = spyOn(workspaces, "listWorkspaces");
+	try {
+		await f.host.connect({ projectId: "one", input: f.input });
+		const launch = await f.host.beginDesign({ ...f.target, locale: "en" });
+		expect(launch.workspaceId).toBe("one");
+		expect(listSpy).not.toHaveBeenCalled();
+	} finally {
+		listSpy.mockRestore();
+	}
+});

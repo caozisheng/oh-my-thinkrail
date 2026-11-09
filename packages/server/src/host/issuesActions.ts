@@ -329,6 +329,18 @@ export function createIssuesActions(
 						}),
 					defaultWorkspace: (id) =>
 						checked(async () => {
+							// Persistence-only read: resolving folder truth here would run synchronous git on
+							// every session-context read (design launch, bound issue_context). The record's own
+							// path/branch is what the coordinator verifies against the real project root.
+							const recorded = listWorkspaceRecords(id).find((w) => w.kind === "default");
+							if (recorded)
+								return {
+									id: recorded.id,
+									projectId: recorded.projectId,
+									worktreePath: recorded.worktreePath,
+									branch: recorded.branch,
+									kind: "default" as const,
+								};
 							const rows = await checked(() => listWorkspaces(id, { includeDiffStats: false }));
 							const ws = rows.find((w) => w.projectId === id && w.kind === "default");
 							if (!ws) stop();

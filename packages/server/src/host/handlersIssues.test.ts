@@ -478,10 +478,10 @@ test("v109 begin methods gate old clients before delegation and preserve request
 	}
 });
 
-test("v113 associated repositories gate older protocols before delegation", async () => {
-	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBe(113);
+test("v115 associated repositories gate older protocols before delegation", async () => {
+	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBe(115);
 	const read = { projectIds: ["api"], locked: false };
-	for (const protocolVersion of [104, 112]) {
+	for (const protocolVersion of [104, 114]) {
 		const error = await handleRequest("issues.repositories", actionTarget, {
 			clientKey: "issues-repositories-test",
 			protocolVersion,
@@ -495,7 +495,7 @@ test("v113 associated repositories gate older protocols before delegation", asyn
 	const readSpy = spyOn(issues, "issuesRepositories").mockResolvedValue(read);
 	const writeSpy = spyOn(issues, "issuesSetRepositories").mockResolvedValue(read);
 	try {
-		for (const protocolVersion of [113, undefined]) {
+		for (const protocolVersion of [115, undefined]) {
 			const context = {
 				clientKey: "issues-repositories-test",
 				...(protocolVersion === undefined ? {} : { protocolVersion }),
