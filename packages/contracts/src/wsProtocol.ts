@@ -92,6 +92,8 @@ import type {
 	IssueImplementationTarget,
 	IssueList,
 	IssuePublication,
+	IssueRepositories,
+	IssueRepositoriesInput,
 	IssueRepositoryAddress,
 	IssueSessionLaunch,
 	IssueSessionStartupTarget,
@@ -149,7 +151,8 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 112;
+export const PROTOCOL_VERSION = 113;
+export const ISSUES_REPOSITORIES_PROTOCOL_VERSION = 113;
 export const WORKSPACE_CREATION_PROTOCOL_VERSION = 111;
 export const EXTENSION_SETTINGS_PROTOCOL_VERSION = 112;
 export const ASK_DISCUSS_PROTOCOL_VERSION = 112;
@@ -297,6 +300,8 @@ export const WS_METHODS = {
 	issuesPublishDesign: "issues.publishDesign",
 	issuesPublishImplementation: "issues.publishImplementation",
 	issuesRepositoryAddress: "issues.repositoryAddress",
+	issuesRepositories: "issues.repositories",
+	issuesSetRepositories: "issues.setRepositories",
 	issuesStartImplementation: "issues.startImplementation",
 	issuesValidateDesign: "issues.validateDesign",
 	issuesValidateImplementation: "issues.validateImplementation",
@@ -788,6 +793,8 @@ export interface WsMethodMap {
 	"issues.startImplementation": { params: IssueTarget; result: IssueSessionLaunch };
 	"issues.validateDesign": { params: IssueTarget; result: IssueApprovalResult };
 	"issues.validateImplementation": { params: IssueTarget; result: IssueApprovalResult };
+	"issues.repositories": { params: IssueTarget; result: IssueRepositories };
+	"issues.setRepositories": { params: IssueRepositoriesInput; result: IssueRepositories };
 
 	"issues.connection": { params: { projectId: string }; result: IssueConnection | null };
 	"issues.connect": {

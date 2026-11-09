@@ -5,6 +5,7 @@ import {
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	type WsParams,
 	type WsResult,
 } from "@thinkrail/contracts";
@@ -474,5 +475,44 @@ test("v109 begin methods gate old clients before delegation and preserve request
 			expect((error as CodedError).code).toBe("RANGE_INVALID");
 			expect(String(error)).not.toContain("private-PAT");
 		}
+	}
+});
+
+test("v113 associated repositories gate older protocols before delegation", async () => {
+	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBe(113);
+	const read = { projectIds: ["api"], locked: false };
+	for (const protocolVersion of [104, 112]) {
+		const error = await handleRequest("issues.repositories", actionTarget, {
+			clientKey: "issues-repositories-test",
+			protocolVersion,
+		}).catch((error: unknown) => error);
+		expect(error).toBeInstanceOf(CodedError);
+		expect((error as CodedError).code).toBe("RESOURCE_UNAVAILABLE");
+		expect((error as Error).message).toBe(
+			"Issue associated repositories are unavailable for this protocol version.",
+		);
+	}
+	const readSpy = spyOn(issues, "issuesRepositories").mockResolvedValue(read);
+	const writeSpy = spyOn(issues, "issuesSetRepositories").mockResolvedValue(read);
+	try {
+		for (const protocolVersion of [113, undefined]) {
+			const context = {
+				clientKey: "issues-repositories-test",
+				...(protocolVersion === undefined ? {} : { protocolVersion }),
+			};
+			expect(await handleRequest("issues.repositories", actionTarget, context)).toEqual(read);
+			expect(
+				await handleRequest(
+					"issues.setRepositories",
+					{ ...actionTarget, projectIds: ["api"] },
+					context,
+				),
+			).toEqual(read);
+		}
+		expect(readSpy).toHaveBeenLastCalledWith(actionTarget);
+		expect(writeSpy).toHaveBeenLastCalledWith({ ...actionTarget, projectIds: ["api"] });
+	} finally {
+		readSpy.mockRestore();
+		writeSpy.mockRestore();
 	}
 });

@@ -27,6 +27,13 @@ token. It includes:
   HTTP connections and no plaintext storage fallback.
 - An issue list with **Design** and **Implement** actions. Sessions use the Issue title; implementation
   creates or reuses an owned `.worktrees/issue-<IID>` workspace. The two activities can interleave.
+- **Linked repositories**: an issue can name other open projects it also touches. Design reads their
+  own checkouts; implementation then prepares a worktree in each of those repositories under its own
+  `.worktrees/`, starts a single session only when every one is ready, and tags each worktree in the
+  project rail with the issue number (`#23`, and `#23(master)` for the issue's primary worktree once
+  it has linked repositories). Changes, review and commits stay attributed per repository; commits
+  across repositories are not atomic, so a failure keeps the successful ones and is reported. Build
+  and integration paths between the worktrees are the agent's normal reviewed work, not automatic.
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.

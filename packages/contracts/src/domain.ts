@@ -122,6 +122,19 @@ export type SettledOverride = "settled" | "active";
 
 export const DEFAULT_WORKSPACE_NAME = "Default";
 
+/**
+ * A host-owned binding from a workspace to the Issue it serves: the primary worktree or one of an
+ * Issue's associated source-repository worktrees. Never derived from a branch name.
+ */
+export interface WorkspaceIssueBinding {
+	provider: "gitlab" | "github";
+	instanceUrl: string;
+	number: number;
+	role: "primary" | "associated";
+	/** The primary Issue has associated repositories, so its tag distinguishes itself. */
+	hasAssociations: boolean;
+}
+
 export interface Workspace {
 	id: string;
 	projectId: string;
@@ -144,6 +157,8 @@ export interface Workspace {
 	settledAt?: number;
 	/** The host's last-known review for the branch; refreshed host-side so every client sees one state. */
 	review?: OpenBranchReview;
+	/** Host-owned Issue binding for an Issue worktree; absent for ordinary workspaces. */
+	issue?: WorkspaceIssueBinding;
 }
 
 export type BranchReviewState = "open" | "merged" | "closed";

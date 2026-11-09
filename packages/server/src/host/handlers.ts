@@ -21,6 +21,7 @@ import {
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	isControlMessage,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
@@ -273,12 +274,15 @@ import {
 	issuesConnection,
 	issuesDesignApproval,
 	issuesDisconnect,
+	issuesHost,
 	issuesLaunchDesign,
 	issuesLaunchImplementation,
 	issuesList,
 	issuesPublishDesign,
 	issuesPublishImplementation,
+	issuesRepositories,
 	issuesRepositoryAddress,
+	issuesSetRepositories,
 	issuesStartImplementation,
 	issuesValidateDesign,
 	issuesValidateImplementation,
@@ -439,6 +443,21 @@ function withIssuesSessionStartupProtocol<P, R>(handler: (params: P) => R) {
 				"RESOURCE_UNAVAILABLE",
 				"Issue session startup is unavailable for this protocol version.",
 			);
+		return handler(params);
+	};
+}
+
+function withIssuesRepositoriesProtocol<P, R>(handler: (params: P) => R) {
+	return (params: P, ctx: RequestContext): R => {
+		if (
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < ISSUES_REPOSITORIES_PROTOCOL_VERSION
+		) {
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Issue associated repositories are unavailable for this protocol version.",
+			);
+		}
 		return handler(params);
 	};
 }
@@ -821,9 +840,17 @@ const handlers: WsHandlers = {
 		return renameWorkspace(p.id, p.name);
 	},
 	"workspace.list": async (p) => {
+		const bindings = issuesHost.workspaceIssueBindings();
 		const rows = (
 			await listWorkspaces(p.projectId, { includeDiffStats: p.includeDiffStats ?? true })
-		).map((workspace) => ({ ...workspace, ...provisionInitialTerminal(workspace) }));
+		).map((workspace) => {
+			const binding = bindings.get(workspace.id);
+			return {
+				...workspace,
+				...(binding ? { issue: binding } : {}),
+				...provisionInitialTerminal(workspace),
+			};
+		});
 		void scheduleLifecyclePass(p.projectId).catch(() =>
 			log.warn(`settled lifecycle pass failed for project ${p.projectId}`),
 		);
@@ -1193,6 +1220,8 @@ const handlers: WsHandlers = {
 	"issues.publishDesign": withIssuesActionsProtocol((p) => issuesPublishDesign(p)),
 	"issues.publishImplementation": withIssuesActionsProtocol((p) => issuesPublishImplementation(p)),
 	"issues.repositoryAddress": withIssuesAuthProtocol((p) => issuesRepositoryAddress(p)),
+	"issues.repositories": withIssuesRepositoriesProtocol((p) => issuesRepositories(p)),
+	"issues.setRepositories": withIssuesRepositoriesProtocol((p) => issuesSetRepositories(p)),
 	"issues.startImplementation": withIssuesImplementationProtocol((p) =>
 		issuesStartImplementation(p),
 	),

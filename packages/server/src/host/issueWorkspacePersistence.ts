@@ -5,6 +5,8 @@ import {
 	fsyncSync,
 	lstatSync,
 	openSync,
+	readdirSync,
+	readFileSync,
 	readSync,
 	renameSync,
 	unlinkSync,
@@ -389,6 +391,31 @@ export function createIssueWorkspacePersistence(root: string) {
 			} finally {
 				active = false;
 			}
+		},
+		/**
+		 * Every valid ownership record, best effort: a torn or foreign file is skipped rather than
+		 * failing a workspace list. Used only to project workspace→Issue bindings for the UI.
+		 */
+		list(): IssueWorkspaceRecord[] {
+			const rows: IssueWorkspaceRecord[] = [];
+			let names: string[];
+			try {
+				names = readdirSync(dir);
+			} catch {
+				return rows;
+			}
+			for (const name of names) {
+				if (!name.endsWith(".json")) continue;
+				try {
+					const bytes = readFileSync(join(dir, name));
+					const value: unknown = JSON.parse(
+						new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+					);
+					if (!object(value)) continue;
+					rows.push(record(value, keyFor(value.projectId as string, reference(value.reference))));
+				} catch {}
+			}
+			return rows;
 		},
 	};
 }

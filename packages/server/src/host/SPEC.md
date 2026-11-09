@@ -1010,8 +1010,16 @@ covers the entire action, including workflow work, with one coordinator construc
 callback; failures retain uncertainty for explicit reconciliation, never automatic retries.
 
 Server-only `repositories` / `setRepositories` actions use the same full-identity launch fence and
-strict selection DTOs; no wire registration is implied. Saving currently requires open trusted member
-projects. Launch pins their source paths and rechecks availability/trust around every awaited port.
+strict selection DTOs. Saving requires open trusted member projects. Launch pins their source paths and
+rechecks availability/trust around every awaited port.
+
+They are registered as `issues.repositories` (read) and `issues.setRepositories` (write whole selection)
+behind `ISSUES_REPOSITORIES_PROTOCOL_VERSION` = v113, with the same static credential-free gate wording
+and no caller-supplied path, credential or workspace authority. `workspace.list` decorates each row with
+the host-owned `Workspace.issue` binding — primary or associated, with whether the primary has
+associates — derived from owned implementation records (the single ownership source) by a best-effort
+directory scan; no worktree, session or remote is read, and an invalid record is skipped rather than
+failing the rail. The binding is never inferred from a branch name.
 Workspace lookup spans only the primary plus explicitly selected source projects, retaining each
 member's project identity. `projectPath` resolves the requested member rather than the primary.
 
