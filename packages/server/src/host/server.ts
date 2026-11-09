@@ -782,8 +782,17 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 				: event.kind === "updated"
 					? WS_CHANNELS.workspaceUpdated
 					: WS_CHANNELS.workspaceRemoved;
+		// The rail tag is host metadata; a pushed row carries it exactly like `workspace.list` does.
+		const binding =
+			event.kind === "removed"
+				? undefined
+				: issuesHost.workspaceIssueBindings().get(event.workspace.id);
 		const data =
-			event.kind === "removed" ? { projectId: event.projectId, id: event.id } : event.workspace;
+			event.kind === "removed"
+				? { projectId: event.projectId, id: event.id }
+				: binding
+					? { ...event.workspace, issue: binding }
+					: event.workspace;
 		server.publish(channel, JSON.stringify({ channel, data }));
 	});
 

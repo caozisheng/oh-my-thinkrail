@@ -34,6 +34,7 @@ import {
 	listGitWorktrees,
 	listWorkspaceRecords,
 	listWorkspaces,
+	republishWorkspace,
 } from "../workspaces";
 import { createHostSession } from "./createHostSession";
 import type { IssueAgentSessionHost } from "./issueAgentSessions";
@@ -401,6 +402,14 @@ export function createIssuesActions(
 							? coordinator.design(reference)
 							: coordinator.implementation(reference),
 					);
+					if (kind === "implementation") {
+						// The associated rows already reached clients through `workspace.created`, before
+						// their ownership record existed; re-announce them so the rail tag converges.
+						for (const member of await checked(() =>
+							coordinator.contexts(reference, "implementation"),
+						))
+							republishWorkspace(member.workspaceId);
+					}
 					if (startupPrompt !== undefined) {
 						if (!agentSessions || !startup) stop();
 						const repositories = await checked(() => coordinator.contexts(reference, kind));

@@ -800,3 +800,77 @@ test("a stored Default record serves design launches without resolving folder tr
 		listSpy.mockRestore();
 	}
 });
+
+test("the rail binding covers the associated worktree, not only the primary", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-binding-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	await f.host.connect({ projectId: "one", input: f.input });
+	await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+	await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const bindings = f.host.workspaceIssueBindings();
+	const associated = listWorkspaceRecords("api")[0];
+	expect(associated).toBeDefined();
+	expect(bindings.get(associated?.id ?? "")).toEqual({
+		provider: "gitlab",
+		instanceUrl: "https://gitlab.example",
+		number: 1,
+		role: "associated",
+		hasAssociations: true,
+	});
+	expect([...bindings.values()].filter((b) => b.role === "primary")).toHaveLength(1);
+});
+
+test("a completed implementation re-announces each associated workspace to the rail", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-push-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	const workspaces = await import("../workspaces");
+	const published: string[] = [];
+	workspaces.setWorkspacePublisher((event) => {
+		if (event.kind === "updated") published.push(event.workspace.id);
+	});
+	try {
+		await f.host.connect({ projectId: "one", input: f.input });
+		await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+		const launch = await f.host.beginImplementation({ ...f.target, locale: "en" });
+		const associated = listWorkspaceRecords("api")[0];
+		if (!associated) throw new Error("the associated workspace was not registered");
+		expect(published).toContain(associated.id);
+		expect(published).toContain(launch.workspaceId);
+	} finally {
+		workspaces.setWorkspacePublisher(null);
+	}
+});

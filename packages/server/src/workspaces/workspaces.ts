@@ -783,6 +783,17 @@ export function recordWorkspaceActivity(id: string, at: number = Date.now()): Wo
 	return ws;
 }
 
+/**
+ * Re-announce a stored row so a client converges on host-owned facts that no row mutation carried
+ * (an Issue binding appears once its ownership record completes). No write, no activity stamp.
+ */
+export function republishWorkspace(id: string): Workspace | null {
+	const ws = loadWorkspaces().find((workspace) => workspace.id === id);
+	if (!ws) return null;
+	emit({ kind: "updated", workspace: ws });
+	return ws;
+}
+
 export function backfillWorkspaceActivity(id: string, at: number): Workspace | null {
 	const all = loadWorkspaces();
 	const ws = all.find((workspace) => workspace.id === id);
