@@ -1,6 +1,6 @@
 import {
-	RiGitBranchLine as Branch,
-	RiGitBranchFill as BranchFilled,
+	RiLink as LinkIcon,
+	RiLinkUnlink as LinkUnlink,
 	RiCheckboxCircleFill as Selected,
 	RiCheckboxBlankCircleLine as Unselected,
 } from "@remixicon/react";
@@ -51,7 +51,7 @@ export function IssueRepositoriesControl({
 			<PopoverTrigger asChild>
 				<IconButton
 					size="s"
-					icon={count > 0 ? BranchFilled : Branch}
+					icon={count > 0 ? LinkIcon : LinkUnlink}
 					variant={count > 0 ? "soft-primary" : "ghost"}
 					label={t("issues.repositories")}
 					tooltip={
