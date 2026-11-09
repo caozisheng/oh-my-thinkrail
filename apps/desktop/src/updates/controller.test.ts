@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { hasDesktopArtifactTestSeam } from "../artifactSeam";
 import {
 	createNativeUpdateController,
 	isStrictlyNewerVersion,
@@ -6,7 +7,7 @@ import {
 	type NativeUpdaterInfo,
 	type NativeUpdaterStatusEntry,
 } from "./controller";
-import { hasDesktopArtifactTestSeam, nativeUpdatesEnabled } from "./enablement";
+import { nativeUpdatesEnabled } from "./enablement";
 
 interface Deferred<T> {
 	promise: Promise<T>;

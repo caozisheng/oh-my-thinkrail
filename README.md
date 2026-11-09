@@ -112,7 +112,9 @@ that this fork contains every change in that upstream release. Existing tags/rel
 
 These are **unsigned, independent fork builds**, not JetBrains-signed distributions. Windows
 SmartScreen may warn. Extract the complete ZIP and keep the setup EXE beside its payload when running
-setup. Automatic desktop updates are disabled; install subsequent releases manually. Release builds
+setup. Automatic desktop updates stay disabled; instead the packaged app checks this repository's
+latest Release at launch, notifies you once per new version, and Settings → Software updates links to
+the release page so you install subsequent releases manually. Release builds
 carry no upstream PostHog project key. Source-run privacy behavior is unchanged below.
 
 ## Development

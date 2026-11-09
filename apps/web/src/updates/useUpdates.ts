@@ -1,4 +1,6 @@
 import type {
+	ForkUpdateBridge,
+	ForkUpdateState,
 	HostUpdateNotice,
 	NativeUpdateBridge,
 	NativeUpdateFailedPhase,
@@ -9,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "../store";
 
 const NATIVE_UPDATES_GLOBAL = "__THINKRAIL_NATIVE_UPDATES__";
+const FORK_UPDATES_GLOBAL = "__THINKRAIL_FORK_UPDATES__";
 
 export type NativeUpdateAction = Exclude<NativeUpdateFailedPhase, null>;
 
@@ -28,6 +31,12 @@ export type UpdatesController =
 			dismissInstallResult(): void;
 	  }
 	| {
+			source: "fork";
+			state: ForkUpdateState;
+			checkNow(): void;
+			openReleases(): void;
+	  }
+	| {
 			source: "host";
 			state: HostUpdateNotice;
 			canRun: boolean;
@@ -35,20 +44,32 @@ export type UpdatesController =
 			runUpdate(): void;
 	  };
 
-export function getNativeUpdateBridge(value: unknown): NativeUpdateBridge | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+function isBridge(value: unknown, methods: readonly string[]): boolean {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 	try {
-		return typeof Reflect.get(value, "getState") === "function" &&
-			typeof Reflect.get(value, "checkForUpdates") === "function" &&
-			typeof Reflect.get(value, "downloadUpdate") === "function" &&
-			typeof Reflect.get(value, "restartToUpdate") === "function" &&
-			typeof Reflect.get(value, "dismissInstallResult") === "function" &&
-			typeof Reflect.get(value, "subscribe") === "function"
-			? (value as NativeUpdateBridge)
-			: null;
+		return methods.every((method) => typeof Reflect.get(value, method) === "function");
 	} catch {
-		return null;
+		return false;
 	}
+}
+
+export function getNativeUpdateBridge(value: unknown): NativeUpdateBridge | null {
+	return isBridge(value, [
+		"getState",
+		"checkForUpdates",
+		"downloadUpdate",
+		"restartToUpdate",
+		"dismissInstallResult",
+		"subscribe",
+	])
+		? (value as NativeUpdateBridge)
+		: null;
+}
+
+export function getForkUpdateBridge(value: unknown): ForkUpdateBridge | null {
+	return isBridge(value, ["getState", "checkNow", "openReleases", "subscribe"])
+		? (value as ForkUpdateBridge)
+		: null;
 }
 
 function nativeUpdateErrorText(error: unknown): string {
@@ -82,20 +103,24 @@ export function runHostUpdateRequest(operation: HostUpdateRunner, onError: () =>
 	}
 }
 
-export function subscribeToNativeUpdates(
-	bridge: NativeUpdateBridge,
-	onState: (state: NativeUpdateState) => void,
-	onError: (error: string) => void,
+/** Subscribes before the initial read, then accepts only strictly newer revisions from either side. */
+function subscribeToRevisionedState<T extends { revision: number }>(
+	bridge: {
+		getState(): Promise<T>;
+		subscribe(listener: (state: T) => void): () => void;
+	},
+	onState: (state: T) => void,
+	onError: (error: unknown) => void,
 ): () => void {
 	let active = true;
 	let revision = -1;
-	const accept = (state: NativeUpdateState): void => {
+	const accept = (state: T): void => {
 		if (!active || state.revision <= revision) return;
 		revision = state.revision;
 		onState(state);
 	};
 	const reject = (error: unknown): void => {
-		if (active) onError(nativeUpdateErrorText(error));
+		if (active) onError(error);
 	};
 	let unsubscribe: (() => void) | undefined;
 	try {
@@ -114,28 +139,60 @@ export function subscribeToNativeUpdates(
 	};
 }
 
-export function selectUpdateSource(
-	bridge: NativeUpdateBridge | null,
-	hostUpdate: HostUpdateNotice | null,
-): "native" | "host" | null {
-	if (bridge) return "native";
-	return hostUpdate === null ? null : "host";
+export function subscribeToNativeUpdates(
+	bridge: NativeUpdateBridge,
+	onState: (state: NativeUpdateState) => void,
+	onError: (error: string) => void,
+): () => void {
+	return subscribeToRevisionedState(bridge, onState, (error) =>
+		onError(nativeUpdateErrorText(error)),
+	);
 }
 
-export function hasNativeUpdateSurface(
-	state: NativeUpdateState | null,
-): state is NativeUpdateState {
-	return state !== null && state.status !== "disabled";
+/** The fork advisory is silent about failures; only its state matters. */
+export function subscribeToForkUpdates(
+	bridge: ForkUpdateBridge,
+	onState: (state: ForkUpdateState) => void,
+): () => void {
+	return subscribeToRevisionedState(bridge, onState, () => {});
+}
+
+/**
+ * Native update authority wins over the fork advisory, which wins over the host's CLI update lifecycle.
+ * A present bridge claims the slot: a disabled native surface hands it to the fork only, and never to the
+ * host, so an app that owns one of them cannot also show another launcher's lifecycle.
+ */
+export function selectUpdateSource(input: {
+	nativeBridge: NativeUpdateBridge | null;
+	nativeState: NativeUpdateState | null;
+	forkBridge: ForkUpdateBridge | null;
+	forkState: ForkUpdateState | null;
+	hostUpdate: HostUpdateNotice | null;
+}): "native" | "fork" | "host" | null {
+	if (input.nativeBridge) {
+		if (!input.nativeState) return null;
+		if (input.nativeState.status !== "disabled") return "native";
+		if (!input.forkBridge) return null;
+	}
+	if (input.forkBridge) {
+		const fork = input.forkState;
+		return fork !== null && fork.status !== "disabled" ? "fork" : null;
+	}
+	return input.hostUpdate === null ? null : "host";
 }
 
 export function useUpdates(hostUpdateRunner: HostUpdateRunner | null): UpdatesController | null {
 	const [bridge] = useState(() =>
 		getNativeUpdateBridge(Reflect.get(globalThis, NATIVE_UPDATES_GLOBAL)),
 	);
+	const [forkBridge] = useState(() =>
+		getForkUpdateBridge(Reflect.get(globalThis, FORK_UPDATES_GLOBAL)),
+	);
 	const [nativeState, setNativeState] = useState<NativeUpdateState | null>(null);
 	const [nativeRequestError, setNativeRequestError] = useState<NativeUpdateRequestError | null>(
 		null,
 	);
+	const [forkState, setForkState] = useState<ForkUpdateState | null>(null);
 	const [failedHostRequestFor, setFailedHostRequestFor] = useState<HostUpdateNotice | null>(null);
 	const hostUpdate = useAppStore((state) => state.hostUpdate);
 
@@ -151,9 +208,19 @@ export function useUpdates(hostUpdateRunner: HostUpdateRunner | null): UpdatesCo
 		);
 	}, [bridge]);
 
-	const source = selectUpdateSource(bridge, hostUpdate);
-	if (source === "native" && bridge) {
-		if (!hasNativeUpdateSurface(nativeState)) return null;
+	useEffect(() => {
+		if (!forkBridge) return;
+		return subscribeToForkUpdates(forkBridge, setForkState);
+	}, [forkBridge]);
+
+	const source = selectUpdateSource({
+		nativeBridge: bridge,
+		nativeState,
+		forkBridge,
+		forkState,
+		hostUpdate,
+	});
+	if (source === "native" && bridge && nativeState) {
 		const request = (action: NativeUpdateAction, operation: () => Promise<void>): void => {
 			setNativeRequestError(null);
 			runNativeUpdateRequest(action, operation, setNativeRequestError);
@@ -167,6 +234,18 @@ export function useUpdates(hostUpdateRunner: HostUpdateRunner | null): UpdatesCo
 			restartToUpdate: () => request("install", () => bridge.restartToUpdate()),
 			dismissInstallResult: () => {
 				void bridge.dismissInstallResult().catch(() => {});
+			},
+		};
+	}
+	if (source === "fork" && forkBridge && forkState) {
+		return {
+			source,
+			state: forkState,
+			checkNow: () => {
+				void forkBridge.checkNow().catch(() => {});
+			},
+			openReleases: () => {
+				void forkBridge.openReleases().catch(() => {});
 			},
 		};
 	}

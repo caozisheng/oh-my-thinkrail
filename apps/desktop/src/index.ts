@@ -19,14 +19,24 @@ import {
 	readMenuAction,
 	readMenuLabels,
 } from "./applicationMenu";
+import { hasDesktopArtifactTestSeam } from "./artifactSeam";
 import { attributionClaimOnFirstReadiness } from "./attributionReadiness";
 import { desktopError, setDesktopErrorReporter } from "./errorReporting";
 import { installExternalNavigation, windowNavigationRules } from "./externalNavigation";
+import {
+	createForkUpdateAdvisoryStore,
+	createForkUpdateController,
+	FORK_UPDATE_ADVISORY_FILE,
+	fetchLatestForkRelease,
+	forkUpdatesEnabled,
+} from "./forkUpdate";
 import { createKeyStateReader } from "./keyState";
 import {
 	type DesktopDialogLabels,
+	type DesktopNotificationLabels,
 	readDialogLabels,
 	readNativeLabels,
+	readNotificationLabels,
 	writeNativeLabels,
 } from "./nativeLabels";
 import { createPageZoomGestureHandler, nextPageZoom } from "./pageZoom";
@@ -224,6 +234,7 @@ async function start(): Promise<void> {
 	setWindowsAppUserModelId();
 	const savedLabels = readNativeLabels(nativeLabelsPath());
 	let dialogLabels: DesktopDialogLabels = readDialogLabels(savedLabels);
+	let notificationLabels: DesktopNotificationLabels = readNotificationLabels(savedLabels);
 	const applicationMenuInstalled = installDesktopApplicationMenu(
 		ApplicationMenu,
 		process.platform,
@@ -277,6 +288,34 @@ async function start(): Promise<void> {
 		arch: process.arch,
 		userData,
 		restartToUpdate: () => quitCoordinator.restartToUpdate(),
+	});
+	let windowFocused = true;
+	const forkUpdateController = createForkUpdateController({
+		enabled: forkUpdatesEnabled({
+			isPackaged: Electrobun.app.isPackaged,
+			channel,
+			platform: process.platform,
+			arch: process.arch,
+			artifactTestSeam: hasDesktopArtifactTestSeam(process.env),
+		}),
+		version,
+		latestRelease: () => fetchLatestForkRelease(),
+		windowFocused: () => windowFocused,
+		advisory: createForkUpdateAdvisoryStore(join(userData, FORK_UPDATE_ADVISORY_FILE), (error) => {
+			desktopError("fork_update", "fork update advisory file failed", error);
+		}),
+		notify: (availableVersion) => {
+			Utils.showNotification({
+				title: notificationLabels["desktop.notification.forkUpdateTitle"].replaceAll(
+					"{{version}}",
+					availableVersion,
+				),
+				body: notificationLabels["desktop.notification.forkUpdateBody"],
+			});
+		},
+		openExternal: (url) => {
+			Utils.openExternal(url);
+		},
 	});
 	// Electrobun resolves and caches ../Resources from cwd; leave the bundle only after those reads.
 	try {
@@ -355,6 +394,7 @@ async function start(): Promise<void> {
 		handlers: {
 			requests: {
 				getUpdateState: () => updateController.getState(),
+				getForkUpdateState: () => forkUpdateController.getState(),
 				getWindowState: (): NativeWindowState => readNativeWindowState(mainWindow),
 				minimizeWindow: (): undefined => {
 					recordWindowControlsProbe({ request: "minimize" });
@@ -388,6 +428,14 @@ async function start(): Promise<void> {
 					await updateController.dismissInstallResult();
 					return undefined;
 				},
+				checkForkUpdate: async () => {
+					await forkUpdateController.checkNow();
+					return undefined;
+				},
+				openForkReleases: async () => {
+					await forkUpdateController.openReleases();
+					return undefined;
+				},
 				showNotification: (input): undefined => {
 					Utils.showNotification({
 						title: input.title,
@@ -412,7 +460,14 @@ async function start(): Promise<void> {
 				menuLabelsChanged: ({ labels }) => {
 					const menuLabels = readMenuLabels(labels);
 					dialogLabels = readDialogLabels(labels);
-					if (!neutral) writeNativeLabels(nativeLabelsPath(), { ...menuLabels, ...dialogLabels });
+					notificationLabels = readNotificationLabels(labels);
+					if (!neutral) {
+						writeNativeLabels(nativeLabelsPath(), {
+							...menuLabels,
+							...dialogLabels,
+							...notificationLabels,
+						});
+					}
 					if (applicationMenuInstalled) {
 						installDesktopApplicationMenu(ApplicationMenu, process.platform, menuLabels);
 					}
@@ -554,9 +609,16 @@ async function start(): Promise<void> {
 	const releaseStartupSplash = startupSplash
 		? handOffStartupSplash(startupSplash, mainWindow)
 		: undefined;
-	mainWindow.on("focus", () => rpc.send.windowFocusChanged({ focused: true }));
-	mainWindow.on("blur", () => rpc.send.windowFocusChanged({ focused: false }));
+	mainWindow.on("focus", () => {
+		windowFocused = true;
+		rpc.send.windowFocusChanged({ focused: true });
+	});
+	mainWindow.on("blur", () => {
+		windowFocused = false;
+		rpc.send.windowFocusChanged({ focused: false });
+	});
 	updateController.subscribe((state) => rpc.send.updateStateChanged(state));
+	forkUpdateController.subscribe((state) => rpc.send.forkUpdateChanged(state));
 	menuTarget = {
 		hintVisible: () => !mainWindow.isMinimized(),
 		showHint: (hint) => rpc.send.quitHintChanged({ hint }),
@@ -574,6 +636,7 @@ async function start(): Promise<void> {
 		startupSplash = undefined;
 		startAttributionClaim();
 		updateController.start();
+		forkUpdateController.start();
 		const readyPath = process.env.THINKRAIL_DESKTOP_READY_FILE;
 		if (readyPath) {
 			writeReady(readyPath, {

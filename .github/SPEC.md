@@ -178,6 +178,10 @@ runs serialize without cancelling an active release. No signing credentials, CLI
 payloads or other operating systems are part of this path. Downloads and release notes explicitly
 identify the unsigned independent fork and the Windows SmartScreen risk.
 
+A published Release is also the fork build's upgrade signal: [[submodule-desktop-fork-update]] reads this
+repository's `releases/latest`, so a Release must stay non-draft and non-prerelease with its `vX.Y.Z.<sha8>`
+tag, and its page is where a user installs the next version by hand.
+
 ## Native build contract
 
 The private native matrix checks out an explicit public source commit and invokes

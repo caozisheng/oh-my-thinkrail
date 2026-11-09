@@ -1,4 +1,6 @@
 import type {
+	ForkUpdateBridge,
+	ForkUpdateState,
 	NativeMenuBridge,
 	NativeNotificationBridge,
 	NativeNotificationInput,
@@ -41,6 +43,7 @@ document.addEventListener("DOMContentLoaded", windowChromeStyle.flush, { once: t
 windowChromeStyle.update(initialWindowChrome);
 
 const updateListeners = new Set<(state: NativeUpdateState) => void>();
+const forkUpdateListeners = new Set<(state: ForkUpdateState) => void>();
 const windowStateListeners = new Set<(state: NativeWindowState) => void>();
 let nativeWindowFocused = document.hasFocus();
 window.addEventListener("focus", () => {
@@ -54,6 +57,9 @@ const rpc = Electroview.defineRPC<DesktopRpc>({
 		messages: {
 			updateStateChanged: (state) => {
 				for (const listener of updateListeners) listener(state);
+			},
+			forkUpdateChanged: (state) => {
+				for (const listener of forkUpdateListeners) listener(state);
 			},
 			windowChromeChanged: windowChromeStyle.update,
 			windowStateChanged: (state) => {
@@ -98,6 +104,21 @@ Object.defineProperty(globals, "__THINKRAIL_NATIVE_UPDATES__", {
 });
 Object.defineProperty(globals, "__THINKRAIL_NATIVE_SHORTCUTS__", {
 	value: shortcuts.bridge,
+	writable: false,
+	configurable: false,
+	enumerable: false,
+});
+const forkUpdateBridge: ForkUpdateBridge = Object.freeze({
+	getState: () => rpc.request.getForkUpdateState(),
+	checkNow: () => rpc.request.checkForkUpdate(),
+	openReleases: () => rpc.request.openForkReleases(),
+	subscribe: (listener: (state: ForkUpdateState) => void) => {
+		forkUpdateListeners.add(listener);
+		return () => forkUpdateListeners.delete(listener);
+	},
+});
+Object.defineProperty(globals, "__THINKRAIL_FORK_UPDATES__", {
+	value: forkUpdateBridge,
 	writable: false,
 	configurable: false,
 	enumerable: false,

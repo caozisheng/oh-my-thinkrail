@@ -146,7 +146,7 @@ if (import.meta.main) {
 				"--title",
 				`oh-my-thinkrail ${metadata.version} (Windows x64)`,
 				"--notes",
-				`Independent oh-my-thinkrail fork. Unsigned Windows x64 desktop installer; Windows SmartScreen may warn. Extract the ZIP and keep the setup EXE beside its payload before running setup. Automatic updates are disabled. Upstream ${metadata.upstreamTag} (${metadata.upstreamSha}); fork commit ${metadata.sha}.`,
+				`Independent oh-my-thinkrail fork. Unsigned Windows x64 desktop installer; Windows SmartScreen may warn. Extract the ZIP and keep the setup EXE beside its payload before running setup. Automatic desktop updates are disabled. Packaged builds check this repository's latest Release at launch and link here from Settings → Software updates; install subsequent releases manually. Upstream ${metadata.upstreamTag} (${metadata.upstreamSha}); fork commit ${metadata.sha}.`,
 				join("release-assets", name),
 				"release-assets/SHA256SUMS",
 				"release-assets/build-info.json",

@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import type { HostUpdateNotice, NativeUpdateBridge, NativeUpdateState } from "@thinkrail/contracts";
+import type {
+	ForkUpdateBridge,
+	ForkUpdateState,
+	HostUpdateNotice,
+	NativeUpdateBridge,
+	NativeUpdateState,
+} from "@thinkrail/contracts";
 import {
+	getForkUpdateBridge,
 	getNativeUpdateBridge,
-	hasNativeUpdateSurface,
 	runHostUpdateRequest,
 	runNativeUpdateRequest,
 	selectUpdateSource,
+	subscribeToForkUpdates,
 	subscribeToNativeUpdates,
 } from "./useUpdates";
 
@@ -36,6 +43,24 @@ function hostNotice(): HostUpdateNotice {
 		currentVersion: "0.1.0",
 		channel: "stable",
 		availableVersion: "0.2.0",
+	};
+}
+
+function forkState(revision: number, status: ForkUpdateState["status"]): ForkUpdateState {
+	return {
+		revision,
+		status,
+		version: "0.3.0.aaaaaaaa",
+		availableVersion: status === "available" ? "0.3.1.bbbbbbbb" : null,
+	};
+}
+
+function forkBridge(): ForkUpdateBridge {
+	return {
+		getState: async () => forkState(1, "idle"),
+		checkNow: async () => {},
+		openReleases: async () => {},
+		subscribe: () => () => {},
 	};
 }
 
@@ -132,19 +157,115 @@ describe("native update shell subscription", () => {
 		).toBeNull();
 		expect(getNativeUpdateBridge(nativeBridge())).not.toBeNull();
 	});
+
+	test("fork bridge validation requires the advisory surface", () => {
+		expect(getForkUpdateBridge(undefined)).toBeNull();
+		expect(getForkUpdateBridge({ getState: async () => forkState(1, "idle") })).toBeNull();
+		expect(getForkUpdateBridge(forkBridge())).not.toBeNull();
+	});
+
+	test("fork subscription keeps a newer push over the initial read and ignores failures", async () => {
+		const initial = deferred<ForkUpdateState>();
+		const observed: ForkUpdateState[] = [];
+		let push: ((next: ForkUpdateState) => void) | undefined;
+		const unsubscribe = subscribeToForkUpdates(
+			{
+				getState: () => initial.promise,
+				checkNow: async () => {},
+				openReleases: async () => {},
+				subscribe: (listener) => {
+					push = listener;
+					return () => {};
+				},
+			},
+			(next) => observed.push(next),
+		);
+		push?.(forkState(2, "available"));
+		initial.resolve(forkState(1, "idle"));
+		await initial.promise;
+		await Promise.resolve();
+		expect(observed).toEqual([forkState(2, "available")]);
+		unsubscribe();
+	});
 });
 
 describe("unified update capability", () => {
-	test("native authority wins while resolving and when disabled instead of falling through to host", () => {
+	test("native authority wins while resolving and when enabled instead of falling through", () => {
 		const bridge = nativeBridge();
-		expect(selectUpdateSource(bridge, hostNotice())).toBe("native");
-		expect(hasNativeUpdateSurface(null)).toBe(false);
-		expect(hasNativeUpdateSurface(nativeState(1, "disabled"))).toBe(false);
-		expect(hasNativeUpdateSurface(nativeState(2, "idle"))).toBe(true);
+		expect(
+			selectUpdateSource({
+				nativeBridge: bridge,
+				nativeState: nativeState(1, "idle"),
+				forkBridge: forkBridge(),
+				forkState: forkState(1, "available"),
+				hostUpdate: hostNotice(),
+			}),
+		).toBe("native");
+		expect(
+			selectUpdateSource({
+				nativeBridge: bridge,
+				nativeState: null,
+				forkBridge: forkBridge(),
+				forkState: forkState(1, "available"),
+				hostUpdate: hostNotice(),
+			}),
+		).toBeNull();
 	});
 
-	test("host authority exists exactly when no native bridge and a host snapshot is present", () => {
-		expect(selectUpdateSource(null, hostNotice())).toBe("host");
-		expect(selectUpdateSource(null, null)).toBeNull();
+	test("a disabled native surface hands the slot to the fork advisory, never to the host", () => {
+		expect(
+			selectUpdateSource({
+				nativeBridge: nativeBridge(),
+				nativeState: nativeState(1, "disabled"),
+				forkBridge: forkBridge(),
+				forkState: forkState(1, "available"),
+				hostUpdate: hostNotice(),
+			}),
+		).toBe("fork");
+		expect(
+			selectUpdateSource({
+				nativeBridge: nativeBridge(),
+				nativeState: nativeState(1, "disabled"),
+				forkBridge: null,
+				forkState: null,
+				hostUpdate: hostNotice(),
+			}),
+		).toBeNull();
+	});
+
+	test("a fork capability that is resolving or disabled shows nothing", () => {
+		const sources = {
+			nativeBridge: null,
+			forkBridge: forkBridge(),
+			hostUpdate: hostNotice(),
+		};
+		expect(selectUpdateSource({ ...sources, nativeState: null, forkState: null })).toBeNull();
+		expect(
+			selectUpdateSource({ ...sources, nativeState: null, forkState: forkState(1, "disabled") }),
+		).toBeNull();
+		expect(
+			selectUpdateSource({ ...sources, nativeState: null, forkState: forkState(1, "idle") }),
+		).toBe("fork");
+	});
+
+	test("host authority exists exactly when no bridge and a host snapshot is present", () => {
+		expect(
+			selectUpdateSource({
+				nativeBridge: null,
+				nativeState: null,
+				forkBridge: null,
+				forkState: null,
+				hostUpdate: hostNotice(),
+			}),
+		).toBe("host");
+		expect(
+			selectUpdateSource({
+				nativeBridge: null,
+				nativeState: null,
+				forkBridge: null,
+				forkState: null,
+				hostUpdate: null,
+			}),
+		).toBeNull();
 	});
 });

@@ -38,6 +38,12 @@ export const DESKTOP_DIALOG_KEYS = [
 	"desktop.splash.starting",
 ] as const satisfies readonly (keyof EnglishCatalog)[];
 
+/** Keys the desktop renders in native OS notifications; the web pushes their translations. */
+export const DESKTOP_NOTIFICATION_KEYS = [
+	"desktop.notification.forkUpdateBody",
+	"desktop.notification.forkUpdateTitle",
+] as const satisfies readonly (keyof EnglishCatalog)[];
+
 const BUNDLED: Readonly<Record<string, Catalog>> = { en: EN, es, ja, ru, "zh-CN": zhCN };
 
 export const BUNDLED_LOCALES: readonly string[] = Object.keys(BUNDLED);

@@ -131,7 +131,8 @@ these structural guards do not grant trust or enable an RPC by themselves.
   Everything else stays a plain `error` string. Expected method-specific outcomes remain typed method
   results rather than generic WS failures; no current-layout protocol exists.
 - **Public surface (`index.ts`):** `export type *` of `piProtocol` + `domain` + `nativeClient`
-  (`NativeUpdateState` / `NativeUpdateBridge`, `NativeWindowState` / `NativeWindowControlsBridge`,
+  (`NativeUpdateState` / `NativeUpdateBridge`, `ForkUpdateState` / `ForkUpdateBridge`,
+  `NativeWindowState` / `NativeWindowControlsBridge`,
   `NativeQuitHint` / `NativeCommand` / `NativeShortcutsBridge`, and
   `NativeNotificationInput` / `NativeNotificationBridge`, and `NativeMenuBridge` (translated native menu
   labels), the optional shell-local desktop capabilities);
@@ -209,7 +210,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
   or deployment that supplies it. A feature's wire shape is shared by browser, desktop, and future clients.
   Separate type-only native client capabilities describe an optional shell-local bridge, not host WS
   methods: `NativeUpdateState` and `NativeUpdateBridge` carry update presentation and explicit local
-  actions; `NativeWindowState` and `NativeWindowControlsBridge` carry the maximized/fullscreen snapshot and
+  actions; `ForkUpdateState` and `ForkUpdateBridge` carry the fork's GitHub release advisory — current and
+  available version plus a manual re-check and a request to open the release page — with no download,
+  install or feed authority at all; `NativeWindowState` and `NativeWindowControlsBridge` carry the
+  maximized/fullscreen snapshot and
   the minimize / toggle-maximize / close actions a frameless native window delegates to HTML controls;
   `NativeQuitHint`, `NativeCommand`, and `NativeShortcutsBridge` push the confirmed-quit hint and forwarded
   native menu commands, and offer `quit()` for a client that confirms the quit gesture itself;

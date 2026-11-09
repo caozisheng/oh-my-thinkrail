@@ -16,6 +16,9 @@ Electrobun's status callback. It projects the callback into available, transfer,
 installation phases, plus install steps and the post-relaunch result. Electrobun single-flights each SDK
 operation, while the controller keeps only the cross-operation sequencing needed to prevent overlaps.
 
+The fork's GitHub release advisory is a separate sibling ([[submodule-desktop-fork-update]]); its state,
+notification and release link never enter this controller.
+
 ## Boundary
 
 - **Public surface:** Electrobun update-controller and quit-coordinator construction, plus

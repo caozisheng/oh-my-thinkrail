@@ -1,4 +1,5 @@
 import type {
+	ForkUpdateState,
 	NativeCommand,
 	NativeNotificationInput,
 	NativeQuitHint,
@@ -12,6 +13,7 @@ export type DesktopRpc = {
 	bun: {
 		requests: {
 			getUpdateState: { params: undefined; response: NativeUpdateState };
+			getForkUpdateState: { params: undefined; response: ForkUpdateState };
 			getWindowState: { params: undefined; response: NativeWindowState };
 			minimizeWindow: { params: undefined; response: undefined };
 			toggleMaximizeWindow: { params: undefined; response: undefined };
@@ -21,6 +23,8 @@ export type DesktopRpc = {
 			downloadUpdate: { params: undefined; response: undefined };
 			restartToUpdate: { params: undefined; response: undefined };
 			dismissInstallResult: { params: undefined; response: undefined };
+			checkForkUpdate: { params: undefined; response: undefined };
+			openForkReleases: { params: undefined; response: undefined };
 			showNotification: { params: NativeNotificationInput; response: undefined };
 		};
 		messages: {
@@ -37,6 +41,7 @@ export type DesktopRpc = {
 		requests: Record<string, never>;
 		messages: {
 			updateStateChanged: NativeUpdateState;
+			forkUpdateChanged: ForkUpdateState;
 			windowChromeChanged: WindowChromeGeometry;
 			windowStateChanged: NativeWindowState;
 			windowFocusChanged: { focused: boolean };

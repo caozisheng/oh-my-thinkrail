@@ -5,14 +5,16 @@ status: active
 title: updates — optional application update capability
 parent: module-web
 depends-on: [module-contracts]
+references: [submodule-desktop-fork-update, submodule-desktop-updates]
 tags: [ui, updates]
 ---
 
 ## Responsibility
 
-Own one application-update presentation over either local native update authority or a host-owned CLI update
-lifecycle. The module normalizes those capabilities into one shell hook, one software-update settings surface,
-and one durable status affordance without teaching the UI which launcher is running.
+Own one application-update presentation over a local native update authority, the fork's GitHub release
+advisory, or a host-owned CLI update lifecycle. The module normalizes those capabilities into one shell hook,
+one software-update settings surface, and one durable status affordance without teaching the UI which launcher
+is running.
 
 ## Boundary
 
@@ -38,9 +40,26 @@ available/running/succeeded/failed state and one **Run Update** action; the acti
 request and the host alone chooses and runs its update command. Success still asks for a manual host restart.
 Older hosts retain fixed `thinkrail update` guidance. No command text or arbitrary diagnostics cross the wire.
 
-A present native bridge always wins over host state, including while its capability is resolving or disabled.
-With neither usable capability, the Updates settings section and affordance are absent. The topbar remains a path
-back to Settings throughout actionable native and host phases, not only after a package is ready.
+A present native bridge always wins over host state: while its capability is resolving it shows nothing, and
+when it reports `disabled` it hands the slot to the fork advisory (below) — never to the host. With no usable
+capability, the Updates settings section and affordance are absent. The topbar remains a path back to Settings
+throughout actionable native, fork, and host phases, not only after a package is ready.
+
+## Fork release advisory
+
+The second native capability is the optional frozen `__THINKRAIL_FORK_UPDATES__` bridge
+([[submodule-desktop-fork-update]]), read as its own source `"fork"` with the same subscribe-before-read and
+monotonic-revision ingestion. Precedence is native → fork → host, and a present bridge claims its slot: a
+native surface that reports `disabled` hands the slot to the fork, never to the host, so one launcher can
+never show another's lifecycle. Resolving or disabled fork state shows nothing.
+
+The fork source is the working surface of a Windows fork build, where the Electrobun feed is empty. It
+presents current version, up-to-date and checking status, an explicit **Check again** action, and — when a
+release is available — the version plus **Open releases page**, which asks the desktop to open the fork's
+release page in the browser. Nothing is downloaded, verified or installed here: the user installs the next
+release manually. The topbar chip appears only while a release is available. Check failures are silent by
+design — the card's manual re-check is the retry path — so this source carries no error surface. Its strings
+live in `updates.fork.*`.
 
 ## Native install journey
 

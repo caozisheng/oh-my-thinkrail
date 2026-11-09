@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { HostUpdateNotice, NativeUpdateState } from "@thinkrail/contracts";
+import type { ForkUpdateState, HostUpdateNotice, NativeUpdateState } from "@thinkrail/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UpdateReadyButton } from "./UpdateReadyButton";
 import { UpdateSettings } from "./UpdateSettings";
@@ -328,4 +328,66 @@ test("a failed last install explains its cause in Settings and keeps the topbar 
 		),
 	);
 	expect(installed).toBe("");
+});
+
+function forkState(
+	status: ForkUpdateState["status"],
+	overrides: Partial<ForkUpdateState> = {},
+): ForkUpdateState {
+	return {
+		revision: 3,
+		status,
+		version: "0.3.0.aaaaaaaa",
+		availableVersion: null,
+		...overrides,
+	};
+}
+
+function forkUpdates(state: ForkUpdateState, calls: string[] = []): UpdatesController {
+	return {
+		source: "fork",
+		state,
+		checkNow: () => calls.push("checkNow"),
+		openReleases: () => calls.push("openReleases"),
+	};
+}
+
+test("an idle fork advisory offers a manual re-check and no install action", () => {
+	const markup = render(forkUpdates(forkState("idle")));
+	expect(markup).toContain("ThinkRail is up to date");
+	expect(markup).toContain("checks the GitHub releases page in the background");
+	expect(markup).toContain('data-testid="fork-update-check"');
+	expect(markup).toContain("Check again");
+	expect(markup).not.toContain('data-testid="fork-update-open-releases"');
+	expect(markup).not.toContain("Install &amp; Restart");
+	expect(markup).toContain("Current: 0.3.0.aaaaaaaa");
+	expect(renderAffordance(forkUpdates(forkState("idle")))).toBe("");
+});
+
+test("an available fork release points at its release page and raises the topbar chip", () => {
+	const markup = render(
+		forkUpdates(forkState("available", { availableVersion: "0.3.1.bbbbbbbb" })),
+	);
+	expect(markup).toContain("ThinkRail 0.3.1.bbbbbbbb is available");
+	expect(markup).toContain("Download it from the GitHub releases page");
+	expect(markup).toContain('data-testid="fork-update-open-releases"');
+	expect(markup).toContain("Open releases page");
+	expect(markup).toContain("Available: 0.3.1.bbbbbbbb");
+	const chip = renderAffordance(
+		forkUpdates(
+			forkState("available", {
+				availableVersion: "0.3.1.bbbbbbbb",
+			}),
+		),
+	);
+	expect(chip).toContain("Update available");
+	expect(chip).toContain('data-source="fork"');
+	expect(chip).toContain("ThinkRail 0.3.1.bbbbbbbb is available");
+});
+
+test("a running fork check disables the re-check action", () => {
+	const markup = render(forkUpdates(forkState("checking")));
+	expect(markup).toContain("Checking for updates");
+	expect(markup).toContain("disabled");
+	expect(markup).toContain("Checking…");
 });
