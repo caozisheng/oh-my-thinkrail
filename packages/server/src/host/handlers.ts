@@ -116,7 +116,7 @@ import {
 	startProxyJbcentral,
 	updateJbcentral,
 } from "../auth";
-import { findBranchReviewOutcome, providerFromRemoteUrl } from "../branch-review";
+import { providerFromRemoteUrl } from "../branch-review";
 import { forgetWorkspaceChanges, revertChange, undoChange } from "../changes";
 import { selectDirectory } from "../dialog";
 import { listAvailableEditors, openEditor, revealInFileManager } from "../editors";
@@ -250,7 +250,6 @@ import {
 	openExistingWorktree,
 	reclaimWorktree,
 	recordWorkspaceActivity,
-	refreshUserOwnedWorkspace,
 	renameWorkspace,
 	retryWorkspaceCreation,
 	settleWorkspace,
@@ -339,7 +338,7 @@ import { startPlanReview } from "./requestReview";
 import { withChangeLock, withReviewLock } from "./reviewLock";
 import { runObservation } from "./runAnalytics";
 import { hostSearch } from "./search";
-import { scheduleLifecyclePass } from "./settledLifecycle";
+import { findWorkspaceReviewOutcome, scheduleLifecyclePass } from "./settledLifecycle";
 import { taskObservation } from "./taskAnalytics";
 import {
 	claimItemFix,
@@ -844,7 +843,7 @@ const handlers: WsHandlers = {
 		);
 	},
 	"workspace.rename": (p) => {
-		return renameWorkspace(p.id, p.name);
+		return renameWorkspace(p.id, p.name).workspace;
 	},
 	"workspace.list": async (p) => {
 		const bindings = issuesHost.workspaceIssueBindings();
@@ -867,7 +866,7 @@ const handlers: WsHandlers = {
 		const ws = getWorkspace(p.workspaceId);
 		const fresh = shouldRefreshOpenReview(p.allowCached);
 		const [outcome, divergence] = await Promise.all([
-			findBranchReviewOutcome(ws.worktreePath, ws.branch, { fresh }),
+			findWorkspaceReviewOutcome(ws, { fresh }),
 			// Only pay the network fetch on a fresh lookup (focus / explicit refresh), not a cached activation.
 			countPushDivergence(ws.worktreePath, ws.branch, { fetch: fresh }),
 		]);
@@ -887,7 +886,7 @@ const handlers: WsHandlers = {
 		const origin = await originUrls(ws.worktreePath);
 		const splitPushUrl = origin.push !== origin.fetch ? origin.push : null;
 		const [outcome, measured, aheadOfBase] = await Promise.all([
-			findBranchReviewOutcome(ws.worktreePath, ws.branch, { fresh }),
+			findWorkspaceReviewOutcome(ws, { fresh }),
 			(splitPushUrl
 				? countPushTargetDivergence(ws.worktreePath, ws.branch, splitPushUrl)
 				: countPushDivergence(ws.worktreePath, ws.branch, {
@@ -991,7 +990,6 @@ const handlers: WsHandlers = {
 		return { ok: true } as const;
 	},
 	"pr.open": async (p) => {
-		refreshUserOwnedWorkspace(p.workspaceId);
 		recordWorkspaceActivity(p.workspaceId);
 		const { branch, ...result } = await observePrAction(() => openPr(p), p.source ?? "other");
 		if (result.review) {

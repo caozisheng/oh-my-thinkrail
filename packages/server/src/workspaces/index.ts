@@ -18,6 +18,7 @@ export {
 } from "./creations";
 export {
 	backfillWorkspaceActivity,
+	branchMoveOwed,
 	completeInitialTerminalReservation,
 	createWorkspaceAtPath,
 	createWorkspaceAtPathWithBranch,
@@ -33,7 +34,6 @@ export {
 	reclaimWorktree,
 	recordWorkspaceActivity,
 	recordWorkspaceHead,
-	refreshUserOwnedWorkspace,
 	removeWorkspace,
 	renameWorkspace,
 	republishWorkspace,
@@ -45,6 +45,7 @@ export {
 	setWorkspaceSkillOverride,
 	setWorkspaceSubagentMaxConcurrent,
 	setWorkspaceSubagentsOverride,
+	syncWorkspaceBranch,
 	unsettleWorkspace,
 	type WorkspaceLifecycleEvent,
 	workspaceDiffKey,

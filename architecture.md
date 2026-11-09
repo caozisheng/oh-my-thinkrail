@@ -213,7 +213,7 @@ dependency. This keeps test process drivers outside both launchers and the serve
     rejects any range, any catalog drift, and a lockfile graph that resolves `react` or `react-dom` outside
     its one catalog pin (the React pin rationale belongs to [[module-web]]). Every pi
     upgrade also follows [[pi-compatibility]], the architecture-owned registry of host adaptations and
-    their removal gates; detailed rationale stays in the owning module specs. Any other root `overrides`
+    their removal gates, and every Electrobun upgrade follows [[electrobun-compatibility]]; detailed rationale stays in the owning module specs. Any other root `overrides`
     entry is an exact security pin whose rationale and removal gate live with its owner. Exempt:
     `peerDependencies` (extension packages declare `"*"` on purpose — the host provides the dep) and local
     protocols (`workspace:` / `link:` / `file:`). An exact SemVer prerelease/build suffix is still an exact
@@ -498,6 +498,10 @@ dependency. This keeps test process drivers outside both launchers and the serve
 - Never **value**-import `pi` in browser-bundled code; import types only, from the `pi-ai` /
   `pi-agent-core` package roots (type-only imports are erased at build, keeping the bundle provider-free).
   `@earendil-works/pi-coding-agent` is server-only — it never reaches `contracts`/`web`.
+- TypeScript stays type-strippable: `erasableSyntaxOnly` in `tsconfig.base.json` plus Biome
+  `noParameterProperties`/`noEnum`/`noNamespace` (which also cover files outside any tsconfig) ban enums,
+  namespaces, and constructor parameter properties, so sources contain only erasable TS syntax and
+  type-stripping tools (Node strip-types, Bun, oxc) need no TS emit.
 - One id model: the UI tab id vs `session.sessionId` (the `AgentSession` id). No separate pi UUID.
 - The agent runs in-process with **no crash isolation** — wrap session calls and forward errors; a fatal
   fault takes the whole host down (accepted tradeoff vs the subprocess RPC mode).
