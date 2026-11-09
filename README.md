@@ -117,8 +117,9 @@ carry no upstream PostHog project key. Source-run privacy behavior is unchanged 
 
 ## Development
 
-Use the Bun version pinned in `package.json`, Node.js **22.19+**, and Git. Agent sessions also need a
-configured model provider.
+Use the Bun version pinned in `package.json`, Node.js **22.23.4+**, and Git. The website build and
+typecheck require Node.js 22.23.4+ for Astro 7.4; the in-process `pi` engine itself needs 22.19+.
+Agent sessions also need a configured model provider.
 
 ```bash
 git clone https://github.com/caozisheng/oh-my-thinkrail.git

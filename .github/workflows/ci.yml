@@ -25,6 +25,9 @@ jobs:
         with:
           bun-version-file: package.json
           no-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: bun install --frozen-lockfile
       - run: bun run check:deps
       - run: bun run check:boundaries

@@ -119,7 +119,7 @@ export class TurnTracker {
 		// Capture every head at settlement, never after a slow base or membership lookup.
 		const heads = run.targets.map((target) => this.snapshot(target.worktreePath));
 		const job = this.settle(sessionId, run, heads).catch((error) => {
-			log.warn(`turn change set was not recorded for ${sessionId}`, error as Error);
+			log.warn(`turn change set was not recorded for ${sessionId}`, error);
 		});
 		this.recording.add(job);
 		void job.then(() => this.recording.delete(job));
