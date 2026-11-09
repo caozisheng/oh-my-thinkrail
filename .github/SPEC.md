@@ -190,8 +190,8 @@ first-install smoke, then collects exact target/channel outputs. Before that ste
 dropped Cottontail download failed the linux-arm64 build of the 0.3.1 stable release.
 Update outputs preserve Electrobun's generated basenames and compressed bytes. The manifest is the exact
 `<stable|canary>-<macos|win|linux>-<arm64|x64>-update.json`. Its `artifact.file` is the archive basename:
-`stable-<platform>-ThinkRail[.app].tar.zst` for stable or
-`canary-<platform>-ThinkRail-canary[.app].tar.zst` for nightly, where `<platform>` is the manifest's
+`stable-<platform>-oh-my-thinkrail[.app].tar.zst` for stable or
+`canary-<platform>-oh-my-thinkrail-canary[.app].tar.zst` for nightly, where `<platform>` is the manifest's
 OS-architecture pair and `.app` occurs only on macOS. Collection resolves both names for the requested
 channel and target rather than accepting the first glob match. The paths point directly
 into Electrobun's output tree; updater payloads do not change the installer-only dist aliases. On macOS the

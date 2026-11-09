@@ -30,6 +30,30 @@ and restores it after a restart, so the form says exactly that and never calls t
 missing or locked vault shows a reconnect step instead of pretending the association is live. A v103/v104
 host cannot write that vault, so it gets no vault-persistence hint and no reconnect invitation.
 
+## Inline body preview
+
+At v113 a title-row eye button precedes design/implementation and lazily reads `issues.content`.
+At v114 the same eye, title link, card and bounded preview layout remain unchanged; opening reads
+`issues.detail` and appends all ordinary comments after the description, oldest first, with author
+and time. Body and comments share the same Markdown/attachment renderer. Empty descriptions do not
+hide comments. No separate detail navigation or Back control exists. A failed complete read offers
+Retry, never partial comments. Earlier v113 hosts retain description-only previews.
+Folded uses the open eye; expanded uses the closed eye and soft-primary styling. Closed issues may
+also be previewed. Older hosts keep a disabled eye with an upgrade tooltip. `IssuesTool` owns one
+expanded item and its request, without global state, persistence or cross-item caching. Collapse,
+switch, refresh, disconnect and project/connection changes invalidate pending replies. Loading may
+be collapsed; failures offer local manual retry and empty bodies show localized copy.
+
+The internal props-driven body renderer uses react-markdown and remark-gfm without chat rendering
+dependencies, raw HTML execution, Mermaid or syntax highlighting. GitHub-generated HTML `img`
+standalone HTML blocks are parsed inertly with parse5 and projected into ordinary image nodes using
+only `src` and `alt`. Inline raw HTML remains skipped; complete Markdown HTML blocks preserve parser
+context rather than joining separately tokenized inline fragments. Image event/style/dimension attributes and other HTML elements are discarded. Script/style/template,
+iframe and noscript contents never supply images. The same resource URL guard applies to both syntaxes. Its bounded region scrolls internally,
+images fit its width, and failed images retain alt text. Links open with noopener/noreferrer. Only
+credential-free HTTP(S) resources are accepted; relative paths resolve against the host's validated
+provider issue URL. Browser image requests carry no PAT and use no proxy; private attachments may fail.
+
 ## Behavior
 
 Host protocol v103 gates the read/connection RPCs (`issues.connection`, `issues.list`,
@@ -42,14 +66,15 @@ reconnect invitation; `issues.authUnsupported` is the only copy it adds. Offline
 connection, then list only when connected; connect refreshes the list. Refresh is explicit; no polling or
 stage mutations.
 
-**Associated repositories (v113).** Each issue row carries an "associated repositories" control: a
-popover multi-select listbox of the open projects beside the issue's own project. The issue's own
-project always participates and is never listed as a candidate — exclusion compares **local** project
-ids, since `reference.projectId` is the remote provider id and never matches a project id. The saved
-selection starts empty, is
-read on open (`issues.repositories`) and written whole per toggle (`issues.setRepositories`); the host
-owns validation and locks the set once implementation preparation starts, so a locked list renders
-read-only with its reason. `supportsIssueRepositories` is that floor, and an older host simply omits the control. A failed
+**Associated repositories (v115).** Each issue row carries an icon-only trigger on the title row,
+right after the body-preview eye toggle: `RiGitBranchLine` with no repository linked and
+`RiGitBranchFill` (soft-primary) once one is, opening a popover multi-select listbox of the open
+projects beside the issue's own project. That project always participates and is never listed as a
+candidate — exclusion compares **local** project ids, since `reference.projectId` is the remote provider
+id and never matches a project id. The saved selection starts empty, is read on open
+(`issues.repositories`) and written whole per toggle (`issues.setRepositories`); the host owns validation
+and locks the set once implementation preparation starts, so a locked list renders read-only with its
+reason. `supportsIssueRepositories` is that floor, and an older host simply omits the control. A failed
 list read shows one localized failure instead of rendering an empty selection as if it were saved, and a
 rejected write leaves the last confirmed selection in place. Selection grants no trust, push or delivery
 right.

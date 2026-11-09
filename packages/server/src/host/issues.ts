@@ -330,11 +330,23 @@ export function createIssuesHost(
 			await (await service()).disconnect(projectId);
 			return { ok: true } as const;
 		},
+		async detail(params: unknown) {
+			const { projectId, reference } = designTarget(params);
+			project(projectId, false);
+			await restore(projectId, false);
+			return (await service()).detail(projectId, reference);
+		},
 		async list(params: unknown) {
 			const { projectId } = request(params);
 			project(projectId, false);
 			await restore(projectId, false);
 			return (await service()).list(projectId);
+		},
+		async content(params: unknown) {
+			const target = designTarget(params);
+			project(target.projectId, false);
+			await restore(target.projectId, false);
+			return (await service()).content(target.projectId, target.reference);
 		},
 		async designApproval(params: unknown, protocolVersion?: number) {
 			if (
@@ -372,6 +384,8 @@ export const issuesConnect = issuesHost.connect;
 export const issuesDesignApproval = issuesHost.designApproval;
 export const issuesDisconnect = issuesHost.disconnect;
 export const issuesList = issuesHost.list;
+export const issuesContent = issuesHost.content;
+export const issuesDetail = issuesHost.detail;
 export const issuesLaunchDesign = issuesHost.launchDesign;
 export const issuesLaunchImplementation = issuesHost.launchImplementation;
 export const issuesPublishDesign = issuesHost.publishDesign;

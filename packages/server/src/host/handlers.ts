@@ -18,7 +18,9 @@ import {
 	ISSUES_ACTIONS_PROTOCOL_VERSION,
 	ISSUES_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_AUTH_PROTOCOL_VERSION,
+	ISSUES_CONTENT_PROTOCOL_VERSION,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
+	ISSUES_DETAIL_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
@@ -272,7 +274,9 @@ import {
 	issuesBeginImplementation,
 	issuesConnect,
 	issuesConnection,
+	issuesContent,
 	issuesDesignApproval,
+	issuesDetail,
 	issuesDisconnect,
 	issuesHost,
 	issuesLaunchDesign,
@@ -1215,6 +1219,22 @@ const handlers: WsHandlers = {
 	),
 	"issues.disconnect": withIssuesProtocol((p) => issuesDisconnect(p)),
 	"issues.list": withIssuesProtocol((p) => issuesList(p)),
+	"issues.content": (p, ctx) => {
+		if (ctx.protocolVersion !== undefined && ctx.protocolVersion < ISSUES_CONTENT_PROTOCOL_VERSION)
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Issue content requires a newer protocol version.",
+			);
+		return issuesContent(p);
+	},
+	"issues.detail": (p, ctx) => {
+		if (ctx.protocolVersion !== undefined && ctx.protocolVersion < ISSUES_DETAIL_PROTOCOL_VERSION)
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Issue details are unavailable for this protocol version.",
+			);
+		return issuesDetail(p);
+	},
 	"issues.launchDesign": withIssuesActionsProtocol((p) => issuesLaunchDesign(p)),
 	"issues.launchImplementation": withIssuesActionsProtocol((p) => issuesLaunchImplementation(p)),
 	"issues.publishDesign": withIssuesActionsProtocol((p) => issuesPublishDesign(p)),

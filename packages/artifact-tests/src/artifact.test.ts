@@ -34,25 +34,25 @@ const desktopTargets: {
 	{
 		platform: "darwin",
 		arch: "arm64",
-		launcher: "build/dev-macos-arm64/ThinkRail-dev.app/Contents/MacOS/launcher",
+		launcher: "build/dev-macos-arm64/oh-my-thinkrail-dev.app/Contents/MacOS/launcher",
 		decoy: "build/dev-macos-arm64/Another.app/Contents/MacOS/launcher",
 	},
 	{
 		platform: "win32",
 		arch: "x64",
-		launcher: "build/dev-win-x64/ThinkRail-dev/bin/launcher.exe",
+		launcher: "build/dev-win-x64/oh-my-thinkrail-dev/bin/launcher.exe",
 		decoy: "build/dev-win-x64/Another/bin/launcher.exe",
 	},
 	{
 		platform: "linux",
 		arch: "x64",
-		launcher: "build/dev-linux-x64/ThinkRail-dev/bin/launcher",
+		launcher: "build/dev-linux-x64/oh-my-thinkrail-dev/bin/launcher",
 		decoy: "build/dev-linux-x64/Another/bin/launcher",
 	},
 	{
 		platform: "linux",
 		arch: "arm64",
-		launcher: "build/dev-linux-arm64/ThinkRail-dev/bin/launcher",
+		launcher: "build/dev-linux-arm64/oh-my-thinkrail-dev/bin/launcher",
 		decoy: "build/dev-linux-arm64/Another/bin/launcher",
 	},
 ];
@@ -125,8 +125,8 @@ test("default artifact paths stay rooted at the repository from every invocation
 		"build",
 		`dev-${os}-${process.arch}`,
 		...(process.platform === "darwin"
-			? ["ThinkRail-dev.app", "Contents", "MacOS", "launcher"]
-			: ["ThinkRail-dev", "bin", process.platform === "win32" ? "launcher.exe" : "launcher"]),
+			? ["oh-my-thinkrail-dev.app", "Contents", "MacOS", "launcher"]
+			: ["oh-my-thinkrail-dev", "bin", process.platform === "win32" ? "launcher.exe" : "launcher"]),
 	);
 	const source = `
 		import { binaryArtifactPath, locateDesktopLauncher } from ${JSON.stringify(join(import.meta.dir, "artifact.ts"))};
@@ -155,35 +155,37 @@ test("names the Windows setup executable per channel", () => {
 
 test("locates the channel-suffixed setup executable inside an expanded ZIP", () => {
 	const root = packageDir(
-		"ThinkRail-Setup-canary.exe",
-		join(".installer", "ThinkRail-Setup-canary.tar.zst"),
+		"oh-my-thinkrail-Setup-canary.exe",
+		join(".installer", "oh-my-thinkrail-Setup-canary.tar.zst"),
 	);
 	expect(locateWindowsSetupExecutable(root, "canary")).toBe(
-		join(root, "ThinkRail-Setup-canary.exe"),
+		join(root, "oh-my-thinkrail-Setup-canary.exe"),
 	);
 });
 
 test("locates the unsuffixed setup executable for the stable channel", () => {
-	const root = packageDir("ThinkRail-Setup.exe");
-	expect(locateWindowsSetupExecutable(root, "stable")).toBe(join(root, "ThinkRail-Setup.exe"));
+	const root = packageDir("oh-my-thinkrail-Setup.exe");
+	expect(locateWindowsSetupExecutable(root, "stable")).toBe(
+		join(root, "oh-my-thinkrail-Setup.exe"),
+	);
 });
 
 test("refuses a ZIP whose setup executable belongs to another channel", () => {
-	const root = packageDir("ThinkRail-Setup-canary.exe");
+	const root = packageDir("oh-my-thinkrail-Setup-canary.exe");
 	expect(() => locateWindowsSetupExecutable(root, "stable")).toThrow(
-		"desktop ZIP does not contain ThinkRail-Setup.exe",
+		"desktop ZIP does not contain oh-my-thinkrail-Setup.exe",
 	);
 });
 
-test.each(["stable", "canary"])("selects only ThinkRail's exact %s setup name", (channel) => {
+test.each(["stable", "canary"])("selects only oh-my-thinkrail's exact %s setup name", (channel) => {
 	const root = packageDir(
 		"Another-Setup.exe",
 		"Another-Setup-canary.exe",
-		"ThinkRail-Setup.exe",
-		"ThinkRail-Setup-canary.exe",
+		"oh-my-thinkrail-Setup.exe",
+		"oh-my-thinkrail-Setup-canary.exe",
 	);
 	expect(locateWindowsSetupExecutable(root, channel)).toBe(
-		join(root, `ThinkRail${windowsSetupExecutableSuffix(channel)}`),
+		join(root, `oh-my-thinkrail${windowsSetupExecutableSuffix(channel)}`),
 	);
 });
 
@@ -191,7 +193,7 @@ test.each([
 	"stable",
 	"canary",
 ])("refuses similarly named or nested %s setup executables", (channel) => {
-	const name = `ThinkRail${windowsSetupExecutableSuffix(channel)}`;
+	const name = `oh-my-thinkrail${windowsSetupExecutableSuffix(channel)}`;
 	const root = packageDir(`Another${windowsSetupExecutableSuffix(channel)}`, join("other", name));
 	expect(() => locateWindowsSetupExecutable(root, channel)).toThrow(
 		`desktop ZIP does not contain ${name}`,

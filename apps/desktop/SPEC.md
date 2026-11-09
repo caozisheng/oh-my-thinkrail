@@ -432,6 +432,11 @@ which keeps the packaged runtime aligned with [[architecture]]'s root toolchain 
 suite runs only on its default Bun; when that default diverges from the pin, desktop smoke and e2e are the
 gate for this runtime.
 
+The packaged application name is `oh-my-thinkrail` on every platform; Electrobun derives bundle,
+installer, shortcut and Windows Installed-apps display names from it. The stable identifier remains
+`ai.thinkrail.app`, preserving install/data locations; executable VERSIONINFO remains independently
+owned by shared's `windowsFileIdentity`.
+
 The package runs the official `electrobun build` / `dev` commands. Configuration reads the same shared
 version module as the launcher, without an environment-version bridge. One documented `preBuild` hook
 builds the shared web artifact and stages the application-specific PTY/trash/skill resources and PI

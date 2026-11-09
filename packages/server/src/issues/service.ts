@@ -3,6 +3,8 @@ import {
 	hasIssueHttpConsent,
 	type IssueConnection,
 	type IssueConnectionInput,
+	type IssueContent,
+	type IssueDetail,
 	type IssueList,
 	type IssueProvider,
 	type IssueReference,
@@ -51,6 +53,8 @@ export interface IssuesService {
 	restore(projectId: string): Promise<IssueConnection | null>;
 	disconnect(projectId: string): Promise<void>;
 	list(projectId: string): Promise<IssueList>;
+	content(projectId: string, reference: IssueReference): Promise<IssueContent>;
+	detail(projectId: string, reference: IssueReference): Promise<IssueDetail>;
 	/** Server-only authenticated read capability; never serialize or expose through RPC. */
 	remoteFor(projectId: string, reference: IssueReference): IssueRemote;
 	/** The GitLab-only workflow capability; a GitHub reference is refused before any request. */
@@ -445,6 +449,63 @@ export async function createIssuesService({
 			)
 				invalid();
 			return linked.workflow;
+		},
+		async content(projectId, reference) {
+			if (!isIssueReference(reference)) invalid();
+			const binding = bindings.get(projectId);
+			const linked = clients.get(projectId);
+			if (!binding || !linked) return unavailable("Issue project is not connected.");
+			if (
+				reference.provider !== linked.provider ||
+				reference.instanceUrl !== binding.instanceUrl ||
+				reference.projectId !== binding.remoteProjectId
+			)
+				invalid();
+			const issue = await linked.client.issue(reference.number);
+			if (clients.get(projectId) !== linked)
+				unavailable("Issue connection changed during the read.");
+			if (issue.iid !== reference.number) invalid();
+			return {
+				description: issue.description,
+				url: issueWebUrl(linked.provider, binding.instanceUrl, linked.path, issue.iid) ?? invalid(),
+			};
+		},
+		async detail(projectId, reference) {
+			if (!isIssueReference(reference)) invalid();
+			const binding = bindings.get(projectId);
+			const connected = clients.get(projectId);
+			if (!binding || !connected) return unavailable("Issue project is not connected.");
+			if (
+				reference.instanceUrl !== binding.instanceUrl ||
+				reference.projectId !== binding.remoteProjectId ||
+				reference.provider !== connected.provider
+			)
+				invalid();
+			const issue = await connected.client.issue(reference.number);
+			if (clients.get(projectId) !== connected)
+				unavailable("Issue connection changed during the read.");
+			if (issue.iid !== reference.number) invalid();
+			const notes = await connected.client.notes(reference.number);
+			if (clients.get(projectId) !== connected)
+				unavailable("Issue connection changed during the read.");
+			return {
+				reference: { ...reference },
+				title: issue.title,
+				description: issue.description,
+				url:
+					issueWebUrl(connected.provider, binding.instanceUrl, connected.path, issue.iid) ??
+					invalid(),
+				comments: notes
+					.filter((note) => !note.system)
+					.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id - b.id)
+					.map((note) => ({
+						id: note.id,
+						body: note.body,
+						createdAt: note.createdAt,
+						author: note.author ?? null,
+					})),
+				fetchedAt: new Date().toISOString(),
+			};
 		},
 		async list(projectId) {
 			const binding = bindings.get(projectId);

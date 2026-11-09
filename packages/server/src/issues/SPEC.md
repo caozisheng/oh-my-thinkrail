@@ -33,6 +33,17 @@ adding a second association, so a project is GitHub, GitLab or unassociated — 
 by the previous reference (sessions, receipts, workspace ownership) simply stop resolving through
 `remoteFor`, which compares the live binding exactly.
 
+`content(localProjectId, reference)` returns only `{ description, url }` for the exact live binding,
+using `IssueRemote.issue` without notes, workflow state or writes. The URL comes from the verified
+project path. A connection replacement or disconnect during the read rejects its result. Closed issues
+and untrusted local projects retain this read capability.
+
+`detail(projectId, reference)` reads a complete body/comment snapshot through the live exact binding,
+rejects connection changes and mismatched Issue IIDs before reading comments, excludes GitLab system
+notes, and orders ordinary comments by creation time
+then id. Provider author name/username is projected without profile URLs; absent/deleted authors are null.
+Pagination limits and failures fail the whole read rather than returning partial comments.
+
 `connection`, `connect`, async `disconnect`, and `list` expose the lifecycle; `restore(projectId)` is
 a server-only lazy asynchronous seam, not a wire contract. Host composition supplies both adapters.
 

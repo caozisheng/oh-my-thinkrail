@@ -1,12 +1,13 @@
 import {
-	RiLinksLine as Links,
+	RiGitBranchLine as Branch,
+	RiGitBranchFill as BranchFilled,
 	RiCheckboxCircleFill as Selected,
 	RiCheckboxBlankCircleLine as Unselected,
 } from "@remixicon/react";
 import type { IssueRepositories, IssueSummary } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { useT } from "@thinkrail/locales/react";
-import { Button } from "@thinkrail/ui/button";
+import { IconButton } from "@thinkrail/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@thinkrail/ui/popover";
 import { useState } from "react";
 import { issueKey } from "./model";
@@ -48,18 +49,24 @@ export function IssueRepositoriesControl({
 			}}
 		>
 			<PopoverTrigger asChild>
-				<Button
-					variant="ghost"
+				<IconButton
 					size="s"
+					icon={count > 0 ? BranchFilled : Branch}
+					variant={count > 0 ? "soft-primary" : "ghost"}
+					label={t("issues.repositories")}
+					tooltip={
+						locked
+							? `${t("issues.repositories")} — ${t("issues.repositoriesLocked")}`
+							: count > 0
+								? t("issues.repositoriesSelected", { count })
+								: t("issues.repositories")
+					}
 					disabled={disabled}
 					data-testid="issue-repositories"
 					data-issue={issueKey(issue)}
 					data-locked={locked || undefined}
 					aria-haspopup="listbox"
-				>
-					<Links className="size-12" aria-hidden="true" />
-					{count > 0 ? t("issues.repositoriesSelected", { count }) : t("issues.repositories")}
-				</Button>
+				/>
 			</PopoverTrigger>
 			<PopoverContent className="flex w-320 flex-col gap-8 p-12" align="end">
 				<span className="tr-title-compact text-text-default">{t("issues.repositories")}</span>

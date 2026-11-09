@@ -19,7 +19,16 @@ the palette ranks with — kept here so host-side search can rank with the same 
 
 ## Issue integration
 
+`issues.content(IssueTarget)` → `IssueContent` (`{ description, url }`) is a v113 read-only
+capability (`ISSUES_CONTENT_PROTOCOL_VERSION`). It returns only the issue body and a verified provider
+web URL, never comments or approval state; list summaries remain lightweight. Host adapters validate
+the exact target and local project before accessing the live binding.
+
 `issues.ts` owns provider-qualified Issue references and credential-free summary/connection DTOs.
+At v114, `issues.detail(IssueTarget)` returns a separate `IssueDetail` complete snapshot: title,
+verified URL, description, oldest-first ordinary comments with id/body/time and nullable name/username,
+and fetchedAt. It does not enlarge summaries, expose credentials, or grant workflow actions. Partial
+pagination is an error, not a successful detail result. The existing v113 content read remains available for older description-only previews.
 The connection input is write-only: its token must never appear in readable connection state, Issue
 summaries, broadcasts or persisted browser state; the host stores it in the OS credential vault and never
 in project or binding metadata. Non-local HTTP needs an explicit acknowledgment bound to the exact

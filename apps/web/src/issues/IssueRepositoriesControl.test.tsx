@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { IssueRepositories, IssueSummary } from "@thinkrail/contracts";
+import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { renderToStaticMarkup } from "react-dom/server";
 import { IssueRepositoriesControl } from "./IssueRepositoriesControl";
 
@@ -25,22 +26,34 @@ const projects = [
 
 function render(view: IssueRepositories | "loading" | "error" | undefined, disabled = false) {
 	return renderToStaticMarkup(
-		<IssueRepositoriesControl
-			issue={issue}
-			primaryProjectId={primaryProjectId}
-			projects={projects}
-			view={view}
-			disabled={disabled}
-			onOpen={() => {}}
-			onToggle={() => {}}
-		/>,
+		<TooltipProvider>
+			<IssueRepositoriesControl
+				issue={issue}
+				primaryProjectId={primaryProjectId}
+				projects={projects}
+				view={view}
+				disabled={disabled}
+				onOpen={() => {}}
+				onToggle={() => {}}
+			/>
+		</TooltipProvider>,
 	);
 }
 
-test("an unopened control states the empty default without claiming a selection", () => {
+test("the trigger is an icon-only button, not a labelled row control", () => {
 	const markup = render(undefined);
 	expect(markup).toContain('data-testid="issue-repositories"');
-	expect(markup).toContain("Linked repositories");
+	expect(markup).toContain('aria-haspopup="listbox"');
+	expect(markup).not.toContain(">Linked repositories<");
+});
+
+test("the git-branch icon is outlined with no selection and filled once one is chosen", () => {
+	// The outlined and filled Remixicon glyphs differ; the filled one marks a live selection.
+	expect(render(undefined)).toContain('data-variant="ghost"');
+	expect(render({ projectIds: [], locked: false })).toContain('data-variant="ghost"');
+	expect(render({ projectIds: ["api-local"], locked: false })).toContain(
+		'data-variant="soft-primary"',
+	);
 });
 
 test("the issue's own local project is never offered as a linked repository", () => {
@@ -51,8 +64,8 @@ test("the issue's own local project is never offered as a linked repository", ()
 	for (const view of views) expect(render(view)).not.toContain("frontend");
 });
 
-test("a saved selection reports its count and never renders a stale list of projects", () => {
+test("a locked selection renders its reason instead of a stale candidate list", () => {
 	const markup = render({ projectIds: ["api-local"], locked: true });
-	expect(markup).toContain("1 linked");
+	expect(markup).toContain('data-locked="true"');
 	expect(markup).not.toContain("backend");
 });

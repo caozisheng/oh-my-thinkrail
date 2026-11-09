@@ -2,12 +2,26 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { collectAssets, releaseMetadata, stampVersion } from "./windows-release";
 
 const sha = "abcdef0123456789abcdef0123456789abcdef01";
 const upstreamSha = "1234567890123456789012345678901234567890";
 const latest = { tag_name: "v1.2.3", draft: false, prerelease: false };
+
+test("manual release smoke and collection consume the renamed Electrobun ZIP", () => {
+	const root = resolve(import.meta.dir, "../..");
+	const installer = "apps/desktop/artifacts/win-x64-oh-my-thinkrail-Setup.zip";
+	const workflow = readFileSync(
+		join(root, ".github/workflows/release-windows-desktop.yml"),
+		"utf8",
+	);
+	const source = readFileSync(join(root, ".github/scripts/windows-release.ts"), "utf8");
+	expect(workflow).toContain(`bun run smoke:desktop:installer ${installer} stable`);
+	expect(source.replace(/\s+/g, "")).toContain(
+		`collectAssets(metadata,"${installer}","release-assets"`,
+	);
+});
 
 describe("Windows desktop release identity", () => {
 	test("uses stable upstream version and exact checkout identity", () => {

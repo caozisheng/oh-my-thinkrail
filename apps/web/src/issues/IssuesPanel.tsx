@@ -1,4 +1,10 @@
-import { type RemixiconComponentType, RiCodeBoxLine, RiQuillPenLine } from "@remixicon/react";
+import {
+	type RemixiconComponentType,
+	RiCodeBoxLine,
+	RiEyeLine,
+	RiEyeOffLine,
+	RiQuillPenLine,
+} from "@remixicon/react";
 import type {
 	IssueConnection,
 	IssueConnectionInput,
@@ -11,8 +17,9 @@ import type { MessageKey } from "@thinkrail/locales";
 import { useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
-import { useEffect, useReducer } from "react";
+import { useEffect, useId, useReducer } from "react";
 import { IssueAssociationForm } from "./IssueAssociationForm";
+import { IssueBody, type IssuePreview } from "./IssueBody";
 import { IssueRepositoriesControl, type IssueRepositoriesView } from "./IssueRepositoriesControl";
 import {
 	associationPanelState,
@@ -33,6 +40,10 @@ import {
 } from "./model";
 
 export interface IssuesPanelProps {
+	previewSupported?: boolean;
+	preview?: IssuePreview | null;
+	onTogglePreview?: (issue: IssueSummary) => void;
+	onRetryPreview?: (issue: IssueSummary) => void;
 	connection: IssueConnection | null;
 	issues: readonly IssueSummary[];
 	pending: boolean;
@@ -156,8 +167,13 @@ export function IssuesPanel({
 	repositoriesFor,
 	onLoadRepositories,
 	onToggleRepository,
+	previewSupported,
+	preview,
+	onTogglePreview,
+	onRetryPreview,
 }: IssuesPanelProps) {
 	const t = useT();
+	const previewId = useId();
 	const [state, dispatch] = useReducer(reconnectOutcome, error ?? null, associationPanelState);
 	// Nothing reaches the host until the user confirms this issue's implementation gate.
 	const { reconnecting, snapshotError } = state;
@@ -298,6 +314,50 @@ export function IssuesPanel({
 									>
 										#{issue.reference.number} {issue.title}
 									</a>
+									{onTogglePreview && (
+										<TooltipProvider>
+											<IconButton
+												size="s"
+												icon={preview?.key === issueKey(issue) ? RiEyeOffLine : RiEyeLine}
+												variant={preview?.key === issueKey(issue) ? "soft-primary" : "ghost"}
+												label={t(
+													preview?.key === issueKey(issue)
+														? "issues.previewClose"
+														: "issues.previewOpen",
+												)}
+												tooltip={t(
+													previewSupported
+														? preview?.key === issueKey(issue)
+															? "issues.previewClose"
+															: "issues.previewOpen"
+														: "issues.previewUnsupported",
+												)}
+												disabled={!previewSupported || pending}
+												aria-expanded={preview?.key === issueKey(issue)}
+												aria-controls={preview?.key === issueKey(issue) ? previewId : undefined}
+												data-testid="issue-preview-toggle"
+												onClick={() => onTogglePreview(issue)}
+											/>
+										</TooltipProvider>
+									)}
+									{repositoriesSupported &&
+										primaryProjectId &&
+										repositoryProjects &&
+										onToggleRepository && (
+											<TooltipProvider>
+												<IssueRepositoriesControl
+													issue={issue}
+													primaryProjectId={primaryProjectId}
+													projects={repositoryProjects}
+													view={repositoriesFor?.(issue)}
+													disabled={pending || actionPending === true}
+													onOpen={() => onLoadRepositories?.(issue)}
+													onToggle={(projectId) => {
+														void onToggleRepository(issue, projectId);
+													}}
+												/>
+											</TooltipProvider>
+										)}
 									{onRunAction && (
 										<IssueActionRow
 											issue={issue}
@@ -308,25 +368,14 @@ export function IssuesPanel({
 										/>
 									)}
 								</div>
+								{preview?.key === issueKey(issue) && onTogglePreview && (
+									<IssueBody
+										id={previewId}
+										preview={preview}
+										onRetry={() => onRetryPreview?.(issue)}
+									/>
+								)}
 								<p className="text-text-subtle">{t(STAGE_KEY[stage])}</p>
-								{repositoriesSupported &&
-									primaryProjectId &&
-									repositoryProjects &&
-									onToggleRepository && (
-										<div className="flex flex-wrap items-center gap-6">
-											<IssueRepositoriesControl
-												issue={issue}
-												primaryProjectId={primaryProjectId}
-												projects={repositoryProjects}
-												view={repositoriesFor?.(issue)}
-												disabled={pending || actionPending === true}
-												onOpen={() => onLoadRepositories?.(issue)}
-												onToggle={(projectId) => {
-													void onToggleRepository(issue, projectId);
-												}}
-											/>
-										</div>
-									)}
 								{issue.labels.length > 0 && (
 									<p className="break-words text-text-muted">{issue.labels.join(" · ")}</p>
 								)}

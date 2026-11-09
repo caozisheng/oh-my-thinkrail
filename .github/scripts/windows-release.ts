@@ -108,7 +108,11 @@ if (import.meta.main) {
 		writeFileSync("packages/shared/src/version.ts", stampVersion(metadata));
 	} else if (command === "collect") {
 		const metadata = JSON.parse(readFileSync(".windows-release.json", "utf8")) as Metadata;
-		collectAssets(metadata, "apps/desktop/artifacts/win-x64-ThinkRail-Setup.zip", "release-assets");
+		collectAssets(
+			metadata,
+			"apps/desktop/artifacts/win-x64-oh-my-thinkrail-Setup.zip",
+			"release-assets",
+		);
 	} else if (command === "publish") {
 		const info = JSON.parse(readFileSync("release-assets/build-info.json", "utf8"));
 		const metadata = releaseMetadata(
