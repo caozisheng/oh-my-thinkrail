@@ -203,7 +203,9 @@ read carries no approval state — `IssueSummary` has no receipt and no design v
 longer reads, mints or forwards a design digest: no click-time `designApproval` call, no
 `approvedDesignVersion` field. `IssueActionCall` holds exactly `launchDesign` and
 `startImplementation` as UI aliases, routing to the v109 begin methods or legacy session methods by host version. A host denial, a transport failure or a malformed `IssueSessionLaunch` becomes the
-keyed `issues.error.action`; `issues.error.unsupported` remains the catalog's keyed refusal for a host
+keyed `issues.error.action`, which acknowledges possible retained chats/files/prompts. Typed launch
+contention and lock-release failure have distinct keyed notices; a transport `RequestTimeoutError`
+says only that the browser stopped waiting, never that host execution stopped or its lock was released; `issues.error.unsupported` remains the catalog's keyed refusal for a host
 below a control's floor, while the control itself stays disabled with `needs-newer-host`. Credentials and
 transport text are never echoed in UI errors and the token never leaves the form. A successful launch is forwarded once to the optional
 `onLaunchSession({ workspaceId, sessionId })`; the tool creates no session and sends no prompt, and re-reads

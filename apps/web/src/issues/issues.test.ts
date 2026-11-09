@@ -607,6 +607,9 @@ test("panel errors are i18n keys, never transport text", () => {
 		disconnect: "issues.error.disconnect",
 		open: "issues.error.open",
 		action: "issues.error.action",
+		"launch-blocked": "issues.error.launchBlocked",
+		"launch-release": "issues.error.launchRelease",
+		"launch-wait": "issues.error.launchWait",
 		unsupported: "issues.error.unsupported",
 	});
 	for (const error of Object.keys(ISSUE_ERROR_KEY) as IssuePanelError[]) {
@@ -956,6 +959,26 @@ test("the implementation start is gated at protocol v108", () => {
 	expect(supportsIssueImplementation(104)).toBe(false);
 	expect(supportsIssueImplementation(107)).toBe(false);
 	expect(supportsIssueImplementation(108)).toBe(true);
+});
+
+test("launch errors distinguish contention, release failure and frontend timeout", async () => {
+	const { RequestError, RequestTimeoutError } = await import("../transport");
+	for (const [error, expected] of [
+		[new RequestError("ISSUE_LAUNCH_BLOCKED", "secret"), "launch-blocked"],
+		[new RequestError("ISSUE_LAUNCH_RELEASE_FAILED", "secret"), "launch-release"],
+		[new RequestTimeoutError("secret"), "launch-wait"],
+	] as const) {
+		expect(
+			await runIssueAction("design", {
+				launchDesign: async () => {
+					throw error;
+				},
+				startImplementation: async () => {
+					throw error;
+				},
+			}),
+		).toEqual({ ok: false, error: expected });
+	}
 });
 
 test("a transport failure or a junk launch is a keyed action error, never a launch", async () => {

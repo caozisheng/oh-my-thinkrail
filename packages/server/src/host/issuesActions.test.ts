@@ -673,6 +673,114 @@ for (const stage of ["design", "implementation"] as const) {
 		expect(f.prompts).toHaveLength(0);
 		await expect(restored.agentSessions.context(first.sessionId)).rejects.toThrow();
 	}, 60000);
+	test(`${stage} session creation failure preserves pending state and permits same-process retry`, async () => {
+		const f = fixture();
+		let fail = true;
+		const host = createIssuesHost({
+			...f.options,
+			sessions: {
+				...f.options.sessions,
+				create: async (...args: Parameters<typeof f.options.sessions.create>) => {
+					if (fail) throw new Error("injected creation failure");
+					return f.options.sessions.create(...args);
+				},
+			},
+		});
+		await host.connect({ projectId: "one", input: f.input });
+		const begin = stage === "design" ? host.beginDesign : host.beginImplementation;
+		await expect(begin({ ...f.target, locale: "en" })).rejects.toThrow();
+		const dir = join(f.dir, "issue-workspaces");
+		const name = readdirSync(dir).find((name) => name.endsWith(".json"));
+		if (!name) throw new Error("missing pending record");
+		expect(JSON.parse(readFileSync(join(dir, name), "utf8")).sessionPending.stage).toBe(stage);
+		expect(readdirSync(dir).some((name) => name.endsWith(".lock"))).toBe(false);
+		fail = false;
+		await begin({ ...f.target, locale: "en" });
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
+	}, 60000);
+	test(`${stage} frontend abandonment keeps mutual exclusion until the host settles`, async () => {
+		const f = fixture();
+		await f.host.connect({ projectId: "one", input: f.input });
+		let enter!: () => void;
+		let resume!: () => void;
+		const entered = new Promise<void>((resolve) => {
+			enter = resolve;
+		});
+		const held = new Promise<void>((resolve) => {
+			resume = resolve;
+		});
+		f.onRead = async () => {
+			enter();
+			await held;
+		};
+		const begin = stage === "design" ? f.host.beginDesign : f.host.beginImplementation;
+		const running = begin({ ...f.target, locale: "en" });
+		await entered;
+		try {
+			expect(await Promise.race([running, Promise.resolve("frontend stopped waiting")])).toBe(
+				"frontend stopped waiting",
+			);
+			await expect(
+				(stage === "design"
+					? createIssuesHost(f.options).beginDesign
+					: createIssuesHost(f.options).beginImplementation)({ ...f.target, locale: "en" }),
+			).rejects.toMatchObject({ code: "ISSUE_LAUNCH_BLOCKED" });
+			expect(f.created).toBe(0);
+		} finally {
+			f.onRead = undefined;
+			resume();
+		}
+		const result = await running;
+		expect(await begin({ ...f.target, locale: "en" })).toEqual(result);
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
+	}, 60000);
+	test(`${stage} provider deadline releases the lock and late reads cannot create resources`, async () => {
+		const f = fixture();
+		const { saveWorkspaces } = await import("../persistence");
+		saveWorkspaces([
+			{
+				id: "one",
+				projectId: "one",
+				kind: "default",
+				name: "Default",
+				branch: "main",
+				worktreePath: f.dir,
+				baseBranch: "main",
+				createdAt: 0,
+			},
+		]);
+		await f.host.connect({ projectId: "one", input: f.input });
+		let resume!: () => void;
+		let finished!: () => void;
+		const held = new Promise<void>((resolve) => {
+			resume = resolve;
+		});
+		const late = new Promise<void>((resolve) => {
+			finished = resolve;
+		});
+		f.onRead = async () => {
+			await held;
+			finished();
+		};
+		const begin = stage === "design" ? f.host.beginDesign : f.host.beginImplementation;
+		try {
+			await expect(begin({ ...f.target, locale: "en" })).rejects.toThrow();
+			expect(f.created).toBe(0);
+			expect(
+				readdirSync(join(f.dir, "issue-workspaces")).some((name) => name.endsWith(".lock")),
+			).toBe(false);
+			f.onRead = undefined;
+			await begin({ ...f.target, locale: "en" });
+		} finally {
+			resume();
+		}
+		await late;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
+	}, 60000);
 	test(`new ${stage} context failure precedes any workspace or session creation`, async () => {
 		const f = fixture();
 		await f.host.connect({ projectId: "one", input: f.input });
