@@ -11,6 +11,28 @@ export function UpdateReadyButton({
 	onOpen(): void;
 }) {
 	const t = useT();
+	if (updates.source === "fork") {
+		if (updates.state.status !== "available") return null;
+		const availableVersion = updates.state.availableVersion;
+		return (
+			<Button
+				variant="soft-primary"
+				size="m"
+				iconLeft={DownloadCloud}
+				data-testid="update-ready"
+				data-source="fork"
+				data-status={updates.state.status}
+				aria-label={
+					availableVersion
+						? t("updates.fork.button.availableVersionLabel", { version: availableVersion })
+						: t("updates.fork.button.available")
+				}
+				onClick={onOpen}
+			>
+				<span className="hidden md:inline">{t("updates.fork.button.available")}</span>
+			</Button>
+		);
+	}
 	const hostUpdate = updates.source === "host";
 	const hostStatus = updates.source === "host" ? updates.state.status : undefined;
 	const hostRequestFailed = updates.source === "host" && updates.requestFailed;

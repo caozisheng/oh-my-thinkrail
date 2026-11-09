@@ -27,9 +27,10 @@ halves) renders through, so they cannot drift onto separate instances.
     `bundledCatalog(tag)`. Docs and tests derive the shipped list from it rather than naming it, so a
     new bundled language changes only its catalog, the `BUNDLED` entry, and the README's list.
   - `SYSTEM_LOCALE` (`"system"`), `canonicalLocale(tag)`, `languageName(tag)` (own-language name via
-    `Intl.DisplayNames`, first letter upper-cased), `DESKTOP_MENU_KEYS` and `DESKTOP_DIALOG_KEYS` — the keys the
-    desktop's native menu, error dialogs, and startup splash render, one list each for the desktop and the web that pushes
-    their translations.
+    `Intl.DisplayNames`, first letter upper-cased), `DESKTOP_MENU_KEYS`, `DESKTOP_DIALOG_KEYS` and
+    `DESKTOP_NOTIFICATION_KEYS` — the keys the desktop's native menu, error dialogs, startup splash, and
+    native OS notifications render, one list each for the desktop and the web that pushes their
+    translations.
   - `localeTagFromFileName(name)` — `de.json` → `"de"`, canonicalized through `Intl.getCanonicalLocales`;
     `null` for a non-`.json`, dot-prefixed, or non-BCP-47 name.
   - `validateCatalog(raw)` — `{ ok: true, strings } | { ok: false, error: "not-object" }`. The value

@@ -6,12 +6,15 @@ import {
 import type { HostUpdateNotice, NativeUpdateState } from "@thinkrail/contracts";
 import { T, useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
+import { ForkUpdateSettings } from "./ForkUpdateSettings";
 import { installFailureCopy } from "./installCopy";
 import type { NativeUpdateAction, UpdatesController } from "./useUpdates";
 
 interface UpdateSettingsProps {
 	updates: UpdatesController;
 }
+
+type NativeOrHostUpdates = Exclude<UpdatesController, { source: "fork" }>;
 
 type Translate = ReturnType<typeof useT>;
 
@@ -117,6 +120,14 @@ function publicChannel(channel: string | undefined): string | undefined {
 }
 
 export function UpdateSettings({ updates }: UpdateSettingsProps) {
+	return updates.source === "fork" ? (
+		<ForkUpdateSettings updates={updates} />
+	) : (
+		<NativeOrHostUpdateSettings updates={updates} />
+	);
+}
+
+function NativeOrHostUpdateSettings({ updates }: { updates: NativeOrHostUpdates }) {
 	const t = useT();
 	const nativeState = updates.source === "native" ? updates.state : null;
 	const hostNotice = updates.source === "host" ? updates.state : null;

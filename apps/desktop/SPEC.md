@@ -22,7 +22,8 @@ engine architecture.
 - **Owns:** Electrobun configuration and lifecycle; native window policy, including the per-platform
   title-bar treatment and the window-chrome geometry it publishes to the web client; local `bootHost()` startup;
   packaged resource staging; the PI-compatible server-runtime bundle; desktop route preload/persistence;
-  a bounded generic client-preference adapter under stable backend-profile/window identity; and the
+  a bounded generic client-preference adapter under stable backend-profile/window identity; the fork
+  release advisory ([[submodule-desktop-fork-update]]); and the
   opt-in live-window test seam. Standalone artifact harnesses belong to [[module-artifact-tests]].
 - **Public surface:** the packaged desktop application and its installers. No test-helper library is
   exported by the application package.
@@ -600,7 +601,11 @@ CI-only and are never shipped as user configuration.
 
 This fork packages an empty updater base URL, so its desktop builds never offer JetBrains upstream
 updates. Publishing a fork-owned feed is deferred; the unsigned manual Windows release contract lives
-in [[module-ci-release]]. The mechanism below remains available but is disabled by that metadata.
+in [[module-ci-release]]. The mechanism below remains available but is disabled by that metadata, and
+the packaged Windows fork instead runs the GitHub release advisory in
+[[submodule-desktop-fork-update]] behind the frozen `__THINKRAIL_FORK_UPDATES__` preload bridge. The two
+never overlap: the advisory is the only desktop update capability on a fork build, and it links out to a
+manual install rather than downloading anything.
 
 Desktop updates check after window readiness and on a jittered six-hour schedule, but stop at an available
 release. Downloading and installation each require an explicit user action; closing Settings or quitting

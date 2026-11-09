@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { Updater, Utils } from "electrobun/main";
+import { hasDesktopArtifactTestSeam } from "../artifactSeam";
 import { desktopError } from "../errorReporting";
 import type { DesktopDialogLabels } from "../nativeLabels";
 import {
@@ -7,7 +8,7 @@ import {
 	type NativeUpdateController,
 	type NativeUpdaterDependency,
 } from "./controller";
-import { hasDesktopArtifactTestSeam, nativeUpdatesEnabled } from "./enablement";
+import { nativeUpdatesEnabled } from "./enablement";
 import { createUpdateJournalStore, UPDATE_JOURNAL_FILE } from "./journal";
 import { createDesktopQuitCoordinator, type DesktopQuitCoordinator } from "./quitCoordinator";
 

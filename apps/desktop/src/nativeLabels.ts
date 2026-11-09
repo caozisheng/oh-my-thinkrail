@@ -1,6 +1,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { DESKTOP_DIALOG_KEYS, EN, type EnglishCatalog } from "@thinkrail/locales";
+import {
+	DESKTOP_DIALOG_KEYS,
+	DESKTOP_NOTIFICATION_KEYS,
+	EN,
+	type EnglishCatalog,
+} from "@thinkrail/locales";
 import { desktopError } from "./errorReporting";
 
 const MAX_DIALOG_LABEL_LENGTH = 200;
@@ -31,6 +36,14 @@ export function readDialogLabels(raw: unknown): DesktopDialogLabels {
 }
 
 export const DEFAULT_DIALOG_LABELS: DesktopDialogLabels = readDialogLabels({});
+
+export type DesktopNotificationLabels = Readonly<
+	Record<(typeof DESKTOP_NOTIFICATION_KEYS)[number], string>
+>;
+
+export function readNotificationLabels(raw: unknown): DesktopNotificationLabels {
+	return readLabels(DESKTOP_NOTIFICATION_KEYS, MAX_DIALOG_LABEL_LENGTH, raw);
+}
 
 export function readNativeLabels(path: string): unknown {
 	try {

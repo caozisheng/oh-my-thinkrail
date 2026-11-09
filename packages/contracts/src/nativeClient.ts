@@ -60,6 +60,22 @@ export interface NativeUpdateBridge {
 	subscribe(listener: (state: NativeUpdateState) => void): () => void;
 }
 
+export type ForkUpdateStatus = "disabled" | "idle" | "checking" | "available";
+
+export interface ForkUpdateState {
+	revision: number;
+	status: ForkUpdateStatus;
+	version: string;
+	availableVersion: string | null;
+}
+
+export interface ForkUpdateBridge {
+	getState(): Promise<ForkUpdateState>;
+	checkNow(): Promise<void>;
+	openReleases(): Promise<void>;
+	subscribe(listener: (state: ForkUpdateState) => void): () => void;
+}
+
 export interface NativeWindowState {
 	maximized: boolean;
 	fullScreen: boolean;
