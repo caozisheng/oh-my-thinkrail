@@ -266,7 +266,15 @@ never a caller-supplied path or SHA. This lookup observes ownership, not a Git l
 factory and association/context types are exported through the Issues barrel for host composition.
 `BoundIssueSession` records `sessionId`, `workspaceId`, local `projectId`, provider-qualified
 `reference`, explicit `stage: "design" | "implementation"`, and effective `locale`. It contains no
-client, binding, credential or approval state. `IssueStartupContext` accepts only a reference,
+client, binding, credential or approval state. `IssueStartupContext` optionally includes host-projected repository entries with local project/workspace
+ids, display name, actual path and primary/associated role. They are data, not executable configuration;
+the prompt requires per-repository instruction lookup, forbids combining project configuration, and
+states that membership is not a shell sandbox or proof that cross-repository builds work.
+`contexts(reference, stage)` verifies source Default directories for design and every recorded completed
+worktree for implementation without creating implementation directories. Host composition refreshes
+this projection at startup and on bound `issue_context` reads; the pure prompt factory performs no I/O.
+
+`IssueStartupContext` accepts a reference,
 `GitLabIssue`, complete `GitLabNote[]` as `notes`, verified Issue `link`, explicit stage and locale;
 callers must finish all note pagination before calling. Completeness cannot be proven from an array.
 

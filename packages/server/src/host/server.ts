@@ -129,7 +129,7 @@ import {
 	setTerminalTabsPublisher,
 } from "../terminal";
 import { watchUserThemes } from "../themes";
-import { isTodoToolEnd, maybeAttachChangeArtifacts } from "../todos";
+import { isTodoToolEnd, maybeAttachChangeArtifacts, setSessionMemberWorkspaces } from "../todos";
 import { setTurnPublisher, TurnTracker } from "../turns";
 import {
 	setRepoMetaPublisher,
@@ -862,6 +862,13 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	installRequestReviewSeam();
 	setTitleToolHost(titleToolHost);
 	setIssueToolHost(issuesHost.agentSessions);
+	// A bound Issue session's associated repositories carry their own TODO work windows and commits.
+	setSessionMemberWorkspaces(async (workspaceId, sessionId) => {
+		const members = await issuesHost.sessionMemberWorkspaces(sessionId);
+		return members
+			.filter((member) => member.workspaceId !== workspaceId)
+			.map((member) => member.workspaceId);
+	});
 	reconcilePendingReviewsOnBoot();
 
 	setSettingsPublisher((config, appliedUpdate) => {
@@ -942,15 +949,21 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		);
 	});
 
-	const turnTracker = new TurnTracker((sessionId) => {
-		const workspaceId = getSessionWorkspaceId(sessionId);
-		if (!workspaceId) return null;
-		try {
-			return { workspaceId, worktreePath: getWorkspace(workspaceId).worktreePath };
-		} catch {
-			return null;
-		}
-	});
+	const turnTracker = new TurnTracker(
+		(sessionId) => {
+			const workspaceId = getSessionWorkspaceId(sessionId);
+			if (!workspaceId) return null;
+			try {
+				return { workspaceId, worktreePath: getWorkspace(workspaceId).worktreePath };
+			} catch {
+				return null;
+			}
+		},
+		Date.now,
+		undefined,
+		// A bound Issue session may edit associated source repositories; each keeps its own turn.
+		(sessionId) => issuesHost.sessionMemberWorkspaces(sessionId),
+	);
 	setTurnPublisher((turn) => {
 		server.publish(
 			WS_CHANNELS.turnChanged,

@@ -335,6 +335,8 @@ export interface TodoArtifact {
 	specId?: string;
 	sha?: string;
 	files?: GitFileChange[];
+	/** Absent means the session's own workspace; set for an associated source repository. */
+	workspaceId?: string;
 }
 
 export interface TodoItem {

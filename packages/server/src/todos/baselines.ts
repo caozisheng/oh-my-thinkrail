@@ -9,6 +9,20 @@ export interface Baseline {
 	head: string | null;
 	shared?: boolean;
 }
+/** `todoId` for the session's own workspace, `todoId::workspaceId` for an associated one. */
+export function baselineKey(todoId: string, workspaceId?: string): string {
+	return workspaceId === undefined ? todoId : `${todoId}::${workspaceId}`;
+}
+
+export function baselineTodoId(key: string): string {
+	const index = key.indexOf("::");
+	return index === -1 ? key : key.slice(0, index);
+}
+
+export function baselineWorkspaceId(key: string): string | undefined {
+	const index = key.indexOf("::");
+	return index === -1 ? undefined : key.slice(index + 2);
+}
 
 interface BaselineFile {
 	version: 1;

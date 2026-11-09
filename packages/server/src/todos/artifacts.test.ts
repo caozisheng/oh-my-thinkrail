@@ -136,6 +136,80 @@ test("a newly active window is captured before a held queue or an earlier done i
 	}
 });
 
+test("a done step records each repository's own baseline, commit and failure without rollback", async () => {
+	const { store, root } = tempStore();
+	const member = mkdtempSync(join(tmpdir(), "server-todos-member-"));
+	try {
+		const todo = store.add({ title: "cross-repo step" });
+		store.update(todo.id, { status: "in_progress" });
+		await reconcileChangeArtifacts(
+			store,
+			root,
+			SESSION,
+			async () => [],
+			undefined,
+			() => null,
+			true,
+			undefined,
+			"member-ws",
+		);
+		expect(readBaselines(root, SESSION)[`${todo.id}::member-ws`]?.paths).toEqual([]);
+
+		store.update(todo.id, { status: "done" });
+		await reconcileChangeArtifacts(
+			store,
+			root,
+			SESSION,
+			async () => ["lib.ts"],
+			({ subject }) => ({ sha: `sha-${subject}` }),
+			() => null,
+			true,
+			undefined,
+			"member-ws",
+		);
+		expect(store.get(todo.id)?.artifacts).toEqual([
+			{
+				kind: "commit",
+				sha: "sha-cross-repo step",
+				label: "cross-repo step",
+				workspaceId: "member-ws",
+			},
+		]);
+
+		const done = store.add({ title: "partial" });
+		store.update(done.id, { status: "in_progress" });
+		await reconcileChangeArtifacts(
+			store,
+			root,
+			SESSION,
+			async () => [],
+			undefined,
+			() => null,
+			true,
+			undefined,
+			"member-ws",
+		);
+		store.update(done.id, { status: "done" });
+		await reconcileChangeArtifacts(
+			store,
+			root,
+			SESSION,
+			async () => ["kept.ts"],
+			() => null,
+			() => null,
+			true,
+			undefined,
+			"member-ws",
+		);
+		expect(store.get(done.id)?.artifacts).toEqual([
+			{ kind: "change", path: "kept.ts", workspaceId: "member-ws" },
+		]);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+		rmSync(member, { recursive: true, force: true });
+	}
+});
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 	let resolve!: (value: T) => void;
 	const promise = new Promise<T>((done) => {

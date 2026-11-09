@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PiEvent, TurnChangeSet } from "@thinkrail/contracts";
@@ -211,6 +219,59 @@ test.each([
 	expect(turns).toHaveLength(1);
 	expect(turns[0]?.changes.map((change) => change.path)).toEqual(["feature.ts"]);
 	expect(published).toEqual(turns);
+});
+
+test("an Issue session records one turn per changed member workspace", async () => {
+	const published: TurnChangeSet[] = [];
+	setTurnPublisher((turn) => published.push(turn));
+	const auxiliary = join(dataDir, "auxiliary");
+	mkdirSync(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(auxiliary, "config", "user.email", "t@thinkrail.test");
+	git(auxiliary, "config", "user.name", "test");
+	git(auxiliary, "config", "commit.gpgsign", "false");
+	writeFileSync(join(auxiliary, "README.md"), "# auxiliary\n");
+	git(auxiliary, "add", "-A");
+	git(auxiliary, "commit", "-m", "init");
+	writeFileSync(
+		join(dataDir, "projects.json"),
+		JSON.stringify([
+			{ id: "p1", name: "repo", path: repo, slug: "repo", lastOpened: 1 },
+			{ id: "p2", name: "auxiliary", path: auxiliary, slug: "auxiliary", lastOpened: 1 },
+		]),
+	);
+	const workspaces = JSON.parse(readFileSync(join(dataDir, "workspaces.json"), "utf8"));
+	writeFileSync(
+		join(dataDir, "workspaces.json"),
+		JSON.stringify([
+			...workspaces,
+			{
+				id: "w2",
+				projectId: "p2",
+				name: "w2",
+				branch: "main",
+				worktreePath: auxiliary,
+				baseBranch: "main",
+				createdAt: 1,
+			},
+		]),
+	);
+	const tracker = new TurnTracker(resolve, Date.now, undefined, () => [
+		{ workspaceId: "w2", worktreePath: auxiliary },
+	]);
+	await tracker.observe("s1", start);
+	writeFileSync(join(repo, "feature.ts"), "export const feature = true;\n");
+	writeFileSync(join(auxiliary, "lib.ts"), "export const lib = true;\n");
+	await tracker.observe("s1", settle);
+
+	expect(listTurns("w1").map((turn) => turn.changes.map((change) => change.path))).toEqual([
+		["feature.ts"],
+	]);
+	expect(listTurns("w2").map((turn) => turn.changes.map((change) => change.path))).toEqual([
+		["lib.ts"],
+	]);
+	expect(published.map((turn) => turn.workspaceId).sort()).toEqual(["w1", "w2"]);
+	expect(published.every((turn) => turn.sessionId === "s1")).toBe(true);
 });
 
 test("a workspace removed while its run is settling records and publishes nothing", async () => {

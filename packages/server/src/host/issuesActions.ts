@@ -23,6 +23,7 @@ import {
 	type ApprovalResult,
 	createIssueWorkflow,
 	createIssueWorkspaceCoordinator,
+	type IssueRepositoryContext,
 	type IssuesService,
 	type WorkflowRemote,
 	type WorkspaceHandle,
@@ -40,6 +41,8 @@ import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 type Action =
+	| "designContexts"
+	| "implementationContexts"
 	| "repositories"
 	| "setRepositories"
 	| "beginDesign"
@@ -67,6 +70,8 @@ type ParsedAction =
 	| { action: "beginDesign" | "beginImplementation"; args: IssueSessionStartupTarget }
 	| {
 			action:
+				| "designContexts"
+				| "implementationContexts"
 				| "repositories"
 				| "approveDesign"
 				| "approveImplementation"
@@ -133,6 +138,10 @@ export function createIssuesActions(
 	sessions: IssueActionSessions = {},
 	agentSessions?: IssueAgentSessionHost,
 ) {
+	function run(
+		action: "designContexts" | "implementationContexts",
+		input: unknown,
+	): Promise<IssueRepositoryContext[]>;
 	function run(
 		action: "repositories" | "setRepositories",
 		input: unknown,
@@ -321,7 +330,7 @@ export function createIssuesActions(
 					defaultWorkspace: (id) =>
 						checked(async () => {
 							const rows = await checked(() => listWorkspaces(id, { includeDiffStats: false }));
-							const ws = rows.find((w) => w.projectId === projectId && w.kind === "default");
+							const ws = rows.find((w) => w.projectId === id && w.kind === "default");
 							if (!ws) stop();
 							return ws;
 						}),
@@ -364,12 +373,15 @@ export function createIssuesActions(
 						if (!agentSessions) stop();
 						// Read all context before the coordinator can create a worktree or session.
 						preparedPrompt = await checked(() =>
-							agentSessions.prepare({
-								projectId,
-								reference,
-								stage,
-								locale: startup.locale,
-							}),
+							agentSessions.prepare(
+								{
+									projectId,
+									reference,
+									stage,
+									locale: startup.locale,
+								},
+								[],
+							),
 						);
 					}
 					const result = await checked(() =>
@@ -378,12 +390,33 @@ export function createIssuesActions(
 							: coordinator.implementation(reference),
 					);
 					if (startupPrompt !== undefined) {
-						if (!agentSessions) stop();
+						if (!agentSessions || !startup) stop();
+						const repositories = await checked(() => coordinator.contexts(reference, kind));
+						startupPrompt = await checked(() =>
+							agentSessions.prepare(
+								{ projectId, reference, stage, locale: startup.locale },
+								repositories.map((repository) => ({
+									...repository,
+									name: memberProject(repository.projectId).name,
+								})),
+							),
+						);
 						await checked(() => agentSessions.start(result.sessionId, startupPrompt));
 					}
 					return result;
 				}
 				switch (request.action) {
+					case "designContexts":
+					case "implementationContexts": {
+						const contexts = await coordinator.contexts(
+							reference,
+							request.action === "designContexts" ? "design" : "implementation",
+						);
+						return contexts.map((context) => ({
+							...context,
+							name: memberProject(context.projectId).name,
+						}));
+					}
 					case "repositories":
 						return coordinator.repositories(reference);
 					case "setRepositories":
@@ -424,6 +457,8 @@ export function createIssuesActions(
 		);
 	}
 	return {
+		designContexts: (input: unknown) => run("designContexts", input),
+		implementationContexts: (input: unknown) => run("implementationContexts", input),
 		repositories: (input: unknown) => run("repositories", input),
 		setRepositories: (input: unknown) => run("setRepositories", input),
 		beginDesign: (input: unknown) => run("beginDesign", input),

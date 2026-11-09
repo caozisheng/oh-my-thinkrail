@@ -337,6 +337,46 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	return {
+		contexts(reference: IssueReference, stage: "design" | "implementation") {
+			return run(reference, async (_key, record) => {
+				const ids = [projectId, ...(record.repositoryProjectIds ?? [])];
+				return Promise.all(
+					ids.map(async (id) => {
+						let ws: WorkspaceHandle;
+						if (stage === "design") {
+							ws = await options.defaultWorkspace(id);
+							if (
+								ws.projectId !== id ||
+								ws.kind !== "default" ||
+								!samePath(ws.worktreePath, await projectRoot(id))
+							)
+								stop();
+						} else {
+							const ownership =
+								id === projectId
+									? record.implementation
+									: record.members?.find((member) => member.projectId === id)?.ownership;
+							if (ownership?.state !== "completed") stop();
+							const name =
+								id === projectId
+									? `issue-${reference.number}`
+									: `issue-${reference.number}-${createHash("sha256").update(keyFor(projectId, reference)).digest("hex").slice(0, 16)}`;
+							ws = await verifyImplementation(
+								ownership,
+								join(await projectRoot(id), ".worktrees", name),
+								id,
+							);
+						}
+						return {
+							projectId: id,
+							workspaceId: ws.id,
+							path: ws.worktreePath,
+							role: id === projectId ? ("primary" as const) : ("associated" as const),
+						};
+					}),
+				);
+			});
+		},
 		repositories(reference: IssueReference) {
 			return run(reference, async (_key, record) => ({
 				projectIds: [...(record.repositoryProjectIds ?? [])],

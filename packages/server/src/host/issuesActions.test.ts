@@ -52,8 +52,17 @@ test("host prepares selected source repositories before starting one Issue sessi
 		listWorkspaceRecords("api")[0]?.worktreePath.startsWith(join(auxiliary, ".worktrees")),
 	).toBe(true);
 	expect(f.prompts).toHaveLength(1);
+	expect(f.prompts[0]?.prompt).toContain(
+		listWorkspaceRecords("api")[0]?.worktreePath.replaceAll("\\", "\\\\") ?? "missing",
+	);
 	expect(await f.host.beginImplementation({ ...f.target, locale: "en" })).toEqual(launch);
 	expect(await f.host.repositories(f.target)).toEqual({ projectIds: ["api"], locked: true });
+	const refreshed = await f.host.agentSessions.context(launch.sessionId);
+	expect(refreshed).toContain('"projectId":"api"');
+	expect(refreshed).toContain('"role":"associated"');
+	expect(refreshed).toContain(
+		listWorkspaceRecords("api")[0]?.worktreePath.replaceAll("\\", "\\\\") ?? "missing",
+	);
 });
 
 function fixture(provider: "gitlab" | "github" = "gitlab") {

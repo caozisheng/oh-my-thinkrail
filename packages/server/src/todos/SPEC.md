@@ -66,6 +66,13 @@ changed-path set + the current `HEAD` sha, captured through the git module's del
 `gitUncommittedPaths` leaf before the tool-end publisher returns, then **persisted** in a host-owned sidecar next to the todos JSON
 (`.thinkrail/context/todos/<sessionId>.baselines.json`, read-modify-write like the store) — so a host
 restart mid-item changes nothing; `head` is the range base for **in-window commit adoption** (below).
+A session bound to an Issue with associated repositories is attached across them too: the host installs
+`setSessionMemberWorkspaces`, and each member workspace gets its own window under the baseline key
+`<todoId>::<workspaceId>`, its own commit and its own `workspaceId`-tagged artifacts. Unattributed
+change detection, orphan pruning and the sole-window rule all stay scoped to one workspace, so the same
+relative path or the same sha in two repositories is never confused. Repository commits are not atomic:
+A failing or unavailable member records its own failure (path-list fallback) while the others keep
+their saved outcome — nothing is rolled back and the step's status says nothing about commit success.
 A window opening while **another chat** already has one records `shared: true` and marks that other
 window shared too (`markOtherSessionWindowsShared`) — the flag is **sticky**, because "was this window
 exclusive for its whole life?" is what the gate needs and can't be re-derived once the other closed.

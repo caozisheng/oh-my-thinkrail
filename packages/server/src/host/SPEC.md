@@ -1015,6 +1015,12 @@ projects. Launch pins their source paths and rechecks availability/trust around 
 Workspace lookup spans only the primary plus explicitly selected source projects, retaining each
 member's project identity. `projectPath` resolves the requested member rather than the primary.
 
+Issue startup and bound context reads obtain stage-specific repository projections through the same
+coordinator: design uses source Default workspaces, implementation verifies fixed owned members.
+Initial provider-context preflight precedes all preparation; final startup context is read again after
+worktrees are ready, with their actual paths. Context resolution is supplied explicitly inside a launch
+fence to avoid recursively acquiring it. Bound `issue_context` refreshes via a new fenced lookup.
+
 Workspace ports use project-constrained `listWorkspaceRecords`, authoritative `listGitWorktrees`,
 exact-branch creation and `listWorkspaces({includeDiffStats:false})` for Default. Design launches create/reuse Default sessions without worktrees and use bound Issue startup. Implementation launches use the
 coordinator's ownership ports without a workflow readiness check or design receipt. The recorded

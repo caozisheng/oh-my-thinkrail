@@ -58,6 +58,13 @@ pi's `turn_*` (one assistant message): a receipt per message would fragment one 
   impossible for the first tool call; a blocking snapshot would delay every run start on large repos.
 - **Receipts belong to the captured workspace, not a live session.** Capture the workspace id and
   worktree path at `agent_start`; a session detached during settlement must not lose its receipt.
+- **One Issue session, one snapshot per repository.** A bound Issue session may edit associated source
+  repositories. The tracker takes an injected member lookup and snapshots the session's own workspace
+  plus each member, recording one `TurnChangeSet` per changed workspace under that workspace's id —
+  identity is workspace id plus repo-relative path, so identical paths never collide. Base snapshots
+  for the primary start synchronously at `agent_start` (an asynchronous member lookup may add its own
+  afterwards); every head is captured at `agent_settled`. A failed or stopped member contributes
+  nothing while the others still record.
   Independently check the workspace registry immediately before record/publish, so workspace removal
   still cannot recreate its entry in `turns.json` (`forgetWorkspaceTurns` only deletes existing records).
   `workspace.turns` likewise rejects an unknown workspace.

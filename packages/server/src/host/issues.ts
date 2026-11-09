@@ -232,14 +232,47 @@ export function createIssuesHost(
 		status: options.sessions?.status ?? sessionReuseStatus,
 		start:
 			options.start ?? ((id, _workspaceId, _cwd, prompt) => startInitialSessionPrompt(id, prompt)),
+		repositories: (target) =>
+			target.stage === "design"
+				? actions.designContexts({ projectId: target.projectId, reference: target.reference })
+				: actions.implementationContexts({
+						projectId: target.projectId,
+						reference: target.reference,
+					}),
 		locale: () => {
 			const locale = getConfig().locale;
 			return locale === "system" ? Intl.DateTimeFormat().resolvedOptions().locale : locale;
 		},
 	});
+	const actions = createIssuesActions(service, root, options.sessions, agentSessions);
+	/**
+	 * The other source repositories this bound Issue session may edit. Design reads their Default
+	 * checkouts, implementation their fixed Issue worktrees; the primary is resolved separately by the
+	 * caller. An unbound session, a fenced launch or any reconciliation failure simply yields none.
+	 */
+	async function sessionMemberWorkspaces(
+		sessionId: string,
+	): Promise<{ workspaceId: string; worktreePath: string }[]> {
+		if (!store) return [];
+		try {
+			const association = await store.get(sessionId);
+			if (!association) return [];
+			const target = { projectId: association.projectId, reference: association.reference };
+			const contexts =
+				association.stage === "design"
+					? await actions.designContexts(target)
+					: await actions.implementationContexts(target);
+			return contexts
+				.filter((context) => context.role === "associated")
+				.map((context) => ({ workspaceId: context.workspaceId, worktreePath: context.path }));
+		} catch {
+			return [];
+		}
+	}
 	return {
 		agentSessions,
-		...createIssuesActions(service, root, options.sessions, agentSessions),
+		sessionMemberWorkspaces,
+		...actions,
 		async connection(params: unknown) {
 			const { projectId } = request(params);
 			project(projectId, false);

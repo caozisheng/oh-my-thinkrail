@@ -126,6 +126,7 @@ function sanitizeArtifacts(raw: unknown): TodoArtifact[] | undefined {
 		if (typeof o.sha === "string" && o.sha) artifact.sha = o.sha;
 		if (typeof o.label === "string" && o.label) artifact.label = o.label;
 		if (typeof o.specId === "string" && o.specId) artifact.specId = o.specId;
+		if (typeof o.workspaceId === "string" && o.workspaceId) artifact.workspaceId = o.workspaceId;
 		if (artifact.kind === "commit" ? !artifact.sha : !artifact.path) continue;
 		out.push(artifact);
 	}
