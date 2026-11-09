@@ -21,7 +21,9 @@ channel fan-out, and the process-boot wrapper both launchers share.
   **`GET /files/<workspaceId>/<relpath>`** route streaming a worktree file's raw bytes from `Bun.file`
   after classifying only its bounded 8 KiB head (via `fs`'s `resolveWorktreeFile` — path-contained; bad
   id/escape/miss → 404; `Cache-Control: no-store`, because the worktree moves under the URL) so the
-  markdown viewer's relative `<img>`s resolve, the sibling
+  markdown viewer's relative `<img>`s resolve — an optional `?maxBytes=N` (the palette preview's cap)
+  answers 400 for a bad cap, 413 before any byte when the file is larger, and otherwise exactly the
+  `Content-Length` it announced, so a file growing meanwhile adds nothing — the sibling
   **`GET /blob/<workspaceId>/<oid>/<relpath>`** route serving that path's bytes **at one commit or tree**
   (`git.readBlobStreamAtAsync` behind a 40/64-hex `oid` — a diff range's `resolvedOriginalOid`, so the URL
   names immutable content and answers `Cache-Control: public, max-age=31536000, immutable`; the Git
@@ -50,7 +52,13 @@ channel fan-out, and the process-boot wrapper both launchers share.
   (checked against `Content-Length` before reading and again while streaming), 409 `too-many`, 422
   `unsupported-collection`/`invalid-font`, or 500 `unreadable`; any other method is 405 with
   `Allow: GET, PUT`, the `fonts` poller's `fonts.changed` nudge reaching
-  only sockets whose `?protocol=` is at least `FONTS_PROTOCOL_VERSION`, static serving with
+  only sockets whose `?protocol=` is at least `FONTS_PROTOCOL_VERSION`; the **`/speech` socket**
+  (`SPEECH_SOCKET_ROUTE`, refused below `SPEECH_PROTOCOL_VERSION`), which shares the one `Bun.serve`
+  websocket handler but is tagged at upgrade. Its `open` / `message` / `close` go straight to that
+  socket's [[submodule-server-speech]] relay, so it never joins the `clientKey → socket` registry, the
+  replay cache or any channel: binary 20 ms audio frames would otherwise be hashed and retained
+  per request. `host` publishes
+  `speech.changed` whole to v107 sockets, which also get `ServerWelcome.speech`; static serving with
   `index.html` fallback, the `server.welcome` push, the **`?client=` page identity** read off the socket URL at
   upgrade (threaded to every handler as `RequestContext`; it addresses terminal output but no longer *owns*
   PTYs — see [[submodule-server-terminal]]) plus the `clientKey → socket` registry and the **replay-namespace
@@ -655,6 +663,14 @@ channel fan-out, and the process-boot wrapper both launchers share.
   writes converge every client through the existing `pi.event`/`session_info_changed` channel and the
   titled `session.state` record (see Session-state composition), with `session.list` repair; no new push
   channel exists.
+
+- **Search composition (`search.ts`):** `search.query` / `search.preview` go to one lazily created
+  `SearchService` ([[submodule-server-search]]) fed with `listProjects`, `listAllWorkspaceRecords`, the
+  history index's `sessions()`, `specSnapshot` and `listStoredPlans`, plus `listWorkspaces` (without diff
+  stats) to provision a project's missing Default record and `ensureWatch(id, { prewarm: true })` to watch
+  the root a query resolved; a query carries no client state. The `workspace.fsChanged` publisher also
+  calls `invalidateRoot(worktreePath)` so a watched workspace's file list and spec snapshot refresh on the
+  next keystroke. `fs.readFile` forwards `maxBytes` to `fs`.
 
 `RunningServer.startAttributionClaim()` is the explicit launcher-readiness signal and rechecks the saved
 enabled/confirmed choice before entering analytics attribution.

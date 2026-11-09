@@ -138,7 +138,7 @@ test("pending summary is never replayed after a send failure", async () => {
 	await expect(
 		store.recordSummary("session", "op", "body", async () => {
 			calls++;
-			throw Error("offline");
+			throw new Error("offline");
 		}),
 	).rejects.toThrow("offline");
 	await expect(
@@ -361,7 +361,7 @@ test("recovery refuses default, mismatch, duplicate and reconcile absence withou
 	).rejects.toThrow();
 	await expect(
 		store.recordSummary("session", "op", "body", send, "reconcile", async () => {
-			throw Error("read failed");
+			throw new Error("read failed");
 		}),
 	).rejects.toThrow();
 	expect(sends).toBe(0);
@@ -375,7 +375,7 @@ test("human-confirmed legacy unpublished retry is durably fenced across concurre
 	const send = async () => {
 		sends++;
 		await Bun.sleep(5);
-		throw Error("uncertain retry");
+		throw new Error("uncertain retry");
 	};
 	await Promise.allSettled(
 		[store, createIssueSessionStore(root)].map((s) =>
@@ -438,7 +438,7 @@ test("concurrent reconciliation accepts only identical receipts and never reuses
 				"op",
 				"body",
 				async () => {
-					throw Error("must not send");
+					throw new Error("must not send");
 				},
 				"reconcile",
 				async () => {
@@ -451,7 +451,7 @@ test("concurrent reconciliation accepts only identical receipts and never reuses
 	expect(results).toEqual([21, 21]);
 	await expect(
 		store.recordSummary("session", "next", "body", async () => {
-			throw Error("uncertain");
+			throw new Error("uncertain");
 		}),
 	).rejects.toThrow();
 	await expect(
