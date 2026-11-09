@@ -75,7 +75,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		!shape(
 			value,
 			["projectId", "reference"],
-			["design", "implementation", "sessionPending", "repositoryProjectIds"],
+			["design", "implementation", "sessionPending", "repositoryProjectIds", "members"],
 		) ||
 		!id(value.projectId) ||
 		keyFor(value.projectId, reference(value.reference)) !== expected
@@ -90,6 +90,34 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		})
 	)
 		stop();
+	if (Object.hasOwn(value, "members")) {
+		if (
+			!Array.isArray(value.members) ||
+			!Array.isArray(value.repositoryProjectIds) ||
+			value.members.length !== value.repositoryProjectIds.length
+		)
+			stop();
+		for (const [index, member] of value.members.entries()) {
+			if (
+				!object(member) ||
+				!shape(member, ["projectId"], ["ownership"]) ||
+				member.projectId !== value.repositoryProjectIds[index] ||
+				!id(member.projectId)
+			)
+				stop();
+			if (Object.hasOwn(member, "ownership")) {
+				if (!object(member.ownership) || Object.hasOwn(member.ownership, "session")) stop();
+				record(
+					{
+						projectId: member.projectId,
+						reference: value.reference,
+						implementation: member.ownership,
+					},
+					keyFor(member.projectId, reference(value.reference)),
+				);
+			}
+		}
+	}
 	if (Object.hasOwn(value, "design")) {
 		const d = value.design;
 		if (

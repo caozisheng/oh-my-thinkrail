@@ -935,6 +935,9 @@ reconciliation rather than replaying uncertain work. Retained callback ports can
 Records use the full local-project/provider/instance/remote-project/IID key, checked exactly on every
 load/save. Bounded exact shapes validate ownership, design associations, pending/completed worktrees,
 sessions and pending session creation; unknown/torn records halt with a static reconciliation error.
+Optional repository selections and auxiliary ownership members follow [[submodule-server-issues]];
+the adapter validates their ordered project identity and each member's pending/completed ownership,
+rejecting auxiliary session fields. Old records omit both fields without a write-time migration.
 Records carry no design or implementation version: a completed association holds only
 `{workspaceId, worktreePath, branch, session: {id}}` and a pending session creation only
 `{stage, workspaceId}`, so re-entry reuses the recorded session and compares no version.
@@ -1005,6 +1008,12 @@ configured dir/dataDir, rejecting symlink/junction directories and ancestors. Du
 remain canonical per remote reference. The workspace adapter's cross-process `withLaunch` fence
 covers the entire action, including workflow work, with one coordinator constructed inside its
 callback; failures retain uncertainty for explicit reconciliation, never automatic retries.
+
+Server-only `repositories` / `setRepositories` actions use the same full-identity launch fence and
+strict selection DTOs; no wire registration is implied. Saving currently requires open trusted member
+projects. Launch pins their source paths and rechecks availability/trust around every awaited port.
+Workspace lookup spans only the primary plus explicitly selected source projects, retaining each
+member's project identity. `projectPath` resolves the requested member rather than the primary.
 
 Workspace ports use project-constrained `listWorkspaceRecords`, authoritative `listGitWorktrees`,
 exact-branch creation and `listWorkspaces({includeDiffStats:false})` for Default. Design launches create/reuse Default sessions without worktrees and use bound Issue startup. Implementation launches use the

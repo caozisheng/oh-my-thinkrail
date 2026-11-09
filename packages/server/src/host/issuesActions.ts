@@ -4,11 +4,14 @@ import {
 	type IssueDesignPublicationInput,
 	type IssueImplementationTarget,
 	type IssueReference,
+	type IssueRepositories,
+	type IssueRepositoriesInput,
 	type IssueSessionLaunch,
 	type IssueSessionStartupTarget,
 	type IssueTarget,
 	isIssueDesignPublicationInput,
 	isIssueImplementationTarget,
+	isIssueRepositoriesInput,
 	isIssueSessionStartupTarget,
 	isIssueTarget,
 } from "@thinkrail/contracts";
@@ -37,6 +40,8 @@ import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 type Action =
+	| "repositories"
+	| "setRepositories"
 	| "beginDesign"
 	| "beginImplementation"
 	| "approveDesign"
@@ -58,9 +63,11 @@ function invalid(): never {
 	throw new CodedError("RANGE_INVALID", "Invalid Issue request.");
 }
 type ParsedAction =
+	| { action: "setRepositories"; args: IssueRepositoriesInput }
 	| { action: "beginDesign" | "beginImplementation"; args: IssueSessionStartupTarget }
 	| {
 			action:
+				| "repositories"
 				| "approveDesign"
 				| "approveImplementation"
 				| "launchDesign"
@@ -80,6 +87,9 @@ function snapshot<T extends IssueTarget>(value: T): T {
 }
 function parse(value: unknown, action: Action): ParsedAction {
 	switch (action) {
+		case "setRepositories":
+			if (!isIssueRepositoriesInput(value)) invalid();
+			return { action, args: { ...snapshot(value), projectIds: [...value.projectIds] } };
 		case "beginDesign":
 		case "beginImplementation":
 			if (!isIssueSessionStartupTarget(value)) invalid();
@@ -124,6 +134,10 @@ export function createIssuesActions(
 	agentSessions?: IssueAgentSessionHost,
 ) {
 	function run(
+		action: "repositories" | "setRepositories",
+		input: unknown,
+	): Promise<IssueRepositories>;
+	function run(
 		action:
 			| "beginDesign"
 			| "beginImplementation"
@@ -152,6 +166,7 @@ export function createIssuesActions(
 		const remote = issues.remoteFor(projectId, reference);
 		// Design/implementation startup uses only the neutral read port. Resolve the GitLab-only
 		// workflow capability only if a workflow operation actually needs it.
+		const selectedProjects = new Map<string, string>();
 		let pinned: WorkspaceHandle | undefined;
 		let startupPrompt: string | undefined;
 		const startup =
@@ -161,6 +176,10 @@ export function createIssuesActions(
 		const stage =
 			action === "launchDesign" || action === "beginDesign" ? "design" : "implementation";
 		function guard() {
+			for (const [id, path] of selectedProjects) {
+				const member = trusted(id);
+				if (member.closed || member.path !== path) stop();
+			}
 			if (
 				trusted(projectId).path !== initialProject.path ||
 				issues.remoteFor(projectId, reference) !== remote
@@ -212,13 +231,38 @@ export function createIssuesActions(
 					updateIssue: (...a) => checked(() => workflowRemote().updateIssue(...a)),
 					addNote: (...a) => checked(() => remote.addNote(...a)),
 				};
+				const ownershipKey = JSON.stringify([
+					projectId,
+					reference.provider,
+					reference.instanceUrl,
+					reference.projectId,
+					reference.number,
+				]);
+				const existingOwnership = await checked(() => ports.load(ownershipKey));
+				const selectedIds =
+					request.action === "setRepositories"
+						? request.args.projectIds
+						: (existingOwnership?.repositoryProjectIds ?? []);
+				for (const id of selectedIds) {
+					const member = trusted(id);
+					if (member.closed) stop();
+					selectedProjects.set(id, member.path);
+				}
+				function memberProject(id: string) {
+					if (id === projectId) return trusted(id);
+					const member = trusted(id);
+					if (member.closed || selectedProjects.get(id) !== member.path) stop();
+					return member;
+				}
 				function find(query: { workspaceId: string } | { worktreePath: string }) {
 					return (
-						listWorkspaceRecords(projectId).find((w) =>
-							"workspaceId" in query
-								? w.id === query.workspaceId
-								: w.worktreePath === query.worktreePath,
-						) ?? null
+						[projectId, ...selectedProjects.keys()]
+							.flatMap((id) => listWorkspaceRecords(id))
+							.find((w) =>
+								"workspaceId" in query
+									? w.id === query.workspaceId
+									: w.worktreePath === query.worktreePath,
+							) ?? null
 					);
 				}
 				async function currentCommit(ref: IssueReference) {
@@ -259,7 +303,7 @@ export function createIssuesActions(
 				let sessionTitle: string | undefined;
 				const coordinator = createIssueWorkspaceCoordinator({
 					projectId,
-					projectPath: () => checked(() => trusted(projectId).path),
+					projectPath: (id) => checked(() => memberProject(id).path),
 					load: (key) => checked(() => ports.load(key)),
 					save: (key, row) => checked(() => ports.save(key, row)),
 					findWorkspace: (query) => checked(() => find(query)),
@@ -340,6 +384,10 @@ export function createIssuesActions(
 					return result;
 				}
 				switch (request.action) {
+					case "repositories":
+						return coordinator.repositories(reference);
+					case "setRepositories":
+						return coordinator.setRepositories(reference, request.args.projectIds);
 					case "approveDesign":
 						return checked(() => workflow.approveStage(reference, "design"));
 					case "approveImplementation":
@@ -376,6 +424,8 @@ export function createIssuesActions(
 		);
 	}
 	return {
+		repositories: (input: unknown) => run("repositories", input),
+		setRepositories: (input: unknown) => run("setRepositories", input),
 		beginDesign: (input: unknown) => run("beginDesign", input),
 		beginImplementation: (input: unknown) => run("beginImplementation", input),
 		approveDesign: (input: unknown) => run("approveDesign", input),

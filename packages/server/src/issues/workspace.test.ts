@@ -131,6 +131,66 @@ test("repository selection defaults empty, persists by full identity and locks a
 	await expect(f.coordinator().setRepositories(ref, ["api"])).rejects.toThrow();
 });
 
+test("all repository worktrees must be ready before the sole primary session starts", async () => {
+	const f = await fixture();
+	const apiRoot = join(f.root, "api");
+	await mkdir(apiRoot);
+	f.options.projectPath = (id) => (id === "api" ? apiRoot : f.root);
+	f.options.listGitWorktrees = (id) =>
+		f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	await f.coordinator().setRepositories(ref, ["api"]);
+	const launch = await f.coordinator().implementation(ref);
+	expect(f.workspaces).toHaveLength(2);
+	const api = f.workspaces.find((ws) => ws.projectId === "api");
+	expect(api?.worktreePath).toMatch(/issue-42-[a-f0-9]{16}$/);
+	expect(api?.worktreePath.startsWith(join(apiRoot, ".worktrees"))).toBe(true);
+	expect(f.events.filter((event) => event.startsWith("session:"))).toEqual([
+		`session:${launch.workspaceId}`,
+	]);
+	expect(await f.coordinator().implementation(ref)).toEqual(launch);
+	expect(f.workspaces).toHaveLength(2);
+	await rm(required(api).worktreePath, { recursive: true });
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	expect(f.workspaces).toHaveLength(2);
+});
+
+test("partial member preparation retains successes and resumes without duplicate creation", async () => {
+	const f = await fixture();
+	for (const name of ["api", "web"]) await mkdir(join(f.root, name));
+	f.options.projectPath = (id) => (id === "local" ? f.root : join(f.root, id));
+	f.options.listGitWorktrees = (id) =>
+		f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	const create = f.options.createWorkspaceAtPath;
+	let fail = true;
+	f.options.createWorkspaceAtPath = (...args) => {
+		if (args[0] === "web" && fail) throw new Error("fixture failure");
+		return create(...args);
+	};
+	await f.coordinator().setRepositories(ref, ["api", "web"]);
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["api"]);
+	expect(f.sessions.size).toBe(0);
+	expect((await f.coordinator().repositories(ref)).locked).toBe(true);
+	fail = false;
+	await f.coordinator().implementation(ref);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["api", "web", "local"]);
+	expect(f.sessions.size).toBe(1);
+});
+
+test("preparation membership cannot be appended to legacy implementation ownership", async () => {
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	const row = required([...f.records.values()][0]);
+	row.repositoryProjectIds = ["api"];
+	f.records.set(required([...f.records.keys()][0]), row);
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	expect(f.workspaces).toHaveLength(1);
+});
+
 test("session reconciliation retains the repository selection", async () => {
 	const f = await fixture();
 	await f.coordinator().setRepositories(ref, ["api"]);

@@ -24,6 +24,38 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
+test("host prepares selected source repositories before starting one Issue session", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	await f.host.connect({ projectId: "one", input: f.input });
+	await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+	const launch = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	expect(listWorkspaceRecords("api")).toHaveLength(1);
+	expect(
+		listWorkspaceRecords("api")[0]?.worktreePath.startsWith(join(auxiliary, ".worktrees")),
+	).toBe(true);
+	expect(f.prompts).toHaveLength(1);
+	expect(await f.host.beginImplementation({ ...f.target, locale: "en" })).toEqual(launch);
+	expect(await f.host.repositories(f.target)).toEqual({ projectIds: ["api"], locked: true });
+});
+
 function fixture(provider: "gitlab" | "github" = "gitlab") {
 	const dir = mkdtempSync(join(tmpdir(), "issue-actions-"));
 	dirs.push(dir);

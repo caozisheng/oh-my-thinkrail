@@ -222,7 +222,13 @@ Repository selection is stored on the provider-qualified workspace ownership rec
 contains at most 32 distinct local project ids excluding the primary, and becomes immutable as soon
 as implementation preparation reserves ownership, including a failed preparation. Host composition
 validates that selected projects are open and available before saving or launching; selection grants
-no resource trust. Recovery preserves the selection together with both stage records.
+no resource trust. Recovery preserves the selection together with both stage records. Optional `members` freezes the
+ordered auxiliary project ids at preparation start and stores each pending/completed ownership
+separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
+number and a stable digest of the full primary binding; reserved branches remain unpredictable.
+Every auxiliary member is verified before a primary session may be created or reused. Missing completed
+members stop instead of being recreated; partial preparation retains successful worktrees. Host wiring
+must supply project-aware lookup ports before exposing this coordinator capability to clients.
 
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second
 store or runtime. It reserves a provider-qualified ownership record before creating exactly

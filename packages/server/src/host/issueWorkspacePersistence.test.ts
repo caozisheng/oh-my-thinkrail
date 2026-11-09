@@ -50,6 +50,35 @@ test("repository selections survive restart and reject duplicate, primary and fo
 	}
 });
 
+test("auxiliary ownership round trips and rejects member identity drift", async () => {
+	const f = setup();
+	const selected = {
+		...record,
+		repositoryProjectIds: ["api"],
+		members: [
+			{
+				projectId: "api",
+				ownership: {
+					state: "completed" as const,
+					workspaceId: "api-ws",
+					worktreePath: join(f.dir, "api-worktree"),
+					branch: "issue-3-reserved",
+				},
+			},
+		],
+	};
+	await f.store.withLaunch("local", ref, (p) => p.save(key(), selected));
+	expect(
+		await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(selected);
+	const other = setup();
+	await expect(
+		other.store.withLaunch("local", ref, (p) =>
+			p.save(key(), { ...selected, repositoryProjectIds: ["web"] }),
+		),
+	).rejects.toMatchObject(failure);
+});
+
 test("successful callbacks persist snapshots, release fences and disable retained ports", async () => {
 	const { dir, store } = setup();
 	let retained: Parameters<Parameters<typeof store.withLaunch>[2]>[0] | undefined;
