@@ -514,6 +514,26 @@ for (const boundary of ["before release", "after unlink"] as const)
 		expect(f.created).toBe(1);
 	});
 
+for (const action of ["approveDesign", "publishDesign"] as const)
+	test(`${action} failure retains its uncertainty lock`, async () => {
+		const f = fixture();
+		await f.host.connect({ projectId: "one", input: f.input });
+		f.onRead = () => {
+			throw new Error("injected workflow read failure");
+		};
+		const invoke = () =>
+			action === "approveDesign"
+				? f.host.approveDesign(f.target)
+				: f.host.publishDesign({ ...f.target, expectedDescription: "old", newDescription: "new" });
+		await expect(invoke()).rejects.toThrow();
+		f.onRead = undefined;
+		expect(
+			readdirSync(join(f.dir, "issue-workspaces")).filter((name) => name.endsWith(".lock")),
+		).toHaveLength(1);
+		await expect(invoke()).rejects.toThrow("reconciliation");
+		expect(f.prompts).toHaveLength(0);
+	});
+
 test("app approval writes the actor's remote label record and is idempotent", async () => {
 	const f = fixture();
 	await f.host.connect({ projectId: "one", input: f.input });
@@ -748,10 +768,11 @@ for (const stage of ["design", "implementation"] as const) {
 				branch: "main",
 				worktreePath: f.dir,
 				baseBranch: "main",
-				createdAt: 0,
 			},
 		]);
 		await f.host.connect({ projectId: "one", input: f.input });
+		if (stage === "implementation") await f.host.startImplementation(f.target);
+		const existing = f.created;
 		let resume!: () => void;
 		let finished!: () => void;
 		const held = new Promise<void>((resolve) => {
@@ -767,7 +788,7 @@ for (const stage of ["design", "implementation"] as const) {
 		const begin = stage === "design" ? f.host.beginDesign : f.host.beginImplementation;
 		try {
 			await expect(begin({ ...f.target, locale: "en" })).rejects.toThrow();
-			expect(f.created).toBe(0);
+			expect(f.created).toBe(existing);
 			expect(
 				readdirSync(join(f.dir, "issue-workspaces")).some((name) => name.endsWith(".lock")),
 			).toBe(false);
@@ -779,7 +800,7 @@ for (const stage of ["design", "implementation"] as const) {
 		await late;
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(f.created).toBe(1);
-		expect(f.prompts).toHaveLength(1);
+		expect(f.prompts).toHaveLength(stage === "implementation" ? 0 : 1);
 	}, 60000);
 	test(`new ${stage} context failure precedes any workspace or session creation`, async () => {
 		const f = fixture();

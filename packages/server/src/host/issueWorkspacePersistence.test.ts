@@ -220,6 +220,28 @@ test("settled startup failures release only their own fence and preserve pending
 	expect(await store.withLaunch("local", ref, (ports) => ports.load(key()))).toEqual(pending);
 });
 
+test("startup validation and final guard failures release without deleting records", async () => {
+	for (const boundary of ["validation", "guard"] as const) {
+		const { dir, store } = setup();
+		await expect(
+			store.withLaunch(
+				"local",
+				ref,
+				async (ports) => {
+					await ports.save(key(), record);
+					if (boundary === "validation") await ports.save("foreign", record);
+				},
+				() => {
+					if (boundary === "guard") throw new Error("revoked");
+				},
+				"release-on-settle",
+			),
+		).rejects.toMatchObject(failure);
+		expect(readdirSync(dir).some((name) => name.endsWith(".lock"))).toBe(false);
+		expect(await store.withLaunch("local", ref, (ports) => ports.load(key()))).toEqual(record);
+	}
+});
+
 test("startup release failure reports its own error and retains the fence", async () => {
 	const { dir, store } = setup();
 	const spy = spyOn(fs, "unlinkSync").mockImplementation(() => {

@@ -1519,5 +1519,9 @@ provider configuration or token is accepted. The host starts the stage agent in 
 the browser only navigates the returned launch. Existing v104/v108 methods retain their shapes
 and floors and open sessions without the new automatic startup guarantee. No other Issues floor changes.
 
+`WsErrorCode.ISSUE_LAUNCH_BLOCKED` distinguishes an active or unverifiable prior launch fence;
+`ISSUE_LAUNCH_RELEASE_FAILED` reports an ended launch whose own fence could not be removed. Neither
+asserts that no resources or prompts were created. These additive error codes change no method or floor.
+
 `WsErrorCode.ISSUE_SUMMARY_RECOVERY_REQUIRED` distinguishes unresolved bound-summary publication
 from generic unavailability; it authorizes no retry and adds no wire method or protocol floor.
