@@ -47,8 +47,8 @@ test("the trigger is an icon-only button, not a labelled row control", () => {
 	expect(markup).not.toContain(">Linked repositories<");
 });
 
-test("the git-branch icon is outlined with no selection and filled once one is chosen", () => {
-	// The outlined and filled Remixicon glyphs differ; the filled one marks a live selection.
+test("the trigger shows the unlinked glyph with no selection and the linked one afterwards", () => {
+	// `RiLinkUnlink` means "nothing linked yet"; `RiLink` and the soft-primary tone mark a live selection.
 	expect(render(undefined)).toContain('data-variant="ghost"');
 	expect(render({ projectIds: [], locked: false })).toContain('data-variant="ghost"');
 	expect(render({ projectIds: ["api-local"], locked: false })).toContain(
