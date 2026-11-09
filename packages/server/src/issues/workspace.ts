@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
 	type IssueReference,
 	type IssueSessionLaunch,
 	isIssueReference,
+	isIssueRepositoriesInput,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 
@@ -30,6 +31,8 @@ interface CompletedWorkspace extends Omit<PendingWorkspace, "state"> {
 export interface IssueWorkspaceRecord {
 	projectId: string;
 	reference: IssueReference;
+	repositoryProjectIds?: string[];
+	members?: { projectId: string; ownership?: PendingWorkspace | CompletedWorkspace }[];
 	/** Durable uncertainty fence; only provable reconciliation of the recorded stage may clear it. */
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
@@ -154,10 +157,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		if (!pending) return record;
 		if (!options.boundSession) stop();
 		const sessionId = await options.boundSession(pending.stage, pending.workspaceId);
-		const recovered: IssueWorkspaceRecord = {
-			projectId: record.projectId,
-			reference: record.reference,
-		};
+		const { sessionPending: _pending, ...recovered } = record;
 		if (record.design) recovered.design = { ...record.design };
 		if (record.implementation) recovered.implementation = { ...record.implementation };
 		if (sessionId) {
@@ -177,8 +177,8 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return recovered;
 	}
 
-	async function projectRoot(): Promise<string> {
-		const path = await options.projectPath(projectId);
+	async function projectRoot(memberProjectId = projectId): Promise<string> {
+		const path = await options.projectPath(memberProjectId);
 		if (!isAbsolute(path)) stop();
 		return realpath(path);
 	}
@@ -195,10 +195,10 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return sessionId;
 	}
 
-	async function implementationPathState(path: string) {
+	async function implementationPathState(path: string, memberProjectId = projectId) {
 		await directoryAt(dirname(path)); // Refuse a symlink/junction before inspecting its child.
 		const occupied = await directoryAt(path);
-		const trees = (await options.listGitWorktrees(projectId)).filter((tree) =>
+		const trees = (await options.listGitWorktrees(memberProjectId)).filter((tree) =>
 			samePath(tree.path, path),
 		);
 		return { occupied, trees };
@@ -208,10 +208,11 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		ws: WorkspaceHandle | null,
 		ownership: PendingWorkspace | CompletedWorkspace,
 		path: string,
+		memberProjectId = projectId,
 	): WorkspaceHandle {
 		if (
 			!ws?.id ||
-			ws.projectId !== projectId ||
+			ws.projectId !== memberProjectId ||
 			ws.kind !== undefined ||
 			!samePath(ws.worktreePath, path) ||
 			ws.branch !== ownership.branch ||
@@ -224,8 +225,9 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	async function verifyImplementation(
 		ownership: PendingWorkspace | CompletedWorkspace,
 		path: string,
+		memberProjectId = projectId,
 	): Promise<WorkspaceHandle> {
-		const { occupied, trees } = await implementationPathState(path);
+		const { occupied, trees } = await implementationPathState(path, memberProjectId);
 		if (
 			ownership.worktreePath !== path ||
 			!ownership.branch ||
@@ -240,7 +242,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				? { workspaceId: ownership.workspaceId }
 				: { worktreePath: path },
 		);
-		return verifyWorkspace(ws, ownership, path);
+		return verifyWorkspace(ws, ownership, path, memberProjectId);
 	}
 
 	async function resolveImplementation(key: string, record: IssueWorkspaceRecord, path: string) {
@@ -282,7 +284,117 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return completed;
 	}
 
+	async function prepareMembers(key: string, record: IssueWorkspaceRecord) {
+		const selected = record.repositoryProjectIds ?? [];
+		if (!selected.length && !record.members) return record;
+		if (!record.members) {
+			if (record.implementation) stop();
+			record = { ...record, members: selected.map((projectId) => ({ projectId })) };
+			await options.save(key, record);
+		}
+		if (record.members?.map((member) => member.projectId).join("\n") !== selected.join("\n"))
+			stop();
+		const suffix = createHash("sha256").update(key).digest("hex").slice(0, 16);
+		for (const member of record.members ?? []) {
+			const path = join(
+				await projectRoot(member.projectId),
+				".worktrees",
+				`issue-${record.reference.number}-${suffix}`,
+			);
+			let ownership = member.ownership;
+			const state = await implementationPathState(path, member.projectId);
+			const registered = await options.findWorkspace({ worktreePath: path });
+			if (ownership?.state === "pending" && !state.occupied && !state.trees.length && !registered)
+				ownership = undefined;
+			if (ownership) {
+				const ws = await verifyImplementation(ownership, path, member.projectId);
+				member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
+			} else {
+				if (state.occupied || state.trees.length || registered) stop();
+				ownership = {
+					state: "pending",
+					worktreePath: path,
+					branch: `issue-${record.reference.number}-${randomUUID()}`,
+				};
+				member.ownership = ownership;
+				await options.save(key, record);
+				const ws = verifyWorkspace(
+					await options.createWorkspaceAtPath(
+						member.projectId,
+						path,
+						ownership.branch,
+						`issue-${record.reference.number}`,
+					),
+					ownership,
+					path,
+					member.projectId,
+				);
+				member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
+			}
+			await options.save(key, record);
+		}
+		return record;
+	}
+
 	return {
+		contexts(reference: IssueReference, stage: "design" | "implementation") {
+			return run(reference, async (_key, record) => {
+				const ids = [projectId, ...(record.repositoryProjectIds ?? [])];
+				return Promise.all(
+					ids.map(async (id) => {
+						let ws: WorkspaceHandle;
+						if (stage === "design") {
+							ws = await options.defaultWorkspace(id);
+							if (
+								ws.projectId !== id ||
+								ws.kind !== "default" ||
+								!samePath(ws.worktreePath, await projectRoot(id))
+							)
+								stop();
+						} else {
+							const ownership =
+								id === projectId
+									? record.implementation
+									: record.members?.find((member) => member.projectId === id)?.ownership;
+							if (ownership?.state !== "completed") stop();
+							const name =
+								id === projectId
+									? `issue-${reference.number}`
+									: `issue-${reference.number}-${createHash("sha256").update(keyFor(projectId, reference)).digest("hex").slice(0, 16)}`;
+							ws = await verifyImplementation(
+								ownership,
+								join(await projectRoot(id), ".worktrees", name),
+								id,
+							);
+						}
+						return {
+							projectId: id,
+							workspaceId: ws.id,
+							path: ws.worktreePath,
+							role: id === projectId ? ("primary" as const) : ("associated" as const),
+						};
+					}),
+				);
+			});
+		},
+		repositories(reference: IssueReference) {
+			return run(reference, async (_key, record) => ({
+				projectIds: [...(record.repositoryProjectIds ?? [])],
+				locked: record.implementation !== undefined || record.members !== undefined,
+			}));
+		},
+		setRepositories(reference: IssueReference, projectIds: string[]) {
+			return run(reference, async (key, record) => {
+				if (
+					record.implementation ||
+					record.members ||
+					!isIssueRepositoriesInput({ projectId, reference, projectIds })
+				)
+					stop();
+				await options.save(key, { ...record, repositoryProjectIds: [...projectIds] });
+				return { projectIds: [...projectIds], locked: false };
+			});
+		},
 		ownedImplementation(reference: IssueReference): Promise<WorkspaceHandle> {
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
@@ -325,8 +437,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(
 				reference,
 				async (key, record) => {
-					// The workflow start gate moves the issue to in-progress; the coordinator never trusts
-					// a caller-supplied stage or version and reuses the recorded session for every re-entry.
+					record = await prepareMembers(key, record);
 					const path = join(await projectRoot(), ".worktrees", `issue-${record.reference.number}`);
 					const ownership = await resolveImplementation(key, record, path);
 					const { workspaceId, session } = ownership;

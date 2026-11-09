@@ -231,6 +231,42 @@ export interface IssueTarget {
 	projectId: string;
 	reference: IssueReference;
 }
+export interface IssueRepositoriesInput extends IssueTarget {
+	projectIds: string[];
+}
+export interface IssueRepositories {
+	projectIds: string[];
+	locked: boolean;
+}
+export function isIssueRepositories(value: unknown): value is IssueRepositories {
+	return (
+		exact(value, ["projectIds", "locked"]) &&
+		localProjectIds(value.projectIds) &&
+		typeof value.locked === "boolean"
+	);
+}
+export function isIssueRepositoriesInput(value: unknown): value is IssueRepositoriesInput {
+	return (
+		exact(value, ["projectId", "reference", "projectIds"]) &&
+		actionTarget(value) &&
+		localProjectIds(value.projectIds) &&
+		!value.projectIds.includes(String(value.projectId))
+	);
+}
+function localProjectIds(value: unknown): value is string[] {
+	return (
+		Array.isArray(value) &&
+		value.length <= 32 &&
+		value.every(
+			(id) =>
+				typeof id === "string" &&
+				/^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$/.test(id) &&
+				id !== "." &&
+				id !== "..",
+		) &&
+		new Set(value).size === value.length
+	);
+}
 /** Effective client language for automatic stage startup (v109), never the system preference. */
 export interface IssueSessionStartupTarget extends IssueTarget {
 	locale: string;

@@ -1,6 +1,7 @@
 import type {
 	IssueConnectionInput,
 	IssueReference,
+	IssueRepositories,
 	IssueSessionLaunch,
 	IssueSummary,
 } from "@thinkrail/contracts";
@@ -16,6 +17,7 @@ import { availableLocales } from "../i18n";
 import { useAppStore } from "../store";
 import { getTransport } from "../transport";
 import type { IssuePreview } from "./IssueBody";
+import type { IssueRepositoriesView } from "./IssueRepositoriesControl";
 import { IssuesPanel } from "./IssuesPanel";
 import {
 	type ConnectResult,
@@ -36,6 +38,7 @@ import {
 	supportsIssueAuth,
 	supportsIssueGithub,
 	supportsIssueImplementation,
+	supportsIssueRepositories,
 	supportsIssueSessionStartup,
 	supportsIssues,
 } from "./model";
@@ -84,6 +87,8 @@ export function IssuesTool({
 	const authSupported = supportsIssueAuth(version);
 	const githubSupported = supportsIssueGithub(version);
 	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
+	const projects = useAppStore((s) => s.projects);
+	const repositoriesSupported = supportsIssueRepositories(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
 		() => ({
 			actionsSupported: supportsIssueActions(version),
@@ -219,6 +224,48 @@ export function IssuesTool({
 		[projectId, refresh],
 	);
 
+	const [repositories, setRepositories] = useState<Record<string, IssueRepositoriesView>>({});
+	const loadRepositories = useCallback(
+		async (issue: IssueSummary) => {
+			if (!repositoriesSupported || status !== "connected") return;
+			const key = issueKey(issue);
+			setRepositories((current) => ({ ...current, [key]: "loading" }));
+			try {
+				const value = await getTransport().request("issues.repositories", {
+					projectId,
+					reference: issue.reference,
+				});
+				setRepositories((current) => ({ ...current, [key]: value }));
+			} catch {
+				setRepositories((current) => ({ ...current, [key]: "error" }));
+			}
+		},
+		[projectId, repositoriesSupported, status],
+	);
+	const toggleRepository = useCallback(
+		async (issue: IssueSummary, projectIdToToggle: string): Promise<IssueRepositories | null> => {
+			const key = issueKey(issue);
+			const current = repositories[key];
+			if (!current || typeof current !== "object" || current.locked) return null;
+			const next = current.projectIds.includes(projectIdToToggle)
+				? current.projectIds.filter((id) => id !== projectIdToToggle)
+				: [...current.projectIds, projectIdToToggle];
+			try {
+				const saved = await getTransport().request("issues.setRepositories", {
+					projectId,
+					reference: issue.reference,
+					projectIds: next,
+				});
+				setRepositories((state) => ({ ...state, [key]: saved }));
+				return saved;
+			} catch {
+				// A rejected write keeps the last confirmed selection instead of pretending it saved.
+				return null;
+			}
+		},
+		[projectId, repositories],
+	);
+
 	const active = snapshot?.identity === identity ? snapshot : null;
 	if (!supported)
 		return <p className="p-panel-inset text-text-muted tr-text-ui">{t("issues.unsupported")}</p>;
@@ -254,6 +301,14 @@ export function IssuesTool({
 				actionPending={actionPending}
 				actionError={actionError}
 				actionErrorIssue={actionErrorIssue ?? undefined}
+				repositoryProjects={projects}
+				primaryProjectId={projectId}
+				repositoriesSupported={repositoriesSupported}
+				repositoriesFor={(issue) => repositories[issueKey(issue)]}
+				onLoadRepositories={(issue) => {
+					void loadRepositories(issue);
+				}}
+				onToggleRepository={toggleRepository}
 			/>
 		</QuietScrollArea>
 	);

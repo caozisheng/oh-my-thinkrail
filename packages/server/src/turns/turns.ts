@@ -7,11 +7,20 @@ const log = logger("turns");
 const TURNS_PER_WORKSPACE = 30;
 const DRAIN_TIMEOUT_MS = 5_000;
 
-interface PendingRun {
+interface MemberTarget {
 	workspaceId: string;
 	worktreePath: string;
-	startedAt: number;
+}
+
+interface PendingTarget extends MemberTarget {
 	baseTree: Promise<string | null>;
+}
+
+interface PendingRun {
+	targets: PendingTarget[];
+	startedAt: number;
+	/** Membership is known synchronously for the default port; a host lookup may still settle. */
+	pending?: Promise<void>;
 }
 
 type TurnPublisher = (turn: TurnChangeSet) => void;
@@ -61,23 +70,48 @@ export class TurnTracker {
 		) => { workspaceId: string; worktreePath: string } | null,
 		private readonly now: () => number = Date.now,
 		private readonly snapshot: (worktreePath: string) => Promise<string | null> = snapshotWorktree,
+		private readonly members: (
+			sessionId: string,
+		) => MemberTarget[] | Promise<MemberTarget[]> = () => [],
 	) {}
 
-	observe(sessionId: string, event: PiEvent): Promise<void> {
+	async observe(sessionId: string, event: PiEvent): Promise<void> {
 		if (event.type === "agent_start") {
-			if (this.pending.has(sessionId)) return Promise.resolve();
+			if (this.pending.has(sessionId)) return;
 			const target = this.resolve(sessionId);
-			if (!target) return Promise.resolve();
-			const baseTree = this.snapshot(target.worktreePath).catch(() => null);
-			this.pending.set(sessionId, { ...target, startedAt: this.now(), baseTree });
-			return baseTree.then(() => {});
+			if (!target) return;
+			// One Issue session can own several source repositories; each keeps its own snapshot. Identity
+			// stays workspace id + repo-relative path, so identical paths in two repos never collide.
+			const run: PendingRun = {
+				targets: [{ ...target, baseTree: this.snapshot(target.worktreePath).catch(() => null) }],
+				startedAt: this.now(),
+			};
+			this.pending.set(sessionId, run);
+			const add = (members: MemberTarget[]) => {
+				for (const member of members) {
+					if (run.targets.some((known) => known.workspaceId === member.workspaceId)) continue;
+					run.targets.push({
+						...member,
+						baseTree: this.snapshot(member.worktreePath).catch(() => null),
+					});
+				}
+			};
+			const members = this.members(sessionId);
+			if (Array.isArray(members)) add(members);
+			else run.pending = members.then(add, () => {});
+			await Promise.all([
+				...run.targets.map((known) => known.baseTree),
+				run.pending ?? Promise.resolve(),
+			]);
+			return;
 		}
-		if (event.type !== "agent_settled") return Promise.resolve();
+		if (event.type !== "agent_settled") return;
 		const run = this.pending.get(sessionId);
 		this.pending.delete(sessionId);
-		if (!run) return Promise.resolve();
-		const headTree = this.snapshot(run.worktreePath);
-		const job = this.settle(sessionId, run, headTree).catch((error) => {
+		if (!run) return;
+		// Capture every head at settlement, never after a slow base or membership lookup.
+		const heads = run.targets.map((target) => this.snapshot(target.worktreePath));
+		const job = this.settle(sessionId, run, heads).catch((error) => {
 			log.warn(`turn change set was not recorded for ${sessionId}`, error as Error);
 		});
 		this.recording.add(job);
@@ -99,31 +133,39 @@ export class TurnTracker {
 	private async settle(
 		sessionId: string,
 		run: PendingRun,
-		head: Promise<string | null>,
+		heads: Promise<string | null>[],
 	): Promise<void> {
-		const [baseTree, headTree] = await Promise.all([run.baseTree, head]);
-		if (!baseTree || !headTree || headTree === baseTree) return;
-		const id = `${sessionId}:${run.startedAt}`;
-		const status = await gitStatus(run.workspaceId, {
-			kind: "turn",
-			id,
-			baseTree,
-			headTree,
-			startedAt: run.startedAt,
-		});
-		if (status.changes.length === 0) return;
-		if (!loadWorkspaces().some((workspace) => workspace.id === run.workspaceId)) return;
-		const turn: TurnChangeSet = {
-			id,
-			workspaceId: run.workspaceId,
-			sessionId,
-			startedAt: run.startedAt,
-			settledAt: this.now(),
-			baseTree,
-			headTree,
-			changes: status.changes,
-		};
-		recordTurn(turn);
-		publishTurn(turn);
+		await run.pending;
+		for (const target of run.targets.slice(heads.length))
+			heads.push(this.snapshot(target.worktreePath));
+		for (const [index, target] of run.targets.entries()) {
+			const [baseTree, headTree] = await Promise.all([
+				target.baseTree,
+				heads[index] ?? Promise.resolve(null),
+			]);
+			if (!baseTree || !headTree || headTree === baseTree) continue;
+			const id = `${sessionId}:${run.startedAt}`;
+			const status = await gitStatus(target.workspaceId, {
+				kind: "turn",
+				id,
+				baseTree,
+				headTree,
+				startedAt: run.startedAt,
+			});
+			if (status.changes.length === 0) continue;
+			if (!loadWorkspaces().some((workspace) => workspace.id === target.workspaceId)) continue;
+			const turn: TurnChangeSet = {
+				id,
+				workspaceId: target.workspaceId,
+				sessionId,
+				startedAt: run.startedAt,
+				settledAt: this.now(),
+				baseTree,
+				headTree,
+				changes: status.changes,
+			};
+			recordTurn(turn);
+			publishTurn(turn);
+		}
 	}
 }

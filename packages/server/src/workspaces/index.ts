@@ -36,6 +36,7 @@ export {
 	refreshUserOwnedWorkspace,
 	removeWorkspace,
 	renameWorkspace,
+	republishWorkspace,
 	seedWorkspaceHead,
 	settleWorkspace,
 	setWorkspaceDiffBase,

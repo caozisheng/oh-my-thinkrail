@@ -4,11 +4,14 @@ import {
 	type IssueDesignPublicationInput,
 	type IssueImplementationTarget,
 	type IssueReference,
+	type IssueRepositories,
+	type IssueRepositoriesInput,
 	type IssueSessionLaunch,
 	type IssueSessionStartupTarget,
 	type IssueTarget,
 	isIssueDesignPublicationInput,
 	isIssueImplementationTarget,
+	isIssueRepositoriesInput,
 	isIssueSessionStartupTarget,
 	isIssueTarget,
 } from "@thinkrail/contracts";
@@ -20,6 +23,7 @@ import {
 	type ApprovalResult,
 	createIssueWorkflow,
 	createIssueWorkspaceCoordinator,
+	type IssueRepositoryContext,
 	type IssuesService,
 	type WorkflowRemote,
 	type WorkspaceHandle,
@@ -30,6 +34,7 @@ import {
 	listGitWorktrees,
 	listWorkspaceRecords,
 	listWorkspaces,
+	republishWorkspace,
 } from "../workspaces";
 import { createHostSession } from "./createHostSession";
 import type { IssueAgentSessionHost } from "./issueAgentSessions";
@@ -37,6 +42,10 @@ import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 type Action =
+	| "designContexts"
+	| "implementationContexts"
+	| "repositories"
+	| "setRepositories"
 	| "beginDesign"
 	| "beginImplementation"
 	| "approveDesign"
@@ -58,9 +67,13 @@ function invalid(): never {
 	throw new CodedError("RANGE_INVALID", "Invalid Issue request.");
 }
 type ParsedAction =
+	| { action: "setRepositories"; args: IssueRepositoriesInput }
 	| { action: "beginDesign" | "beginImplementation"; args: IssueSessionStartupTarget }
 	| {
 			action:
+				| "designContexts"
+				| "implementationContexts"
+				| "repositories"
 				| "approveDesign"
 				| "approveImplementation"
 				| "launchDesign"
@@ -80,6 +93,9 @@ function snapshot<T extends IssueTarget>(value: T): T {
 }
 function parse(value: unknown, action: Action): ParsedAction {
 	switch (action) {
+		case "setRepositories":
+			if (!isIssueRepositoriesInput(value)) invalid();
+			return { action, args: { ...snapshot(value), projectIds: [...value.projectIds] } };
 		case "beginDesign":
 		case "beginImplementation":
 			if (!isIssueSessionStartupTarget(value)) invalid();
@@ -124,6 +140,14 @@ export function createIssuesActions(
 	agentSessions?: IssueAgentSessionHost,
 ) {
 	function run(
+		action: "designContexts" | "implementationContexts",
+		input: unknown,
+	): Promise<IssueRepositoryContext[]>;
+	function run(
+		action: "repositories" | "setRepositories",
+		input: unknown,
+	): Promise<IssueRepositories>;
+	function run(
 		action:
 			| "beginDesign"
 			| "beginImplementation"
@@ -152,6 +176,7 @@ export function createIssuesActions(
 		const remote = issues.remoteFor(projectId, reference);
 		// Design/implementation startup uses only the neutral read port. Resolve the GitLab-only
 		// workflow capability only if a workflow operation actually needs it.
+		const selectedProjects = new Map<string, string>();
 		let pinned: WorkspaceHandle | undefined;
 		let startupPrompt: string | undefined;
 		const startup =
@@ -161,6 +186,10 @@ export function createIssuesActions(
 		const stage =
 			action === "launchDesign" || action === "beginDesign" ? "design" : "implementation";
 		function guard() {
+			for (const [id, path] of selectedProjects) {
+				const member = trusted(id);
+				if (member.closed || member.path !== path) stop();
+			}
 			if (
 				trusted(projectId).path !== initialProject.path ||
 				issues.remoteFor(projectId, reference) !== remote
@@ -212,13 +241,38 @@ export function createIssuesActions(
 					updateIssue: (...a) => checked(() => workflowRemote().updateIssue(...a)),
 					addNote: (...a) => checked(() => remote.addNote(...a)),
 				};
+				const ownershipKey = JSON.stringify([
+					projectId,
+					reference.provider,
+					reference.instanceUrl,
+					reference.projectId,
+					reference.number,
+				]);
+				const existingOwnership = await checked(() => ports.load(ownershipKey));
+				const selectedIds =
+					request.action === "setRepositories"
+						? request.args.projectIds
+						: (existingOwnership?.repositoryProjectIds ?? []);
+				for (const id of selectedIds) {
+					const member = trusted(id);
+					if (member.closed) stop();
+					selectedProjects.set(id, member.path);
+				}
+				function memberProject(id: string) {
+					if (id === projectId) return trusted(id);
+					const member = trusted(id);
+					if (member.closed || selectedProjects.get(id) !== member.path) stop();
+					return member;
+				}
 				function find(query: { workspaceId: string } | { worktreePath: string }) {
 					return (
-						listWorkspaceRecords(projectId).find((w) =>
-							"workspaceId" in query
-								? w.id === query.workspaceId
-								: w.worktreePath === query.worktreePath,
-						) ?? null
+						[projectId, ...selectedProjects.keys()]
+							.flatMap((id) => listWorkspaceRecords(id))
+							.find((w) =>
+								"workspaceId" in query
+									? w.id === query.workspaceId
+									: w.worktreePath === query.worktreePath,
+							) ?? null
 					);
 				}
 				async function currentCommit(ref: IssueReference) {
@@ -259,7 +313,7 @@ export function createIssuesActions(
 				let sessionTitle: string | undefined;
 				const coordinator = createIssueWorkspaceCoordinator({
 					projectId,
-					projectPath: () => checked(() => trusted(projectId).path),
+					projectPath: (id) => checked(() => memberProject(id).path),
 					load: (key) => checked(() => ports.load(key)),
 					save: (key, row) => checked(() => ports.save(key, row)),
 					findWorkspace: (query) => checked(() => find(query)),
@@ -276,8 +330,20 @@ export function createIssuesActions(
 						}),
 					defaultWorkspace: (id) =>
 						checked(async () => {
+							// Persistence-only read: resolving folder truth here would run synchronous git on
+							// every session-context read (design launch, bound issue_context). The record's own
+							// path/branch is what the coordinator verifies against the real project root.
+							const recorded = listWorkspaceRecords(id).find((w) => w.kind === "default");
+							if (recorded)
+								return {
+									id: recorded.id,
+									projectId: recorded.projectId,
+									worktreePath: recorded.worktreePath,
+									branch: recorded.branch,
+									kind: "default" as const,
+								};
 							const rows = await checked(() => listWorkspaces(id, { includeDiffStats: false }));
-							const ws = rows.find((w) => w.projectId === projectId && w.kind === "default");
+							const ws = rows.find((w) => w.projectId === id && w.kind === "default");
 							if (!ws) stop();
 							return ws;
 						}),
@@ -320,12 +386,15 @@ export function createIssuesActions(
 						if (!agentSessions) stop();
 						// Read all context before the coordinator can create a worktree or session.
 						preparedPrompt = await checked(() =>
-							agentSessions.prepare({
-								projectId,
-								reference,
-								stage,
-								locale: startup.locale,
-							}),
+							agentSessions.prepare(
+								{
+									projectId,
+									reference,
+									stage,
+									locale: startup.locale,
+								},
+								[],
+							),
 						);
 					}
 					const result = await checked(() =>
@@ -333,13 +402,46 @@ export function createIssuesActions(
 							? coordinator.design(reference)
 							: coordinator.implementation(reference),
 					);
+					if (kind === "implementation") {
+						// The associated rows already reached clients through `workspace.created`, before
+						// their ownership record existed; re-announce them so the rail tag converges.
+						for (const member of await checked(() =>
+							coordinator.contexts(reference, "implementation"),
+						))
+							republishWorkspace(member.workspaceId);
+					}
 					if (startupPrompt !== undefined) {
-						if (!agentSessions) stop();
+						if (!agentSessions || !startup) stop();
+						const repositories = await checked(() => coordinator.contexts(reference, kind));
+						startupPrompt = await checked(() =>
+							agentSessions.prepare(
+								{ projectId, reference, stage, locale: startup.locale },
+								repositories.map((repository) => ({
+									...repository,
+									name: memberProject(repository.projectId).name,
+								})),
+							),
+						);
 						await checked(() => agentSessions.start(result.sessionId, startupPrompt));
 					}
 					return result;
 				}
 				switch (request.action) {
+					case "designContexts":
+					case "implementationContexts": {
+						const contexts = await coordinator.contexts(
+							reference,
+							request.action === "designContexts" ? "design" : "implementation",
+						);
+						return contexts.map((context) => ({
+							...context,
+							name: memberProject(context.projectId).name,
+						}));
+					}
+					case "repositories":
+						return coordinator.repositories(reference);
+					case "setRepositories":
+						return coordinator.setRepositories(reference, request.args.projectIds);
 					case "approveDesign":
 						return checked(() => workflow.approveStage(reference, "design"));
 					case "approveImplementation":
@@ -376,6 +478,10 @@ export function createIssuesActions(
 		);
 	}
 	return {
+		designContexts: (input: unknown) => run("designContexts", input),
+		implementationContexts: (input: unknown) => run("implementationContexts", input),
+		repositories: (input: unknown) => run("repositories", input),
+		setRepositories: (input: unknown) => run("setRepositories", input),
 		beginDesign: (input: unknown) => run("beginDesign", input),
 		beginImplementation: (input: unknown) => run("beginImplementation", input),
 		approveDesign: (input: unknown) => run("approveDesign", input),

@@ -1,7 +1,11 @@
 import { issueWebUrl } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import type { IssueToolHost } from "../agent";
-import { createIssueStartupPrompt, type IssuesService } from "../issues";
+import {
+	createIssueStartupPrompt,
+	type IssueRepositoryContext,
+	type IssuesService,
+} from "../issues";
 import type { IssueSessionAssociation, IssueSessionStore } from "./issueSessions";
 
 export interface IssueAgentSessionHostOptions {
@@ -12,6 +16,7 @@ export interface IssueAgentSessionHostOptions {
 	status(sessionId: string, workspaceId: string, cwd: string): Promise<false | "idle" | "busy">;
 	start(sessionId: string, workspaceId: string, cwd: string, prompt: string): Promise<void>;
 	locale(): string;
+	repositories?(target: Target): Promise<readonly IssueRepositoryContext[]>;
 }
 
 type Target = Pick<IssueSessionAssociation, "projectId" | "reference" | "stage" | "locale">;
@@ -56,7 +61,7 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 		}
 		return { remote, guard, checked };
 	}
-	async function prepare(target: Target) {
+	async function prepare(target: Target, repositories?: readonly IssueRepositoryContext[]) {
 		options.store();
 		const { remote, checked } = await access(target);
 		const issue = await checked(() => remote.issue(target.reference.number));
@@ -70,7 +75,14 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 			target.reference.number,
 		);
 		if (link === null) stop();
-		return createIssueStartupPrompt({ ...target, issue, notes, link });
+		repositories ??= await options.repositories?.(target);
+		return createIssueStartupPrompt({
+			...target,
+			issue,
+			notes,
+			link,
+			...(repositories ? { repositories } : {}),
+		});
 	}
 	async function binding(sessionId: string) {
 		const found = await options.store().get(sessionId);

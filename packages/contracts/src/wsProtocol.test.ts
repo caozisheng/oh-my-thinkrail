@@ -37,6 +37,7 @@ import {
 	ISSUES_GITHUB_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	isBackgroundCommandCompletionMessage,
 	isCustomEndpointId,
@@ -604,7 +605,7 @@ test("issues read RPCs are registered at v103", () => {
 
 test("complete Issue detail is pinned to v114", () => {
 	expect(ISSUES_DETAIL_PROTOCOL_VERSION).toBe(114);
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(WS_METHODS.issuesDetail).toBe("issues.detail");
 	const detail: WsMethodMap["issues.detail"]["result"] = {
 		reference: {
@@ -657,7 +658,7 @@ test("the repository-address hint is registered at the v105 Issues auth floor", 
 });
 
 test("six closed Issue actions are registered at v104", () => {
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
 	expect(WS_METHODS.issuesLaunchDesign).toBe("issues.launchDesign");
@@ -670,7 +671,7 @@ test("six closed Issue actions are registered at v104", () => {
 
 test("app-originated Issue approvals are registered at v106", () => {
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
@@ -695,7 +696,7 @@ test("app-originated Issue approvals are registered at v106", () => {
 
 test("the approved-design read is registered at v107", () => {
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
@@ -720,7 +721,7 @@ test("the approved-design read is registered at v107", () => {
 
 test("the implementation start is registered at v108", () => {
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
@@ -768,7 +769,7 @@ test("GitHub Issues changes the wire contract at v110", () => {
 
 test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
 	expect(WS_METHODS.issuesBeginDesign).toBe("issues.beginDesign");
@@ -790,9 +791,34 @@ test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(implementation.params.locale).toBe("zh-CN");
 });
 
+test("associated repository selection is pinned to v115", () => {
+	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(ISSUES_REPOSITORIES_PROTOCOL_VERSION);
+	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBeGreaterThan(EXTENSION_SETTINGS_PROTOCOL_VERSION);
+	expect(WS_METHODS.issuesRepositories).toBe("issues.repositories");
+	expect(WS_METHODS.issuesSetRepositories).toBe("issues.setRepositories");
+	const read: WsMethodMap["issues.repositories"] = {
+		params: {
+			projectId: "p",
+			reference: {
+				provider: "github",
+				instanceUrl: "https://github.com",
+				projectId: "42",
+				number: 23,
+			},
+		},
+		result: { projectIds: [], locked: false },
+	};
+	const write: WsMethodMap["issues.setRepositories"] = {
+		params: { ...read.params, projectIds: ["api"] },
+		result: { projectIds: ["api"], locked: true },
+	};
+	expect(write.result.locked).toBe(true);
+});
+
 test("extension settings are pinned to v112", () => {
 	expect(EXTENSION_SETTINGS_PROTOCOL_VERSION).toBe(112);
-	expect(PROTOCOL_VERSION).toBe(114);
+	expect(PROTOCOL_VERSION).toBe(115);
 	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
 });
 

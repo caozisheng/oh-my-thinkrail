@@ -5,13 +5,19 @@ import {
 	fsyncSync,
 	lstatSync,
 	openSync,
+	readdirSync,
+	readFileSync,
 	readSync,
 	renameSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { type IssueReference, isIssueReference } from "@thinkrail/contracts";
+import {
+	type IssueReference,
+	isIssueReference,
+	isIssueRepositoriesInput,
+} from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import type { IssueWorkspaceRecord } from "../issues";
 import { logger } from "../log";
@@ -68,11 +74,52 @@ function keyFor(projectId: string, ref: IssueReference) {
 function record(value: unknown, expected: string): IssueWorkspaceRecord {
 	if (
 		!object(value) ||
-		!shape(value, ["projectId", "reference"], ["design", "implementation", "sessionPending"]) ||
+		!shape(
+			value,
+			["projectId", "reference"],
+			["design", "implementation", "sessionPending", "repositoryProjectIds", "members"],
+		) ||
 		!id(value.projectId) ||
 		keyFor(value.projectId, reference(value.reference)) !== expected
 	)
 		stop();
+	if (
+		Object.hasOwn(value, "repositoryProjectIds") &&
+		!isIssueRepositoriesInput({
+			projectId: value.projectId,
+			reference: value.reference,
+			projectIds: value.repositoryProjectIds,
+		})
+	)
+		stop();
+	if (Object.hasOwn(value, "members")) {
+		if (
+			!Array.isArray(value.members) ||
+			!Array.isArray(value.repositoryProjectIds) ||
+			value.members.length !== value.repositoryProjectIds.length
+		)
+			stop();
+		for (const [index, member] of value.members.entries()) {
+			if (
+				!object(member) ||
+				!shape(member, ["projectId"], ["ownership"]) ||
+				member.projectId !== value.repositoryProjectIds[index] ||
+				!id(member.projectId)
+			)
+				stop();
+			if (Object.hasOwn(member, "ownership")) {
+				if (!object(member.ownership) || Object.hasOwn(member.ownership, "session")) stop();
+				record(
+					{
+						projectId: member.projectId,
+						reference: value.reference,
+						implementation: member.ownership,
+					},
+					keyFor(member.projectId, reference(value.reference)),
+				);
+			}
+		}
+	}
 	if (Object.hasOwn(value, "design")) {
 		const d = value.design;
 		if (
@@ -344,6 +391,31 @@ export function createIssueWorkspacePersistence(root: string) {
 			} finally {
 				active = false;
 			}
+		},
+		/**
+		 * Every valid ownership record, best effort: a torn or foreign file is skipped rather than
+		 * failing a workspace list. Used only to project workspace→Issue bindings for the UI.
+		 */
+		list(): IssueWorkspaceRecord[] {
+			const rows: IssueWorkspaceRecord[] = [];
+			let names: string[];
+			try {
+				names = readdirSync(dir);
+			} catch {
+				return rows;
+			}
+			for (const name of names) {
+				if (!name.endsWith(".json")) continue;
+				try {
+					const bytes = readFileSync(join(dir, name));
+					const value: unknown = JSON.parse(
+						new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+					);
+					if (!object(value)) continue;
+					rows.push(record(value, keyFor(value.projectId as string, reference(value.reference))));
+				} catch {}
+			}
+			return rows;
 		},
 	};
 }

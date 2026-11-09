@@ -66,6 +66,19 @@ reconnect invitation; `issues.authUnsupported` is the only copy it adds. Offline
 connection, then list only when connected; connect refreshes the list. Refresh is explicit; no polling or
 stage mutations.
 
+**Associated repositories (v115).** Each issue row carries an icon-only trigger on the title row,
+right after the body-preview eye toggle: `RiGitBranchLine` with no repository linked and
+`RiGitBranchFill` (soft-primary) once one is, opening a popover multi-select listbox of the open
+projects beside the issue's own project. That project always participates and is never listed as a
+candidate — exclusion compares **local** project ids, since `reference.projectId` is the remote provider
+id and never matches a project id. The saved selection starts empty, is read on open
+(`issues.repositories`) and written whole per toggle (`issues.setRepositories`); the host owns validation
+and locks the set once implementation preparation starts, so a locked list renders read-only with its
+reason. `supportsIssueRepositories` is that floor, and an older host simply omits the control. A failed
+list read shows one localized failure instead of rendering an empty selection as if it were saved, and a
+rejected write leaves the last confirmed selection in place. Selection grants no trust, push or delivery
+right.
+
 **Dual entry.** A project can be associated from the Issues tool (the panel form) or from the prompt the
 A project holds at most one Issue association. `shouldOfferAssociation(gesture, associated)` gates the
 post-open prompt: a create gesture never prompts, and an already-associated project never prompts again,

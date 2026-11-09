@@ -946,6 +946,9 @@ reconciliation rather than replaying uncertain work. Retained callback ports can
 Records use the full local-project/provider/instance/remote-project/IID key, checked exactly on every
 load/save. Bounded exact shapes validate ownership, design associations, pending/completed worktrees,
 sessions and pending session creation; unknown/torn records halt with a static reconciliation error.
+Optional repository selections and auxiliary ownership members follow [[submodule-server-issues]];
+the adapter validates their ordered project identity and each member's pending/completed ownership,
+rejecting auxiliary session fields. Old records omit both fields without a write-time migration.
 Records carry no design or implementation version: a completed association holds only
 `{workspaceId, worktreePath, branch, session: {id}}` and a pending session creation only
 `{stage, workspaceId}`, so re-entry reuses the recorded session and compares no version.
@@ -1016,6 +1019,26 @@ configured dir/dataDir, rejecting symlink/junction directories and ancestors. Du
 remain canonical per remote reference. The workspace adapter's cross-process `withLaunch` fence
 covers the entire action, including workflow work, with one coordinator constructed inside its
 callback; failures retain uncertainty for explicit reconciliation, never automatic retries.
+
+Server-only `repositories` / `setRepositories` actions use the same full-identity launch fence and
+strict selection DTOs. Saving requires open trusted member projects. Launch pins their source paths and
+rechecks availability/trust around every awaited port.
+
+They are registered as `issues.repositories` (read) and `issues.setRepositories` (write whole selection)
+behind `ISSUES_REPOSITORIES_PROTOCOL_VERSION` = v113, with the same static credential-free gate wording
+and no caller-supplied path, credential or workspace authority. `workspace.list` decorates each row with
+the host-owned `Workspace.issue` binding — primary or associated, with whether the primary has
+associates — derived from owned implementation records (the single ownership source) by a best-effort
+directory scan; no worktree, session or remote is read, and an invalid record is skipped rather than
+failing the rail. The binding is never inferred from a branch name.
+Workspace lookup spans only the primary plus explicitly selected source projects, retaining each
+member's project identity. `projectPath` resolves the requested member rather than the primary.
+
+Issue startup and bound context reads obtain stage-specific repository projections through the same
+coordinator: design uses source Default workspaces, implementation verifies fixed owned members.
+Initial provider-context preflight precedes all preparation; final startup context is read again after
+worktrees are ready, with their actual paths. Context resolution is supplied explicitly inside a launch
+fence to avoid recursively acquiring it. Bound `issue_context` refreshes via a new fenced lookup.
 
 Workspace ports use project-constrained `listWorkspaceRecords`, authoritative `listGitWorktrees`,
 exact-branch creation and `listWorkspaces({includeDiffStats:false})` for Default. Design launches create/reuse Default sessions without worktrees and use bound Issue startup. Implementation launches use the

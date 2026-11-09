@@ -13,6 +13,8 @@ export interface TodoArtifact {
 	label?: string;
 	specId?: string;
 	sha?: string;
+	/** Absent means the session's own workspace; set for an associated source repository. */
+	workspaceId?: string;
 }
 
 export interface Todo {

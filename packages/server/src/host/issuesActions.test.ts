@@ -24,6 +24,47 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
+test("host prepares selected source repositories before starting one Issue session", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	await f.host.connect({ projectId: "one", input: f.input });
+	await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+	const launch = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	expect(listWorkspaceRecords("api")).toHaveLength(1);
+	expect(
+		listWorkspaceRecords("api")[0]?.worktreePath.startsWith(join(auxiliary, ".worktrees")),
+	).toBe(true);
+	expect(f.prompts).toHaveLength(1);
+	expect(f.prompts[0]?.prompt).toContain(
+		listWorkspaceRecords("api")[0]?.worktreePath.replaceAll("\\", "\\\\") ?? "missing",
+	);
+	expect(await f.host.beginImplementation({ ...f.target, locale: "en" })).toEqual(launch);
+	expect(await f.host.repositories(f.target)).toEqual({ projectIds: ["api"], locked: true });
+	const refreshed = await f.host.agentSessions.context(launch.sessionId);
+	expect(refreshed).toContain('"projectId":"api"');
+	expect(refreshed).toContain('"role":"associated"');
+	expect(refreshed).toContain(
+		listWorkspaceRecords("api")[0]?.worktreePath.replaceAll("\\", "\\\\") ?? "missing",
+	);
+});
+
 function fixture(provider: "gitlab" | "github" = "gitlab") {
 	const dir = mkdtempSync(join(tmpdir(), "issue-actions-"));
 	dirs.push(dir);
@@ -732,4 +773,104 @@ test("bound summary recovery reads fresh notes and never republishes legacy unce
 		),
 	).toEqual({ noteId: 71 });
 	expect(f.notes).toHaveLength(1);
+});
+
+test("a stored Default record serves design launches without resolving folder truth", async () => {
+	const f = fixture();
+	const workspaces = await import("../workspaces");
+	const project = {
+		id: "one",
+		projectId: "one",
+		kind: "default" as const,
+		name: "Default",
+		branch: "main",
+		worktreePath: f.dir,
+		baseBranch: "main",
+		createdAt: 0,
+	};
+	const { saveWorkspaces } = await import("../persistence");
+	saveWorkspaces([project]);
+	const listSpy = spyOn(workspaces, "listWorkspaces");
+	try {
+		await f.host.connect({ projectId: "one", input: f.input });
+		const launch = await f.host.beginDesign({ ...f.target, locale: "en" });
+		expect(launch.workspaceId).toBe("one");
+		expect(listSpy).not.toHaveBeenCalled();
+	} finally {
+		listSpy.mockRestore();
+	}
+});
+
+test("the rail binding covers the associated worktree, not only the primary", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-binding-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	await f.host.connect({ projectId: "one", input: f.input });
+	await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+	await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const bindings = f.host.workspaceIssueBindings();
+	const associated = listWorkspaceRecords("api")[0];
+	expect(associated).toBeDefined();
+	expect(bindings.get(associated?.id ?? "")).toEqual({
+		provider: "gitlab",
+		instanceUrl: "https://gitlab.example",
+		number: 1,
+		role: "associated",
+		hasAssociations: true,
+	});
+	expect([...bindings.values()].filter((b) => b.role === "primary")).toHaveLength(1);
+});
+
+test("a completed implementation re-announces each associated workspace to the rail", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-push-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	const workspaces = await import("../workspaces");
+	const published: string[] = [];
+	workspaces.setWorkspacePublisher((event) => {
+		if (event.kind === "updated") published.push(event.workspace.id);
+	});
+	try {
+		await f.host.connect({ projectId: "one", input: f.input });
+		await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+		const launch = await f.host.beginImplementation({ ...f.target, locale: "en" });
+		const associated = listWorkspaceRecords("api")[0];
+		if (!associated) throw new Error("the associated workspace was not registered");
+		expect(published).toContain(associated.id);
+		expect(published).toContain(launch.workspaceId);
+	} finally {
+		workspaces.setWorkspacePublisher(null);
+	}
 });

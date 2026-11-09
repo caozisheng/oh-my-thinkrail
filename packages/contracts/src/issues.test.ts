@@ -9,12 +9,56 @@ import {
 	isIssueImplementationTarget,
 	isIssuePublication,
 	isIssueReference,
+	isIssueRepositories,
+	isIssueRepositoriesInput,
 	isIssueSessionLaunch,
 	isIssueSessionStartupTarget,
 	isIssueTarget,
 	issueProviderForInstanceUrl,
 	requiresIssueHttpConsent,
 } from "./index";
+
+test("repository selection accepts only distinct local projects excluding the primary", () => {
+	const target = {
+		projectId: "primary",
+		reference: {
+			provider: "github",
+			instanceUrl: "https://github.com",
+			projectId: "42",
+			number: 23,
+		},
+	};
+	for (const projectIds of [[], ["api"], ["api", "web"]])
+		expect(isIssueRepositoriesInput({ ...target, projectIds })).toBe(true);
+	for (const projectIds of [
+		["primary"],
+		["api", "api"],
+		["../api"],
+		[""],
+		[23],
+		Array.from({ length: 33 }, (_, i) => `p${i}`),
+	])
+		expect(isIssueRepositoriesInput({ ...target, projectIds })).toBe(false);
+	expect(isIssueRepositoriesInput({ ...target, projectIds: [], token: "secret" })).toBe(false);
+	expect(
+		isIssueRepositoriesInput({
+			...target,
+			reference: { ...target.reference, token: "secret" },
+			projectIds: [],
+		}),
+	).toBe(false);
+});
+
+test("repository read state is bounded and never exposes paths or credentials", () => {
+	expect(isIssueRepositories({ projectIds: [], locked: false })).toBe(true);
+	expect(isIssueRepositories({ projectIds: ["api"], locked: true })).toBe(true);
+	for (const value of [
+		{ projectIds: ["api", "api"], locked: false },
+		{ projectIds: [], locked: "false" },
+		{ projectIds: [], locked: false, path: "/secret" },
+	])
+		expect(isIssueRepositories(value)).toBe(false);
+});
 
 test("only github.com is GitHub; every other host stays GitLab", () => {
 	for (const [instanceUrl, provider] of [

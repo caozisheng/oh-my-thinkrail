@@ -40,6 +40,23 @@ function payload(prompt: string) {
 	);
 }
 
+test("startup projects explicit repository identities without executable configuration", () => {
+	const input = context();
+	const repositories = [
+		{
+			projectId: "local",
+			workspaceId: "w",
+			name: "api",
+			path: "/repos/api",
+			role: "primary" as const,
+		},
+	];
+	const prompt = createIssueStartupPrompt({ ...input, repositories });
+	expect(payload(prompt).repositories).toEqual(repositories);
+	expect(prompt).toContain("not a shell sandbox");
+	expect(prompt).toContain("Do not merge or execute repository configuration");
+});
+
 test("design startup is explicit, Chinese, pure and preserves the whole Issue and every comment", () => {
 	const input = context();
 	const before = structuredClone(input);

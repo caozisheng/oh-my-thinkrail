@@ -120,7 +120,12 @@ treatment.
   come) surfaces an error toast, leaving the row in place. Each **workspace row** is **two-line**: the display
   `name` on top with the git **branch on a second line beneath it** (muted, monospace), rendered only when
   it differs from the name (so pristine/legacy `workspace-N` rows stay a single compact line) — the display
-  name is decoupled from the git branch (see [[submodule-server-workspaces]]).
+  name is decoupled from the git branch (see [[submodule-server-workspaces]]). A workspace the host binds to
+  an Issue (`Workspace.issue`) carries an **oval tag** beside the name: `#<number>` for an associated
+  repository, and `#<number>(master)` for the primary worktree of an issue that actually has associated
+  repositories (a single-repository issue keeps the bare number). The tag is host metadata, never parsed
+  from the branch; it is a compact caption with a tooltip naming the role, and the row keeps its one entry
+  in its own source project.
 
   Workspace/project session presentation comes only from normalized host state. The rail has exactly two
   visual treatments: a static green/accent **attention dot** for either a concrete needs-input blocker or an

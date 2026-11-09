@@ -102,6 +102,7 @@ import {
 	useEditors,
 	useInlineRename,
 } from "./workspaceActions";
+import { workspaceIssueTagText } from "./workspaceIssueTag";
 
 const HOVER_CONTROL_CLASS =
 	"shrink-0 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
@@ -797,6 +798,26 @@ function WorkspaceRow({
 				? FolderOpen
 				: GitBranch;
 	const isTwoLine = !isSettled && workspace.branch !== workspace.name;
+	const issue = workspace.issue;
+	const issueTag = issue ? (
+		<span
+			data-testid="workspace-issue"
+			data-role={issue.role}
+			data-linked={issue.hasAssociations || undefined}
+			title={t(
+				issue.role === "associated"
+					? "panels.projectTree.issueTagAssociated"
+					: issue.hasAssociations
+						? "panels.projectTree.issueTagPrimaryLinked"
+						: "panels.projectTree.issueTagPrimary",
+				{ number: issue.number },
+			)}
+			aria-hidden={true}
+			className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight"
+		>
+			{workspaceIssueTagText(issue)}
+		</span>
+	) : null;
 	const displayName = workspaceName(t, workspace);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const openMenuFromContext = (event: MouseEvent) => {
@@ -919,11 +940,14 @@ function WorkspaceRow({
 					<button type="button" onClick={onSelect} className={identityClass}>
 						{identityIcon}
 						<span className="flex min-w-0 flex-1 flex-col">
-							<span
-								data-testid="workspace-name"
-								className={`truncate tr-text-ui leading-tight ${isActive ? "text-primary" : "text-text-muted"}`}
-							>
-								{displayName}
+							<span className="flex min-w-0 items-center gap-4">
+								<span
+									data-testid="workspace-name"
+									className={`truncate tr-text-ui leading-tight ${isActive ? "text-primary" : "text-text-muted"}`}
+								>
+									{displayName}
+								</span>
+								{issueTag}
 							</span>
 							{branchLabel}
 						</span>

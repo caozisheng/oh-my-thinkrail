@@ -6,6 +6,7 @@ import {
 	ISSUES_GITHUB_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	type IssueConnection,
 	type IssueConnectionInput,
@@ -46,6 +47,11 @@ export function supportsIssueApproval(version: number | null): boolean {
 /** The host-side confirmation gate that starts implementation, v108. */
 export function supportsIssueImplementation(version: number | null): boolean {
 	return version !== null && version >= ISSUES_IMPLEMENTATION_PROTOCOL_VERSION;
+}
+
+/** Associated-repository selection is additive at v113; older hosts hide the control. */
+export function supportsIssueRepositories(version: number | null): boolean {
+	return version !== null && version >= ISSUES_REPOSITORIES_PROTOCOL_VERSION;
 }
 
 /** GitHub Issues as a provider; an older host only understands GitLab references. */

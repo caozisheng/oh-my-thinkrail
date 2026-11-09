@@ -12,6 +12,9 @@ import { logger } from "../log";
 import { getWorkspace } from "../workspaces";
 import {
 	type Baseline,
+	baselineKey,
+	baselineTodoId,
+	baselineWorkspaceId,
 	markOtherSessionWindowsShared,
 	otherSessionWindows,
 	readBaselines,
@@ -73,15 +76,16 @@ export function enqueueTodoMutation<T>(workspaceId: string, fn: () => T | Promis
 	return next;
 }
 
-function captureNewWorkWindow(workspaceId: string, sessionId: string): void {
+function captureNewWorkWindow(workspaceId: string, sessionId: string, scope?: string): void {
 	const root = getWorkspace(workspaceId).worktreePath;
 	const store = new TodoStore(root, sessionId);
 	const active = flatten(store.read()).find((item) => item.status === "in_progress");
 	if (!active) return;
 	const baselines = readBaselines(root, sessionId);
-	if (baselines[active.id]) return;
+	const key = baselineKey(active.id, scope);
+	if (baselines[key]) return;
 	const shared = otherSessionWindows(root, sessionId);
-	baselines[active.id] = {
+	baselines[key] = {
 		paths: gitUncommittedPaths(workspaceId).filter((path) => !isAppStatePath(path)),
 		head: gitHeadSha(workspaceId),
 		...(shared && { shared }),
@@ -96,7 +100,42 @@ export function maybeAttachChangeArtifacts(workspaceId: string, sessionId: strin
 	} catch {
 		log.warn(`todo work-window capture skipped (${workspaceId}/${sessionId})`);
 	}
-	return enqueueTodoMutation(workspaceId, () => runReconcile(workspaceId, sessionId));
+	const attachMembers = (members: readonly string[]) =>
+		Promise.all([
+			enqueueTodoMutation(workspaceId, () => runReconcile(workspaceId, sessionId)),
+			...members.map((member) => {
+				try {
+					captureNewWorkWindow(workspaceId, sessionId, member);
+				} catch {
+					log.warn(`todo member work-window capture skipped (${member}/${sessionId})`);
+				}
+				return enqueueTodoMutation(member, () => runReconcile(workspaceId, sessionId, member));
+			}),
+		]).then(() => undefined);
+	const members = sessionMemberWorkspaces(workspaceId, sessionId);
+	return Array.isArray(members)
+		? attachMembers(members)
+		: Promise.resolve(members)
+				.catch(() => [])
+				.then(attachMembers);
+}
+
+/**
+ * Associated source-repository workspaces this session may also modify. The host installs the lookup;
+ * an unknown session yields none, so a single-repository session behaves exactly as before.
+ */
+let sessionMemberWorkspaces: (
+	workspaceId: string,
+	sessionId: string,
+) => readonly string[] | Promise<readonly string[]> = () => [];
+
+export function setSessionMemberWorkspaces(
+	resolve: (
+		workspaceId: string,
+		sessionId: string,
+	) => readonly string[] | Promise<readonly string[]>,
+): void {
+	sessionMemberWorkspaces = resolve;
 }
 
 export async function settleChangeArtifacts(workspaceId: string): Promise<void> {
@@ -109,20 +148,21 @@ export async function settleChangeArtifacts(workspaceId: string): Promise<void> 
 	}
 }
 
-async function runReconcile(workspaceId: string, sessionId: string): Promise<void> {
+async function runReconcile(workspaceId: string, sessionId: string, scope?: string): Promise<void> {
 	try {
 		const root = getWorkspace(workspaceId).worktreePath;
 		const store = new TodoStore(root, sessionId);
+		const target = scope ?? workspaceId;
 		await reconcileChangeArtifacts(
 			store,
 			root,
 			sessionId,
-			async () =>
-				(await gitStatus(workspaceId, { kind: "uncommitted" })).changes.map((c) => c.path),
-			({ subject, paths }) => gitCommitPaths(workspaceId, subject, paths),
-			() => gitHeadSha(workspaceId),
+			async () => (await gitStatus(target, { kind: "uncommitted" })).changes.map((c) => c.path),
+			({ subject, paths }) => gitCommitPaths(target, subject, paths),
+			() => gitHeadSha(target),
 			false,
-			(head) => listCommitsSince(workspaceId, head),
+			(head) => listCommitsSince(target, head),
+			scope,
 		);
 	} catch {
 		log.warn(`todo change-artifacts skipped (${workspaceId}/${sessionId})`);
@@ -137,15 +177,18 @@ export function unattributedChanges(
 	changes: GitFileChange[],
 	plan: TodoPlan,
 	baselines: Record<string, Baseline>,
+	workspaceId?: string,
 ): GitFileChange[] {
 	const items = flatten(plan);
 	const attributed = new Set(
 		items.flatMap((t) =>
-			(t.artifacts ?? []).flatMap((a) => (a.kind === "change" && a.path ? [a.path] : [])),
+			(t.artifacts ?? []).flatMap((a) =>
+				a.kind === "change" && a.path && a.workspaceId === workspaceId ? [a.path] : [],
+			),
 		),
 	);
 	const openWindows = items.flatMap((t) => {
-		const base = baselines[t.id];
+		const base = baselines[baselineKey(t.id, workspaceId)];
 		return t.status === "in_progress" && base ? [base] : [];
 	});
 	return changes.filter(
@@ -167,6 +210,7 @@ export async function reconcileChangeArtifacts(
 	getHead: () => string | null = () => null,
 	openMissingWorkWindow = true,
 	windowCommits?: WindowCommits,
+	workspaceId?: string,
 ): Promise<void> {
 	const plan = store.read();
 	let planFingerprint = JSON.stringify(plan);
@@ -207,17 +251,22 @@ export async function reconcileChangeArtifacts(
 	);
 	const liveIds = new Set(items.map((t) => t.id));
 	for (const id of Object.keys(baselines)) {
-		if (!liveIds.has(id)) dropBaseline(id);
+		if (baselineWorkspaceId(id) === workspaceId && !liveIds.has(baselineTodoId(id)))
+			dropBaseline(id);
 	}
 	if (!flushBaselines()) return;
-	const windowIds = new Set(Object.keys(baselines));
+	const windowIds = new Set(
+		Object.keys(baselines).filter((id) => baselineWorkspaceId(id) === workspaceId),
+	);
 	for (const todo of items) {
+		const key = baselineKey(todo.id, workspaceId);
+		const scope = workspaceId === undefined ? {} : { workspaceId };
 		if (todo.status === "in_progress") {
-			if (!baselines[todo.id] && openMissingWorkWindow) {
+			if (!baselines[key] && openMissingWorkWindow) {
 				const paths = await currentChanged();
 				if (!planUnchanged() || !baselinesUnchanged()) return;
 				const shared = otherChatWorking();
-				baselines[todo.id] = {
+				baselines[key] = {
 					paths,
 					head: getHead(),
 					...(shared && { shared }),
@@ -229,19 +278,20 @@ export async function reconcileChangeArtifacts(
 			continue;
 		}
 		if (todo.status !== "done") {
-			dropBaseline(todo.id);
+			dropBaseline(key);
 			if (!flushBaselines()) return;
 			continue;
 		}
-		const base: Baseline | undefined = baselines[todo.id];
-		dropBaseline(todo.id);
+		const base: Baseline | undefined = baselines[key];
+		dropBaseline(key);
 		const existing = todo.artifacts ?? [];
-		if (hasChangeSet(existing) && base === undefined) continue;
+		const existingInScope = existing.filter((a) => a.workspaceId === workspaceId);
+		if (hasChangeSet(existingInScope) && base === undefined) continue;
 		const now = await currentChanged();
 		if (!planUnchanged() || !baselinesUnchanged()) return;
 		const deltaPaths = base ? now.filter((p) => !base.paths.includes(p)) : [];
 		const exclusive = base?.shared !== true && !otherChatWorking();
-		const soleWindow = [...windowIds].every((id) => id === todo.id);
+		const soleWindow = [...windowIds].every((id) => baselineTodoId(id) === todo.id);
 		const adopted: TodoArtifact[] = [];
 		if (windowCommits && base?.head && exclusive && soleWindow) {
 			const ranged = await windowCommits(base.head);
@@ -249,14 +299,14 @@ export async function reconcileChangeArtifacts(
 			for (const c of ranged) {
 				if (owned.has(c.sha)) continue;
 				owned.add(c.sha);
-				adopted.push({ kind: "commit", sha: c.sha, label: c.subject || todo.title });
+				adopted.push({ kind: "commit", sha: c.sha, label: c.subject || todo.title, ...scope });
 			}
 		}
 		if (deltaPaths.length === 0 && adopted.length === 0) {
 			if (!flushBaselines()) return;
 			continue;
 		}
-		const preserved = existing.filter((a) => a.kind !== "change");
+		const preserved = existing.filter((a) => a.kind !== "change" || a.workspaceId !== workspaceId);
 		const committed =
 			commit && deltaPaths.length > 0 && base?.paths.every((p) => !now.includes(p)) && exclusive
 				? commit({
@@ -271,14 +321,14 @@ export async function reconcileChangeArtifacts(
 				artifacts: [
 					...preserved,
 					...adopted,
-					{ kind: "commit", sha: committed.sha, label: todo.title },
+					{ kind: "commit", sha: committed.sha, label: todo.title, ...scope },
 				],
 			});
 			acceptPlanWrite();
 			if (!flushBaselines()) return;
 			continue;
 		}
-		const changes = deltaPaths.map((path): TodoArtifact => ({ kind: "change", path }));
+		const changes = deltaPaths.map((path): TodoArtifact => ({ kind: "change", path, ...scope }));
 		store.update(todo.id, { artifacts: [...preserved, ...adopted, ...changes] });
 		acceptPlanWrite();
 		// A path-list `change` delta can't be watermarked by sha, and `reviewInfo` only derives

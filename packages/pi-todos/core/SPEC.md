@@ -19,7 +19,9 @@ read (`sanitize`), so a hand-edited file never crashes a session.
 
 **Artifacts.** An item may carry `artifacts` — links to what the work produced: `kind: "file" | "change" |
 "spec" | "commit"`, an optional `label`, and per kind either a worktree-relative `path`
-(`file`/`change`/`spec`, plus a durable graph `specId` for `spec`) or a `sha` (`commit`). The model just
+(`file`/`change`/`spec`, plus a durable graph `specId` for `spec`) or a `sha` (`commit`). An optional
+`workspaceId` attributes a `change`/`commit` to an associated source repository; absent means the
+session's own workspace, so single-repository records keep their old meaning. The model just
 stores them; it does not resolve paths, compute diffs, or touch git. `file`/`spec` are attached by the
 agent (a `spec` naturally from `spec_create`'s `{path,id}`); `change` **and** `commit` are attached by the
 host when an item reaches `done` — the host commits the item's work and records just the sha, or falls

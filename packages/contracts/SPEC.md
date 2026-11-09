@@ -89,6 +89,13 @@ Design publication's
 `TextEncoder` without a Node dependency. Exact result guards reject extra credential fields;
 publication body remains opaque text, not a hardcoded title or event payload.
 
+Issue repository selection uses `IssueRepositoriesInput` (the exact `IssueTarget` plus at most 32
+unique local `projectIds`, excluding the primary project). `IssueRepositories` projects only those ids
+and a host-owned `locked` boolean; it carries no filesystem paths, credentials or executable settings.
+Selection belongs to the full primary-project/provider/instance/remote-project/number identity, not
+an Issue number alone. The host validates project availability and enforces the preparation lock;
+these structural guards do not grant trust or enable an RPC by themselves.
+
 ## Boundary
 
 - **Owns:** the wire — entity types, the `pi` event/message types (re-exported), the WS method & channel

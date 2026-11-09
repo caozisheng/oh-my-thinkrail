@@ -9,6 +9,7 @@ import type {
 	IssueConnection,
 	IssueConnectionInput,
 	IssueReference,
+	IssueRepositories,
 	IssueStage,
 	IssueSummary,
 } from "@thinkrail/contracts";
@@ -19,6 +20,7 @@ import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { useEffect, useId, useReducer } from "react";
 import { IssueAssociationForm } from "./IssueAssociationForm";
 import { IssueBody, type IssuePreview } from "./IssueBody";
+import { IssueRepositoriesControl, type IssueRepositoriesView } from "./IssueRepositoriesControl";
 import {
 	associationPanelState,
 	type ConnectResult,
@@ -62,6 +64,17 @@ export interface IssuesPanelProps {
 	actionErrorIssue?: string | undefined;
 	/** Grants project trust so the host stops refusing stage actions. */
 	onTrustProject?: (() => void) | undefined;
+	/** Associated-repository candidates: the open projects, beside the issue's own project. */
+	repositoryProjects?: readonly { id: string; name: string }[];
+	/** The local project this panel belongs to; excluded from the candidate list. */
+	primaryProjectId?: string | undefined;
+	/** Present when this host exposes v113 associated repositories. */
+	repositoriesSupported?: boolean | undefined;
+	repositoriesFor?: ((issue: IssueSummary) => IssueRepositoriesView | undefined) | undefined;
+	onLoadRepositories?: ((issue: IssueSummary) => void) | undefined;
+	onToggleRepository?:
+		| ((issue: IssueSummary, projectId: string) => Promise<IssueRepositories | null>)
+		| undefined;
 }
 
 interface IssueActionRowProps {
@@ -148,6 +161,12 @@ export function IssuesPanel({
 	actionError,
 	actionErrorIssue,
 	onTrustProject,
+	repositoryProjects,
+	primaryProjectId,
+	repositoriesSupported,
+	repositoriesFor,
+	onLoadRepositories,
+	onToggleRepository,
 	previewSupported,
 	preview,
 	onTogglePreview,
@@ -321,6 +340,24 @@ export function IssuesPanel({
 											/>
 										</TooltipProvider>
 									)}
+									{repositoriesSupported &&
+										primaryProjectId &&
+										repositoryProjects &&
+										onToggleRepository && (
+											<TooltipProvider>
+												<IssueRepositoriesControl
+													issue={issue}
+													primaryProjectId={primaryProjectId}
+													projects={repositoryProjects}
+													view={repositoriesFor?.(issue)}
+													disabled={pending || actionPending === true}
+													onOpen={() => onLoadRepositories?.(issue)}
+													onToggle={(projectId) => {
+														void onToggleRepository(issue, projectId);
+													}}
+												/>
+											</TooltipProvider>
+										)}
 									{onRunAction && (
 										<IssueActionRow
 											issue={issue}

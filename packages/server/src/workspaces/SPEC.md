@@ -271,7 +271,9 @@ place as `kind: "external"` — outside the data dir, never created or mutated h
   stored review is still open and a later refresh first reveals that it had already merged, the review
   writer flushes that coalesced stamp in the same save, so learning the merge cannot put newer work on the
   shelf; `backfillWorkspaceActivity(id, at)` — sets the stamp only when the record has none and touches
-  no override (the upgrade path for records that predate the field); `recordWorkspaceHead(id)` — reads the
+  no override (the upgrade path for records that predate the field); `republishWorkspace(id)` — re-emits
+  a stored row as `workspace.updated`, so a client converges on host metadata that no row mutation carried
+  (an Issue binding appears once its ownership record completes); `recordWorkspaceHead(id)` — reads the
   record once (an out-of-band `workspaces.json` rewrite between two reads must not turn a removed
   workspace into a throw) and the worktree's `HEAD` sha and calls `recordWorkspaceActivity` when it differs from the last sha observed in
   this host lifetime (a HEAD move is the commit/pull/checkout proxy; the raw git-dir watcher fires on
@@ -372,8 +374,8 @@ place as `kind: "external"` — outside the data dir, never created or mutated h
   `workspaceDiffStats`, `workspaceDiffKey`, `getWorkspace`, `renameWorkspace`, `refreshUserOwnedWorkspace`,
   `completeInitialTerminalReservation`, `ensureWorkspaceScratchDir`, `setWorkspacePublisher`,
   `WorkspaceLifecycleEvent`, `setWorkspaceDiffBase`, `setWorkspaceSkillOverride`,
-  `setWorkspaceSubagentsOverride`, `setWorkspaceSubagentMaxConcurrent`, `recordWorkspaceActivity`, `backfillWorkspaceActivity`,
-  `recordWorkspaceHead`, `seedWorkspaceHead`, `settleWorkspace`, `unsettleWorkspace`, `setWorkspaceReview`.
+  `setWorkspaceSubagentsOverride`, `setWorkspaceSubagentMaxConcurrent`, `recordWorkspaceActivity`,
+  `backfillWorkspaceActivity`, `republishWorkspace`, `recordWorkspaceHead`, `seedWorkspaceHead`, `settleWorkspace`, `unsettleWorkspace`, `setWorkspaceReview`.
 - **Allowed deps:** `projects` (repo lookup), `git` (the runner), `persistence`, `log`; `contracts`;
   `@thinkrail/shared/paths` (the scratch-dir path convention), `@thinkrail/shared/codedError`; Node.
 - **Forbidden:** `host`; reaching into another feature's internals (use its barrel).

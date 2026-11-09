@@ -227,6 +227,20 @@ version, approval and pending-operation metadata, never credentials or client ob
 
 ## Workspace/session coordination
 
+Repository selection is stored on the provider-qualified workspace ownership record as optional
+`repositoryProjectIds`; absence means an empty selection for old records. The coordinator exposes
+`repositories` and `setRepositories` under the same local-project launch serialization. Selection
+contains at most 32 distinct local project ids excluding the primary, and becomes immutable as soon
+as implementation preparation reserves ownership, including a failed preparation. Host composition
+validates that selected projects are open and available before saving or launching; selection grants
+no resource trust. Recovery preserves the selection together with both stage records. Optional `members` freezes the
+ordered auxiliary project ids at preparation start and stores each pending/completed ownership
+separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
+number and a stable digest of the full primary binding; reserved branches remain unpredictable.
+Every auxiliary member is verified before a primary session may be created or reused. Missing completed
+members stop instead of being recreated; partial preparation retains successful worktrees. Host wiring
+must supply project-aware lookup ports before exposing this coordinator capability to clients.
+
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second
 store or runtime. It reserves a provider-qualified ownership record before creating exactly
 `.worktrees/issue-<IID>`, persists the registered workspace before starting a session, and reuses recorded idle
@@ -263,7 +277,15 @@ never a caller-supplied path or SHA. This lookup observes ownership, not a Git l
 factory and association/context types are exported through the Issues barrel for host composition.
 `BoundIssueSession` records `sessionId`, `workspaceId`, local `projectId`, provider-qualified
 `reference`, explicit `stage: "design" | "implementation"`, and effective `locale`. It contains no
-client, binding, credential or approval state. `IssueStartupContext` accepts only a reference,
+client, binding, credential or approval state. `IssueStartupContext` optionally includes host-projected repository entries with local project/workspace
+ids, display name, actual path and primary/associated role. They are data, not executable configuration;
+the prompt requires per-repository instruction lookup, forbids combining project configuration, and
+states that membership is not a shell sandbox or proof that cross-repository builds work.
+`contexts(reference, stage)` verifies source Default directories for design and every recorded completed
+worktree for implementation without creating implementation directories. Host composition refreshes
+this projection at startup and on bound `issue_context` reads; the pure prompt factory performs no I/O.
+
+`IssueStartupContext` accepts a reference,
 `GitLabIssue`, complete `GitLabNote[]` as `notes`, verified Issue `link`, explicit stage and locale;
 callers must finish all note pagination before calling. Completeness cannot be proven from an array.
 

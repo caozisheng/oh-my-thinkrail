@@ -7,6 +7,7 @@ import {
 	type IssueTarget,
 	isIssueConnectionInput,
 	isIssueTarget,
+	type WorkspaceIssueBinding,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { sessionReuseStatus, startInitialSessionPrompt } from "../agent";
@@ -32,6 +33,7 @@ import { createIssueCredentials } from "./issueCredentials";
 import { createIssueSessionStore, type IssueSessionStore } from "./issueSessions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
+import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 function invalid(): never {
 	throw new CodedError("RANGE_INVALID", "Invalid Issue request.");
@@ -232,14 +234,71 @@ export function createIssuesHost(
 		status: options.sessions?.status ?? sessionReuseStatus,
 		start:
 			options.start ?? ((id, _workspaceId, _cwd, prompt) => startInitialSessionPrompt(id, prompt)),
+		repositories: (target) =>
+			target.stage === "design"
+				? actions.designContexts({ projectId: target.projectId, reference: target.reference })
+				: actions.implementationContexts({
+						projectId: target.projectId,
+						reference: target.reference,
+					}),
 		locale: () => {
 			const locale = getConfig().locale;
 			return locale === "system" ? Intl.DateTimeFormat().resolvedOptions().locale : locale;
 		},
 	});
+	const actions = createIssuesActions(service, root, options.sessions, agentSessions);
+	/**
+	 * Workspace→Issue bindings for the project rail, derived from owned implementations (the single
+	 * source of ownership). Read-only and best effort: no worktree, session or remote access.
+	 */
+	function workspaceIssueBindings(): Map<string, WorkspaceIssueBinding> {
+		const bindings = new Map<string, WorkspaceIssueBinding>();
+		for (const row of createIssueWorkspacePersistence(join(root, "issue-workspaces")).list()) {
+			const hasAssociations = (row.repositoryProjectIds ?? []).length > 0;
+			const base = {
+				provider: row.reference.provider,
+				instanceUrl: row.reference.instanceUrl,
+				number: row.reference.number,
+				hasAssociations,
+			};
+			const implementation = row.implementation;
+			if (implementation?.state === "completed")
+				bindings.set(implementation.workspaceId, { ...base, role: "primary" });
+			for (const member of row.members ?? [])
+				if (member.ownership?.state === "completed")
+					bindings.set(member.ownership.workspaceId, { ...base, role: "associated" });
+		}
+		return bindings;
+	}
+	/**
+	 * The other source repositories this bound Issue session may edit. Design reads their Default
+	 * checkouts, implementation their fixed Issue worktrees; the primary is resolved separately by the
+	 * caller. An unbound session, a fenced launch or any reconciliation failure simply yields none.
+	 */
+	async function sessionMemberWorkspaces(
+		sessionId: string,
+	): Promise<{ workspaceId: string; worktreePath: string }[]> {
+		if (!store) return [];
+		try {
+			const association = await store.get(sessionId);
+			if (!association) return [];
+			const target = { projectId: association.projectId, reference: association.reference };
+			const contexts =
+				association.stage === "design"
+					? await actions.designContexts(target)
+					: await actions.implementationContexts(target);
+			return contexts
+				.filter((context) => context.role === "associated")
+				.map((context) => ({ workspaceId: context.workspaceId, worktreePath: context.path }));
+		} catch {
+			return [];
+		}
+	}
 	return {
 		agentSessions,
-		...createIssuesActions(service, root, options.sessions, agentSessions),
+		sessionMemberWorkspaces,
+		workspaceIssueBindings,
+		...actions,
 		async connection(params: unknown) {
 			const { projectId } = request(params);
 			project(projectId, false);
@@ -332,6 +391,8 @@ export const issuesLaunchImplementation = issuesHost.launchImplementation;
 export const issuesPublishDesign = issuesHost.publishDesign;
 export const issuesPublishImplementation = issuesHost.publishImplementation;
 export const issuesRepositoryAddress = issuesHost.repositoryAddress;
+export const issuesRepositories = issuesHost.repositories;
+export const issuesSetRepositories = issuesHost.setRepositories;
 export const issuesStartImplementation = issuesHost.startImplementation;
 export const issuesValidateDesign = issuesHost.validateDesign;
 export const issuesValidateImplementation = issuesHost.validateImplementation;
