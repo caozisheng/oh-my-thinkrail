@@ -475,6 +475,15 @@ export function createIssuesActions(
 				}
 			},
 			guard,
+			[
+				"beginDesign",
+				"beginImplementation",
+				"launchDesign",
+				"launchImplementation",
+				"startImplementation",
+			].includes(action)
+				? "release-on-settle"
+				: "retain-on-failure",
 		);
 	}
 	return {

@@ -503,17 +503,35 @@ for (const boundary of ["before release", "after unlink"] as const)
 		if (!saved) throw new Error("missing association");
 		const association = JSON.parse(readFileSync(join(workspaceDir, saved), "utf8")).design;
 		expect(association.sessionId).toBe("session-1");
-		expect(readdirSync(workspaceDir).filter((name) => name.endsWith(".lock"))).toHaveLength(
-			boundary === "before release" ? 1 : 0,
-		);
+		expect(readdirSync(workspaceDir).filter((name) => name.endsWith(".lock"))).toHaveLength(0);
 		if (boundary === "before release")
-			await expect(f.host.launchDesign(f.target)).rejects.toThrow("reconciliation");
+			expect(await f.host.launchDesign(f.target)).toEqual(association);
 		else {
 			if (!result) throw new Error("missing committed launch result");
 			expect(result).toEqual(association);
 			expect(await f.host.launchDesign(f.target)).toEqual(result);
 		}
 		expect(f.created).toBe(1);
+	});
+
+for (const action of ["approveDesign", "publishDesign"] as const)
+	test(`${action} failure retains its uncertainty lock`, async () => {
+		const f = fixture();
+		await f.host.connect({ projectId: "one", input: f.input });
+		f.onRead = () => {
+			throw new Error("injected workflow read failure");
+		};
+		const invoke = () =>
+			action === "approveDesign"
+				? f.host.approveDesign(f.target)
+				: f.host.publishDesign({ ...f.target, expectedDescription: "old", newDescription: "new" });
+		await expect(invoke()).rejects.toThrow();
+		f.onRead = undefined;
+		expect(
+			readdirSync(join(f.dir, "issue-workspaces")).filter((name) => name.endsWith(".lock")),
+		).toHaveLength(1);
+		await expect(invoke()).rejects.toThrow("reconciliation");
+		expect(f.prompts).toHaveLength(0);
 	});
 
 test("app approval writes the actor's remote label record and is idempotent", async () => {
@@ -610,7 +628,7 @@ test("bound tools read fresh complete context and durably deduplicate caller ope
 	await expect(restored.agentSessions.context(launched.sessionId)).rejects.toThrow();
 });
 
-test("uncertain initial dispatch leaves a durable fence and never dispatches again", async () => {
+test("uncertain initial dispatch releases launch lock but never dispatches again", async () => {
 	const f = fixture();
 	let attempts = 0;
 	const host = createIssuesHost({
@@ -622,9 +640,15 @@ test("uncertain initial dispatch leaves a durable fence and never dispatches aga
 	});
 	await host.connect({ projectId: "one", input: f.input });
 	await expect(host.beginDesign({ ...f.target, locale: "en" })).rejects.toThrow();
-	await expect(
-		createIssuesHost(f.options).beginDesign({ ...f.target, locale: "en" }),
-	).rejects.toThrow("reconciliation");
+	expect(readdirSync(join(f.dir, "issue-workspaces")).some((name) => name.endsWith(".lock"))).toBe(
+		false,
+	);
+	expect(await host.beginDesign({ ...f.target, locale: "en" })).toMatchObject({
+		sessionId: "session-1",
+	});
+	expect(
+		await createIssuesHost(f.options).beginDesign({ ...f.target, locale: "en" }),
+	).toMatchObject({ sessionId: "session-1" });
 	expect(attempts).toBe(1);
 	expect(f.created).toBe(1);
 	expect(f.prompts).toHaveLength(0);
@@ -669,6 +693,115 @@ for (const stage of ["design", "implementation"] as const) {
 		expect(f.prompts).toHaveLength(0);
 		await expect(restored.agentSessions.context(first.sessionId)).rejects.toThrow();
 	}, 60000);
+	test(`${stage} session creation failure preserves pending state and permits same-process retry`, async () => {
+		const f = fixture();
+		let fail = true;
+		const host = createIssuesHost({
+			...f.options,
+			sessions: {
+				...f.options.sessions,
+				create: async (...args: Parameters<typeof f.options.sessions.create>) => {
+					if (fail) throw new Error("injected creation failure");
+					return f.options.sessions.create(...args);
+				},
+			},
+		});
+		await host.connect({ projectId: "one", input: f.input });
+		const begin = stage === "design" ? host.beginDesign : host.beginImplementation;
+		await expect(begin({ ...f.target, locale: "en" })).rejects.toThrow();
+		const dir = join(f.dir, "issue-workspaces");
+		const name = readdirSync(dir).find((name) => name.endsWith(".json"));
+		if (!name) throw new Error("missing pending record");
+		expect(JSON.parse(readFileSync(join(dir, name), "utf8")).sessionPending.stage).toBe(stage);
+		expect(readdirSync(dir).some((name) => name.endsWith(".lock"))).toBe(false);
+		fail = false;
+		await begin({ ...f.target, locale: "en" });
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
+	}, 60000);
+	test(`${stage} frontend abandonment keeps mutual exclusion until the host settles`, async () => {
+		const f = fixture();
+		await f.host.connect({ projectId: "one", input: f.input });
+		let enter!: () => void;
+		let resume!: () => void;
+		const entered = new Promise<void>((resolve) => {
+			enter = resolve;
+		});
+		const held = new Promise<void>((resolve) => {
+			resume = resolve;
+		});
+		f.onRead = async () => {
+			enter();
+			await held;
+		};
+		const begin = stage === "design" ? f.host.beginDesign : f.host.beginImplementation;
+		const running = begin({ ...f.target, locale: "en" });
+		await entered;
+		try {
+			expect(await Promise.race([running, Promise.resolve("frontend stopped waiting")])).toBe(
+				"frontend stopped waiting",
+			);
+			await expect(
+				(stage === "design"
+					? createIssuesHost(f.options).beginDesign
+					: createIssuesHost(f.options).beginImplementation)({ ...f.target, locale: "en" }),
+			).rejects.toMatchObject({ code: "ISSUE_LAUNCH_BLOCKED" });
+			expect(f.created).toBe(0);
+		} finally {
+			f.onRead = undefined;
+			resume();
+		}
+		const result = await running;
+		expect(await begin({ ...f.target, locale: "en" })).toEqual(result);
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
+	}, 60000);
+	test(`${stage} provider deadline releases the lock and late reads cannot create resources`, async () => {
+		const f = fixture();
+		const { saveWorkspaces } = await import("../persistence");
+		saveWorkspaces([
+			{
+				id: "one",
+				projectId: "one",
+				kind: "default",
+				name: "Default",
+				branch: "main",
+				worktreePath: f.dir,
+				baseBranch: "main",
+			},
+		]);
+		await f.host.connect({ projectId: "one", input: f.input });
+		if (stage === "implementation") await f.host.startImplementation(f.target);
+		const existing = f.created;
+		let resume!: () => void;
+		let finished!: () => void;
+		const held = new Promise<void>((resolve) => {
+			resume = resolve;
+		});
+		const late = new Promise<void>((resolve) => {
+			finished = resolve;
+		});
+		f.onRead = async () => {
+			await held;
+			finished();
+		};
+		const begin = stage === "design" ? f.host.beginDesign : f.host.beginImplementation;
+		try {
+			await expect(begin({ ...f.target, locale: "en" })).rejects.toThrow();
+			expect(f.created).toBe(existing);
+			expect(
+				readdirSync(join(f.dir, "issue-workspaces")).some((name) => name.endsWith(".lock")),
+			).toBe(false);
+			f.onRead = undefined;
+			await begin({ ...f.target, locale: "en" });
+		} finally {
+			resume();
+		}
+		await late;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(stage === "implementation" ? 0 : 1);
+	}, 60000);
 	test(`new ${stage} context failure precedes any workspace or session creation`, async () => {
 		const f = fixture();
 		await f.host.connect({ projectId: "one", input: f.input });
@@ -686,6 +819,13 @@ for (const stage of ["design", "implementation"] as const) {
 		expect(f.created).toBe(0);
 		expect(listWorkspaceRecords("one")).toEqual([]);
 		expect(existsSync(join(f.dir, ".worktrees"))).toBe(false);
+		f.onRead = undefined;
+		await (stage === "design" ? f.host.beginDesign : f.host.beginImplementation)({
+			...f.target,
+			locale: "en",
+		});
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
 	}, 60000);
 }
 

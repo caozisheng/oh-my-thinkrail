@@ -504,7 +504,11 @@
 	"issues.detail.unknownAuthor": "未知作者",
 	"issues.disconnect": "断开连接",
 	"issues.empty": "未找到 Issue。",
-	"issues.error.action": "无法启动该操作，其他内容未被修改：请重试或刷新该 Issue。",
+	"issues.error.action": "未能完成启动，可能已留下会话、文件或已发送的 prompt。请刷新该 Issue 后再重试。",
+	"issues.error.launchBlocked": "启动仍在执行，或无法确认先前启动锁的状态。请等待并刷新，不要删除执行中的锁。",
+	"issues.error.launchRelease": "启动已结束，但未能释放其锁。重试仍被阻止，请检查宿主诊断信息。",
+	"issues.error.launchWait": "已停止等待启动结果，宿主可能仍在执行。请等待并刷新后再重试。",
+
 	"issues.error.connect": "无法建立连接。请检查仓库地址、访问令牌及其对该项目的权限，然后重试。",
 	"issues.error.disconnect": "无法断开连接，未确认已删除保存的凭据：请重试。",
 	"issues.error.list": "已连接，但无法加载 Issue。请刷新重试。",

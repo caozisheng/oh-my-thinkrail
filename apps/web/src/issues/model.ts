@@ -24,6 +24,7 @@ import {
 	type WsResult,
 } from "@thinkrail/contracts";
 import { canonicalLocale, type MessageKey, resolveLocale } from "@thinkrail/locales";
+import { RequestTimeoutError, wsErrorCode } from "../transport";
 import { resolveIssueRepositoryAddress, suggestIssueRepositoryAddress } from "./repositoryAddress";
 
 export function supportsIssues(version: number | null): boolean {
@@ -108,7 +109,12 @@ export type IssuePanelError =
 	| IssueActionError;
 
 /** Keyed action failures the host can answer; never transport text or the token. */
-export type IssueActionError = "action" | "unsupported";
+export type IssueActionError =
+	| "action"
+	| "unsupported"
+	| "launch-blocked"
+	| "launch-release"
+	| "launch-wait";
 
 export const ISSUE_ERROR_KEY = {
 	read: "issues.failed",
@@ -117,6 +123,9 @@ export const ISSUE_ERROR_KEY = {
 	disconnect: "issues.error.disconnect",
 	open: "issues.error.open",
 	action: "issues.error.action",
+	"launch-blocked": "issues.error.launchBlocked",
+	"launch-release": "issues.error.launchRelease",
+	"launch-wait": "issues.error.launchWait",
 	unsupported: "issues.error.unsupported",
 } as const satisfies Record<IssuePanelError, MessageKey>;
 
@@ -254,8 +263,19 @@ async function launch(
 		if (!isIssueSessionLaunch(result)) return { ok: false, error: "action" };
 		onLaunch(result);
 		return { ok: true, launch: result };
-	} catch {
-		return { ok: false, error: "action" };
+	} catch (error) {
+		const code = wsErrorCode(error);
+		return {
+			ok: false,
+			error:
+				code === "ISSUE_LAUNCH_BLOCKED"
+					? "launch-blocked"
+					: code === "ISSUE_LAUNCH_RELEASE_FAILED"
+						? "launch-release"
+						: error instanceof RequestTimeoutError
+							? "launch-wait"
+							: "action",
+		};
 	}
 }
 
