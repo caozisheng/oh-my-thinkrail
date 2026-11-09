@@ -503,11 +503,9 @@ for (const boundary of ["before release", "after unlink"] as const)
 		if (!saved) throw new Error("missing association");
 		const association = JSON.parse(readFileSync(join(workspaceDir, saved), "utf8")).design;
 		expect(association.sessionId).toBe("session-1");
-		expect(readdirSync(workspaceDir).filter((name) => name.endsWith(".lock"))).toHaveLength(
-			boundary === "before release" ? 1 : 0,
-		);
+		expect(readdirSync(workspaceDir).filter((name) => name.endsWith(".lock"))).toHaveLength(0);
 		if (boundary === "before release")
-			await expect(f.host.launchDesign(f.target)).rejects.toThrow("reconciliation");
+			expect(await f.host.launchDesign(f.target)).toEqual(association);
 		else {
 			if (!result) throw new Error("missing committed launch result");
 			expect(result).toEqual(association);
@@ -610,7 +608,7 @@ test("bound tools read fresh complete context and durably deduplicate caller ope
 	await expect(restored.agentSessions.context(launched.sessionId)).rejects.toThrow();
 });
 
-test("uncertain initial dispatch leaves a durable fence and never dispatches again", async () => {
+test("uncertain initial dispatch releases launch lock but never dispatches again", async () => {
 	const f = fixture();
 	let attempts = 0;
 	const host = createIssuesHost({
@@ -622,9 +620,15 @@ test("uncertain initial dispatch leaves a durable fence and never dispatches aga
 	});
 	await host.connect({ projectId: "one", input: f.input });
 	await expect(host.beginDesign({ ...f.target, locale: "en" })).rejects.toThrow();
-	await expect(
-		createIssuesHost(f.options).beginDesign({ ...f.target, locale: "en" }),
-	).rejects.toThrow("reconciliation");
+	expect(readdirSync(join(f.dir, "issue-workspaces")).some((name) => name.endsWith(".lock"))).toBe(
+		false,
+	);
+	expect(await host.beginDesign({ ...f.target, locale: "en" })).toMatchObject({
+		sessionId: "session-1",
+	});
+	expect(
+		await createIssuesHost(f.options).beginDesign({ ...f.target, locale: "en" }),
+	).toMatchObject({ sessionId: "session-1" });
 	expect(attempts).toBe(1);
 	expect(f.created).toBe(1);
 	expect(f.prompts).toHaveLength(0);
@@ -686,6 +690,13 @@ for (const stage of ["design", "implementation"] as const) {
 		expect(f.created).toBe(0);
 		expect(listWorkspaceRecords("one")).toEqual([]);
 		expect(existsSync(join(f.dir, ".worktrees"))).toBe(false);
+		f.onRead = undefined;
+		await (stage === "design" ? f.host.beginDesign : f.host.beginImplementation)({
+			...f.target,
+			locale: "en",
+		});
+		expect(f.created).toBe(1);
+		expect(f.prompts).toHaveLength(1);
 	}, 60000);
 }
 

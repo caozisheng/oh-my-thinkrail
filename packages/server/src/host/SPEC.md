@@ -952,17 +952,21 @@ reliable (local storage; network filesystem guarantees are not asserted). This s
 ### Durable Issue workspace launches
 
 `issueWorkspacePersistence.ts` exports `createIssueWorkspacePersistence(root)` for an existing private
-local directory. `withLaunch(localProjectId, reference, operation, beforeRelease?)` acquires and flushes an exclusive
+local directory. `withLaunch(localProjectId, reference, operation, beforeRelease?, failurePolicy?)` acquires and flushes an exclusive
 `wx` fence for `(localProjectId, IID)` before invoking the callback, which must wrap the entire
 process-local Issue workspace coordinator operation. Different remote bindings contend for the same
 numeric destination. A fence names its owning `pid`, and an existing one is reconciled only by
 provable death of that owner (`ESRCH`), never by waiting, timeout or a guess: a fence written by an
 older build without a `pid` records no owner that could still be running and is reconciled the same
 way. A live owner, an unreadable or foreign fence, and a fence describing another key keep blocking.
-A thrown callback or storage error before release leaves the fence while its process lives; only a
-successful callback followed by all required write/directory flushes may remove its own fence.
-The optional synchronous `beforeRelease` guard runs after those flushes, immediately before unlink;
-a thrown guard retains the fence. Successful unlink is the explicit release commit point: no fallible
+The default `retain-on-failure` policy preserves the fence on callback, storage or guard errors for
+non-launch operations, including approval and publication. Design/implementation launches explicitly
+use `release-on-settle`: once their awaited operation actually settles, success or failure releases
+only the fence that call acquired, without clearing ownership, session-pending or startup records.
+A release failure reports `ISSUE_LAUNCH_RELEASE_FAILED`, never a safe-to-retry claim. Contention reports
+`ISSUE_LAUNCH_BLOCKED`; old live-owner fences remain unverifiable and are not blindly removed.
+The optional synchronous `beforeRelease` guard runs after successful write/directory flushes,
+immediately before unlink; rejection still releases a launch-policy fence but rejects the result. Successful unlink is the explicit release commit point: no fallible
 operation follows it that could report a committed launch as failed. Fence deletion is not directory-fsynced and is not claimed durable
 against power loss; a crash may retain or reintroduce the fence, safely blocking future launches until
 reconciliation rather than replaying uncertain work. Retained callback ports cannot operate after completion.
@@ -978,7 +982,7 @@ Records carry no design or implementation version: a completed association holds
 `{stage, workspaceId}`, so re-entry reuses the recorded session and compares no version.
 Records contain only credential-free reference and workspace metadata. Saves snapshot validated input
 and atomically replace records using an exclusive own temporary file, file fsync and rename, followed
-by directory fsync. Only owned temporary files and successfully completed launch fences are removed;
+by directory fsync. Only owned temporary files and fences eligible under their operation policy are removed;
 there is no rollback or automatic reconciliation. Directory fsync is best effort on Windows for the
 same unsupported/permission errors as the workflow receipt adapter. Durability relies on trusted local
 storage honoring file flush, rename and exclusive creation; network filesystems are outside this
@@ -1208,8 +1212,13 @@ The locale comes from the request, never the host preference. Legacy `launchDesi
 associate or autostart. Newly created legacy and begin sessions use the guarded Issue title; reused
 sessions are never renamed. Binding is durably stored before the coordinator stores its launch association;
 only after both writes does the host reserve startup, send once, and record acceptance. Uncertain
-startup and failed launches retain reconciliation fences. The existing workspace launch fence covers
-the entire operation. Prefetch on a reused begin is permitted, but never causes a subsequent send.
+startup retains its independent durable prevention of duplicate dispatch. Failed launches release their
+workspace launch fence only after actual settlement. The workspace launch fence covers the entire
+awaited operation, including context reads, resource creation and startup acceptance; no detached
+resource creation may outlive it. The browser's 60-second request deadline abandons waiting, not host
+execution or the lock. Provider fetch/body deadlines abort the read and reject before subsequent
+creation; a late read result has no continuation into workspace/session creation. There is no general
+launch cancellation deadline: a still-running creation retains mutual exclusion until it settles. Prefetch on a reused begin is permitted, but never causes a subsequent send.
 
 `issue_context` requires a durable association, current trust, matching workspace ownership and live
 exact remote capability. Every call fetches a fresh issue, complete paginated notes and verified remote

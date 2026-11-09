@@ -181,6 +181,68 @@ test("failed callback fences retries and independent instances even before mutat
 	).rejects.toMatchObject(failure);
 });
 
+test("settled startup failures release only their own fence and preserve pending records", async () => {
+	const { dir, store } = setup();
+	const pending = {
+		...record,
+		sessionPending: { stage: "design" as const, workspaceId: "default" },
+	};
+	let retained: Parameters<Parameters<typeof store.withLaunch>[2]>[0] | undefined;
+	await expect(
+		store.withLaunch(
+			"local",
+			ref,
+			async (ports) => {
+				retained = ports;
+				await ports.save(key(), pending);
+				throw new Error("injected startup failure");
+			},
+			undefined,
+			"release-on-settle",
+		),
+	).rejects.toMatchObject(failure);
+	expect(readdirSync(dir).some((name) => name.endsWith(".lock"))).toBe(false);
+	await expect(Promise.resolve().then(() => retained?.load(key()))).rejects.toMatchObject(failure);
+	await store.withLaunch("local", ref, async () => {
+		await expect(
+			createIssueWorkspacePersistence(dir).withLaunch(
+				"local",
+				ref,
+				async () => {
+					throw new Error("must not enter");
+				},
+				undefined,
+				"release-on-settle",
+			),
+		).rejects.toThrow();
+		expect(readdirSync(dir).filter((name) => name.endsWith(".lock"))).toHaveLength(1);
+	});
+	expect(await store.withLaunch("local", ref, (ports) => ports.load(key()))).toEqual(pending);
+});
+
+test("startup release failure reports its own error and retains the fence", async () => {
+	const { dir, store } = setup();
+	const spy = spyOn(fs, "unlinkSync").mockImplementation(() => {
+		throw new Error("injected release failure");
+	});
+	try {
+		await expect(
+			store.withLaunch(
+				"local",
+				ref,
+				async () => {
+					throw new Error("startup failed");
+				},
+				undefined,
+				"release-on-settle",
+			),
+		).rejects.toMatchObject({ code: "ISSUE_LAUNCH_RELEASE_FAILED" });
+	} finally {
+		spy.mockRestore();
+	}
+	expect(readdirSync(dir).filter((name) => name.endsWith(".lock"))).toHaveLength(1);
+});
+
 test("independent instances and a separate process contend before callback entry", async () => {
 	const { dir, store } = setup();
 	await store.withLaunch("local", ref, async () => {

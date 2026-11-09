@@ -265,9 +265,12 @@ export function createIssueWorkspacePersistence(root: string) {
 			input: IssueReference,
 			operation: (ports: IssueWorkspacePersistencePorts) => Promise<T>,
 			beforeRelease?: () => void,
+			failurePolicy: "retain-on-failure" | "release-on-settle" = "retain-on-failure",
 		): Promise<T> {
 			let active = true;
 			let poisoned = false;
+			let ownedLock: string | undefined;
+			let releaseAttempted = false;
 			try {
 				if (!id(projectId)) stop();
 				const ref = reference(input);
@@ -280,7 +283,14 @@ export function createIssueWorkspacePersistence(root: string) {
 				} catch (error) {
 					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 					// A fence whose owner is provably gone is reconciliation, not takeover of live work.
-					if (!abandonedFence(lock, projectId, ref.number)) throw error;
+					if (!abandonedFence(lock, projectId, ref.number)) {
+						if (failurePolicy === "release-on-settle")
+							throw new CodedError(
+								"ISSUE_LAUNCH_BLOCKED",
+								"Issue launch is still running or its prior owner cannot be verified.",
+							);
+						throw error;
+					}
 					log.warn(`reclaimed launch fence abandoned by a dead owner for Issue ${ref.number}`);
 					try {
 						unlinkSync(lock);
@@ -290,6 +300,7 @@ export function createIssueWorkspacePersistence(root: string) {
 					}
 					fd = openSync(lock, "wx", 0o600);
 				}
+				ownedLock = lock;
 				try {
 					writeFileSync(fd, JSON.stringify({ projectId, number: ref.number, pid: process.pid }));
 					fsyncSync(fd);
@@ -384,9 +395,28 @@ export function createIssueWorkspacePersistence(root: string) {
 				beforeRelease?.();
 				// Successful unlink commits release: no fallible work may follow it.
 				// A crash may retain/reintroduce the unflushed fence (a safe false block).
+				releaseAttempted = true;
 				unlinkSync(lock);
+				ownedLock = undefined;
 				return result;
-			} catch {
+			} catch (error) {
+				active = false;
+				if (failurePolicy === "release-on-settle" && ownedLock !== undefined) {
+					if (releaseAttempted)
+						throw new CodedError(
+							"ISSUE_LAUNCH_RELEASE_FAILED",
+							"Issue launch lock could not be released.",
+						);
+					try {
+						unlinkSync(ownedLock);
+					} catch {
+						throw new CodedError(
+							"ISSUE_LAUNCH_RELEASE_FAILED",
+							"Issue launch lock could not be released.",
+						);
+					}
+				}
+				if (error instanceof CodedError && error.code === "ISSUE_LAUNCH_BLOCKED") throw error;
 				return stop();
 			} finally {
 				active = false;
