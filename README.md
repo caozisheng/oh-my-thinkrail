@@ -90,7 +90,10 @@ not require those APIs on either provider.
 
 Workspaces use Git worktrees; managed checkout creation runs in the background with progress so large
 repositories do not freeze the host. The shared IDE includes editor tabs, terminals, GitHub PR controls,
-provider configuration, and extension settings. Structured agent questions support rich previews,
+provider configuration, extension settings, and host-backed search across files, specs, plans and chats.
+Local voice dictation can fill text fields without submitting them; recognition runs on the host with
+an on-demand NVIDIA speech runtime and model download. Audio and transcripts are not sent to a cloud
+speech service. Structured agent questions support rich previews,
 per-option notes, and a Discuss action. These upstream capabilities remain separate from this fork's
 Issue association and Tomato sessions.
 

@@ -63,9 +63,11 @@ import {
 	REVIEW_ACTIONS_PROTOCOL_VERSION,
 	REVIEW_RICH_ANCHORS_PROTOCOL_VERSION,
 	readToolResponseMessage,
+	SEARCH_PROTOCOL_VERSION,
 	SESSION_RENAME_PROTOCOL_VERSION,
 	SESSION_STATE_PROTOCOL_VERSION,
 	SESSION_TITLE_MAX_LENGTH,
+	SPEECH_PROTOCOL_VERSION,
 	SUBAGENT_CONCURRENCY_PROTOCOL_VERSION,
 	SUBAGENT_SETTINGS_PROTOCOL_VERSION,
 	SURVEY_TRANSLATIONS_PROTOCOL_VERSION,
@@ -255,6 +257,21 @@ test("tool responses replace the ask-only answer method at v93", () => {
 	expect(WS_METHODS.sessionAnswerQuestion).toBe("session.answerQuestion");
 });
 
+test("new upstream capabilities do not collide with existing fork feature floors", () => {
+	expect(SEARCH_PROTOCOL_VERSION).toBeGreaterThan(ISSUES_REPOSITORIES_PROTOCOL_VERSION);
+	expect(SPEECH_PROTOCOL_VERSION).toBeGreaterThan(SEARCH_PROTOCOL_VERSION);
+	expect(PROTOCOL_VERSION).toBe(SPEECH_PROTOCOL_VERSION);
+});
+
+test("voice input is pinned to v117", () => {
+	expect(SPEECH_PROTOCOL_VERSION).toBe(117);
+	expect(PROTOCOL_VERSION).toBe(117);
+	expect(WS_METHODS.speechInstall).toBe("speech.install");
+	expect(WS_METHODS.speechCancelInstall).toBe("speech.cancelInstall");
+	expect(WS_METHODS.speechRemove).toBe("speech.remove");
+	expect(WS_CHANNELS.speechChanged).toBe("speech.changed");
+});
+
 test("user-selectable fonts are pinned to v102", () => {
 	expect(FONTS_PROTOCOL_VERSION).toBe(102);
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(FONTS_PROTOCOL_VERSION);
@@ -294,6 +311,13 @@ test("client error reports are pinned to v90", () => {
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(CLIENT_ERROR_REPORT_PROTOCOL_VERSION);
 	expect(CLIENT_ERROR_REPORT_PROTOCOL_VERSION).toBe(90);
 	expect(WS_METHODS.clientReportError).toBe("client.reportError");
+});
+
+test("host search and its previews are pinned to v116", () => {
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(SEARCH_PROTOCOL_VERSION);
+	expect(SEARCH_PROTOCOL_VERSION).toBe(116);
+	expect(WS_METHODS.searchQuery).toBe("search.query");
+	expect(WS_METHODS.searchPreview).toBe("search.preview");
 });
 
 test("project rename is pinned to v85", () => {
@@ -605,7 +629,7 @@ test("issues read RPCs are registered at v103", () => {
 
 test("complete Issue detail is pinned to v114", () => {
 	expect(ISSUES_DETAIL_PROTOCOL_VERSION).toBe(114);
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(WS_METHODS.issuesDetail).toBe("issues.detail");
 	const detail: WsMethodMap["issues.detail"]["result"] = {
 		reference: {
@@ -658,7 +682,7 @@ test("the repository-address hint is registered at the v105 Issues auth floor", 
 });
 
 test("six closed Issue actions are registered at v104", () => {
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
 	expect(WS_METHODS.issuesLaunchDesign).toBe("issues.launchDesign");
@@ -671,7 +695,7 @@ test("six closed Issue actions are registered at v104", () => {
 
 test("app-originated Issue approvals are registered at v106", () => {
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
@@ -696,7 +720,7 @@ test("app-originated Issue approvals are registered at v106", () => {
 
 test("the approved-design read is registered at v107", () => {
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
@@ -721,7 +745,7 @@ test("the approved-design read is registered at v107", () => {
 
 test("the implementation start is registered at v108", () => {
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
@@ -769,7 +793,7 @@ test("GitHub Issues changes the wire contract at v110", () => {
 
 test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
 	expect(WS_METHODS.issuesBeginDesign).toBe("issues.beginDesign");
@@ -793,7 +817,7 @@ test("localized startup adds v109 methods without moving legacy floors", () => {
 
 test("associated repository selection is pinned to v115", () => {
 	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBe(115);
-	expect(PROTOCOL_VERSION).toBe(ISSUES_REPOSITORIES_PROTOCOL_VERSION);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(ISSUES_REPOSITORIES_PROTOCOL_VERSION);
 	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBeGreaterThan(EXTENSION_SETTINGS_PROTOCOL_VERSION);
 	expect(WS_METHODS.issuesRepositories).toBe("issues.repositories");
 	expect(WS_METHODS.issuesSetRepositories).toBe("issues.setRepositories");
@@ -818,7 +842,7 @@ test("associated repository selection is pinned to v115", () => {
 
 test("extension settings are pinned to v112", () => {
 	expect(EXTENSION_SETTINGS_PROTOCOL_VERSION).toBe(112);
-	expect(PROTOCOL_VERSION).toBe(115);
+	expect(PROTOCOL_VERSION).toBe(117);
 	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
 });
 

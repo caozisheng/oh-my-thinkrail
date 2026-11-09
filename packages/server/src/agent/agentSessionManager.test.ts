@@ -353,7 +353,7 @@ test("session creation publishes a domain summary for other frontends", async ()
 			title: "",
 			live: true,
 		});
-		removeSession(created.sessionId);
+		await removeSession(created.sessionId);
 	} finally {
 		setSessionCreatedPublisher(() => {});
 	}
@@ -374,7 +374,7 @@ test("concurrent idle nudges reserve one prompt and queue the later wake-up", as
 	await first.send();
 	expect(seen(session.sessionId)).toContain("FIRST_NUDGE");
 	expect(seen(session.sessionId)).toContain("SECOND_NUDGE");
-	removeSession(session.sessionId);
+	await removeSession(session.sessionId);
 });
 
 test("two sessions in two worktrees stream independently; disposing one leaves the other working", async () => {
@@ -401,9 +401,10 @@ test("two sessions in two worktrees stream independently; disposing one leaves t
 	expect(seen(b.sessionId)).not.toContain("ALPHA_REPLY");
 
 	const aEventsBefore = (events.get(a.sessionId) ?? []).length;
-	removeSession(a.sessionId);
+	const removing = removeSession(a.sessionId);
 	fauxB.appendResponses([fauxAssistantMessage("BRAVO_AGAIN")]);
 	await promptSession(b.sessionId, "again B");
+	await removing;
 
 	expect(seen(b.sessionId)).toContain("BRAVO_AGAIN");
 	expect((events.get(a.sessionId) ?? []).length).toBe(aEventsBefore);
@@ -691,7 +692,7 @@ test("marking a live chat's workspace read and unread publishes through the live
 			});
 			expect(getSessionState(id).completionUnread).toBe(true);
 		} finally {
-			removeSession(id);
+			await removeSession(id);
 		}
 	}));
 
@@ -760,7 +761,7 @@ test("a length-truncated questionnaire is terminal and cannot be answered", asyn
 	} finally {
 		releaseContinuation();
 		await prompting.catch(() => {});
-		removeSession(session.sessionId);
+		await removeSession(session.sessionId);
 	}
 });
 
@@ -782,7 +783,7 @@ test("a disabled workspace creates chats without active subagent tools", async (
 		expect(seen(sessionId)).toContain("SUBAGENTS_OFF");
 	} finally {
 		setSubagentsEnabledResolver(() => true);
-		if (sessionId) removeSession(sessionId);
+		if (sessionId) await removeSession(sessionId);
 	}
 });
 
@@ -857,7 +858,7 @@ test("an idle chat adopts subagent policy changes, survives resource reload, and
 		expect(seen(sessionId)).toContain("SUBAGENTS_ON");
 	} finally {
 		setSubagentsEnabledResolver(() => true);
-		if (sessionId) removeSession(sessionId);
+		if (sessionId) await removeSession(sessionId);
 	}
 });
 
@@ -894,7 +895,7 @@ test("an idle chat adopts an agent-review policy change live — request_review 
 		expect(seen(sessionId)).toContain("REVIEW_ON");
 	} finally {
 		setAgentReviewEnabledResolver(() => true);
-		if (sessionId) removeSession(sessionId);
+		if (sessionId) await removeSession(sessionId);
 	}
 });
 
@@ -957,7 +958,7 @@ test("a streaming chat defers its tool-set change until agent_settled", async ()
 	} finally {
 		release();
 		setSubagentsEnabledResolver(() => true);
-		if (sessionId) removeSession(sessionId);
+		if (sessionId) await removeSession(sessionId);
 		runtime.unregisterProvider("faux-subagent-policy");
 	}
 });
@@ -1708,7 +1709,7 @@ test("createSession re-resolves a wire model ref by {provider,id}, never trustin
 	expect(seen(s.sessionId)).toContain("RESOLVED_REPLY");
 	expect(s.model).not.toBeNull();
 	expect(s.model).not.toHaveProperty("baseUrl");
-	removeSession(s.sessionId);
+	await removeSession(s.sessionId);
 });
 
 test("createSession rejects an unknown/unavailable model ref (no arbitrary baseUrl injection)", async () => {
@@ -1736,7 +1737,7 @@ test("getSessionStats + getSessionCommands read live session info (cheap wins #3
 	expect(typeof stats.tokens.total).toBe("number");
 
 	expect(Array.isArray(getSessionCommands(s.sessionId))).toBe(true);
-	removeSession(s.sessionId);
+	await removeSession(s.sessionId);
 });
 
 test("graceful shutdown preserves an expected question before its tool executes", async () => {
@@ -1770,7 +1771,7 @@ test("graceful shutdown preserves an expected question before its tool executes"
 		gate.release();
 		gate.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -1810,7 +1811,7 @@ test("graceful shutdown persists an accepted answer and aborts its continuation"
 		gate.release();
 		gate.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -1922,7 +1923,7 @@ test("an answer accepted before execute persists before Stop aborts the continua
 		gate.release();
 		gate.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -1957,7 +1958,7 @@ test("Stop claims an expected question before a late answer can win", async () =
 		gate.release();
 		gate.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -1984,7 +1985,7 @@ test("emergency session disposal rejects an accepted answer that cannot persist"
 		gate.release();
 		gate.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -2083,7 +2084,7 @@ test("our ask_user_question wins over a same-name extension tool before and afte
 			expect.objectContaining({ message: "EXTERNAL_COMMAND_AVAILABLE" }),
 		);
 	} finally {
-		removeSession(session.sessionId);
+		await removeSession(session.sessionId);
 		setExtUiPublisher(() => {});
 	}
 });
@@ -2421,7 +2422,7 @@ test("with ask-user-question off, restart repair and responding leave its dangli
 		);
 	} finally {
 		setDisabledExtensionsResolver(() => new Set());
-		if (hasSession(fixture.id)) removeSession(fixture.id);
+		if (hasSession(fixture.id)) await removeSession(fixture.id);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
 });
@@ -2515,7 +2516,7 @@ test("a live question blocks continuation, keeps the follow-up lane behind it, a
 		expect(after.indexOf("QUESTION_CONTINUED")).toBeLessThan(after.indexOf("QUEUED_WHILE_ASKING"));
 	} finally {
 		releaseContinuation();
-		removeSession(session.sessionId);
+		await removeSession(session.sessionId);
 	}
 });
 
@@ -2612,7 +2613,7 @@ for (const [entryPoint, send] of [
 			expect(seen(session.sessionId)).toContain("REPLIED_TO_TYPED_TEXT");
 			expect(getSessionState(session.sessionId).needsInput).toBeNull();
 		} finally {
-			removeSession(session.sessionId);
+			await removeSession(session.sessionId);
 		}
 	});
 }
@@ -2662,7 +2663,7 @@ test("input an extension handles (never queued) leaves the live question awaitin
 	} finally {
 		swallower.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -2699,7 +2700,7 @@ test("typing in the pre-execute window (tool_call hook still running) supersedes
 		gate.release();
 		gate.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -2753,7 +2754,7 @@ test("removing a queued message while a question is live re-queues the rest with
 		expect(transcript).toContain("FOLLOW_UP_TWO");
 	} finally {
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -2811,7 +2812,7 @@ test("an accepted answer persists and its RPC settles when Stop races before tur
 		expect(transcript.messages.some((message) => readToolResponseMessage(message))).toBe(false);
 	} finally {
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -2849,7 +2850,7 @@ test("Stop bounds a stalled post-tool hook, and the answer it persisted is still
 	} finally {
 		hook.remove();
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 }, 20_000);
 
@@ -2922,7 +2923,7 @@ test("restart repair leaves a dangling question answerable through the custom-me
 		expect(responseMessage.content).toContain('"Which runtime?"="Bun"');
 		expect(seen(fixture.id)).toContain("RESTART_QUESTION_CONTINUED");
 	} finally {
-		if (hasSession(fixture.id)) removeSession(fixture.id);
+		if (hasSession(fixture.id)) await removeSession(fixture.id);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
 });
@@ -2983,7 +2984,7 @@ test("explicit Stop restores both queues and persists a terminal ask error", asy
 		expect(transcript.messages.filter((message) => message.role === "user")).toHaveLength(1);
 	} finally {
 		await prompting.catch(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 	}
 });
 
@@ -3042,7 +3043,7 @@ test("graceful settling leaves a live question dangling for restart ack repair",
 		expect(repaired.isError).toBe(false);
 		expect(assessRespondability(transcript.messages, toolCallId, ALL_INTERACTIVE).ok).toBe(true);
 	} finally {
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
 });
@@ -3112,7 +3113,7 @@ test("disposing a session mid-run reports pi's stale-boundary errors at debug, n
 	} finally {
 		process.stderr.write = originalStderrWrite;
 		setExtUiPublisher(() => {});
-		if (hasSession(session.sessionId)) removeSession(session.sessionId);
+		if (hasSession(session.sessionId)) await removeSession(session.sessionId);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
 });
@@ -3137,7 +3138,7 @@ test("listSessions reports a workspace's live sessions; getSessionMessages retur
 	expect(messages.some((m) => m.role === "user")).toBe(true);
 	expect(messages.some((m) => m.role === "assistant")).toBe(true);
 	expect(messages.every((m) => ["user", "assistant", "toolResult"].includes(m.role))).toBe(true);
-	removeSession(s.sessionId);
+	await removeSession(s.sessionId);
 });
 
 test("renameSession persists a normalized live title and emits one durable title event", async () => {
@@ -3174,7 +3175,7 @@ test("renameSession persists a normalized live title and emits one durable title
 	expect(events.get(session.sessionId)).toHaveLength(eventCount ?? 0);
 	expect(published).toHaveLength(1);
 	setSessionStatePublisher(() => {});
-	removeSession(session.sessionId);
+	await removeSession(session.sessionId);
 });
 
 test("renameSession's conditional write never replaces a durable title", async () => {
@@ -3204,7 +3205,7 @@ test("renameSession's conditional write never replaces a durable title", async (
 	await expect(
 		renameSession(session.sessionId, "ws-other", cwd, "Wrong workspace"),
 	).rejects.toThrow(`Unknown session: ${session.sessionId}`);
-	removeSession(session.sessionId);
+	await removeSession(session.sessionId);
 });
 
 test("renameSession updates a disk-only transcript without attaching an agent", async () => {
@@ -3280,7 +3281,7 @@ test("state records carry pi's session name as read: long names, explicit clears
 			);
 			expect(titles).toEqual({ [longId]: long, [cleared]: "", [attached]: "Attached title" });
 		} finally {
-			removeSession(attached);
+			await removeSession(attached);
 		}
 	}));
 
@@ -3359,9 +3360,9 @@ test("summaries and state records carry the first prompt's head as a display fal
 	expect((await summaryFor(packaged.sessionId))?.firstPrompt).toBeUndefined();
 	await promptSession(packaged.sessionId, "/skill:setting-up-a-project Now a real prompt");
 	expect((await summaryFor(packaged.sessionId))?.firstPrompt).toBe("Now a real prompt");
-	removeSession(live.sessionId);
-	removeSession(compacted);
-	removeSession(packaged.sessionId);
+	await removeSession(live.sessionId);
+	await removeSession(compacted);
+	await removeSession(packaged.sessionId);
 });
 
 /** An image-only first message, a real prompt, then a compaction that keeps only the later turns. */
@@ -3426,7 +3427,7 @@ test("renameSession serializes with a concurrent disk attach", async () => {
 	expect(
 		(await listSessions("ws-rename-attach", cwd)).find((row) => row.sessionId === id)?.title,
 	).toBe("After attach");
-	removeSession(id);
+	await removeSession(id);
 });
 
 test("listSessions ignores a live session's transient physical rewrite but stays strict for detached files", async () => {
@@ -3447,7 +3448,7 @@ test("listSessions ignores a live session's transient physical rewrite but stays
 			s.sessionId,
 		);
 
-		removeSession(s.sessionId);
+		await removeSession(s.sessionId);
 		await expect(listSessions("ws-live-rewrite", cwd)).rejects.toThrow("unreadable or malformed");
 	} finally {
 		setSessionManagerFactory(() => SessionManager.inMemory());
@@ -3620,7 +3621,7 @@ test("deleteSession removes an empty live chat whose reserved transcript path is
 		expect(hasSession(session.sessionId)).toBe(false);
 		expect(trashCalls).toBe(0);
 	} finally {
-		if (sessionId && hasSession(sessionId)) removeSession(sessionId);
+		if (sessionId && hasSession(sessionId)) await removeSession(sessionId);
 		setTrashImplementationForTests(undefined);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
@@ -3684,7 +3685,7 @@ test("a malformed detached transcript is never treated as authoritative absence"
 		const info = (await SessionManager.list(cwd)).find((item) => item.id === session.sessionId);
 		if (!info) throw new Error("expected the session transcript to exist");
 		const transcript = readFileSync(info.path);
-		removeSession(session.sessionId);
+		await removeSession(session.sessionId);
 		writeFileSync(info.path, "not a pi transcript\n");
 
 		await expect(sessionReuseStatus(session.sessionId, "ws-delete-corrupt", cwd)).rejects.toThrow(
@@ -3705,7 +3706,7 @@ test("a malformed detached transcript is never treated as authoritative absence"
 		const restored = await getSessionMessages(session.sessionId, "ws-delete-corrupt", cwd);
 		expect(restored.summary.live).toBe(true);
 	} finally {
-		if (sessionId) removeSession(sessionId);
+		if (sessionId) await removeSession(sessionId);
 		setSessionDeletedPublisher(() => {});
 		setTrashImplementationForTests(undefined);
 		setSessionManagerFactory(() => SessionManager.inMemory());
@@ -3764,7 +3765,7 @@ test("a pending delete blocks live commands, then trash failure restores the sam
 	} finally {
 		failTrash();
 		await deleting?.catch(() => {});
-		if (sessionId && hasSession(sessionId)) removeSession(sessionId);
+		if (sessionId && hasSession(sessionId)) await removeSession(sessionId);
 		setTrashImplementationForTests(undefined);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
@@ -3823,7 +3824,7 @@ test("concurrent deletes of one chat coalesce into a single owned transaction", 
 	} finally {
 		failTrash();
 		await Promise.allSettled([first, second]);
-		if (sessionId && hasSession(sessionId)) removeSession(sessionId);
+		if (sessionId && hasSession(sessionId)) await removeSession(sessionId);
 		setTrashImplementationForTests(undefined);
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
@@ -3977,7 +3978,7 @@ test("stop losslessly restores an image-bearing queue before aborting", async ()
 		).toBeUndefined();
 		const transcript = await getSessionMessages(s.sessionId, "ws-queue", cwd);
 		expect(transcript.messages.filter((message) => message.role === "user")).toHaveLength(1);
-		removeSession(s.sessionId);
+		await removeSession(s.sessionId);
 	} finally {
 		runtime.unregisterProvider("fauxq");
 		setSessionManagerFactory(() => SessionManager.inMemory());
@@ -4001,7 +4002,7 @@ test("removing one queued image message returns its complete content", async () 
 		removed: { text: "edit this", images: [queuedImage] },
 		queue: { steering: [], followUp: [] },
 	});
-	removeSession(s.sessionId);
+	await removeSession(s.sessionId);
 });
 
 test("a delivered image-only steer clears its queue chip despite pi's empty-text defect", async () => {
@@ -4069,7 +4070,7 @@ test("a delivered image-only steer clears its queue chip despite pi's empty-text
 				(event as { type: string }).type === "queue_update",
 		);
 		expect(queueEvents.at(-1)?.steering).toEqual([]);
-		removeSession(s.sessionId);
+		await removeSession(s.sessionId);
 	} finally {
 		release();
 		runtime.unregisterProvider("faux-steer-image");
@@ -4140,7 +4141,7 @@ test("a delivered image-only follow-up clears its queue chip despite pi's empty-
 				(event as { type: string }).type === "queue_update",
 		);
 		expect(queueEvents.at(-1)?.followUp).toEqual([]);
-		removeSession(s.sessionId);
+		await removeSession(s.sessionId);
 	} finally {
 		release();
 		runtime.unregisterProvider("faux-followup-image");
@@ -4205,7 +4206,7 @@ test("an idle image-only prompt never inflates the stuck-delivery counters", asy
 			(await listSessions("ws-prompt-image", cwd)).find((row) => row.sessionId === s.sessionId)
 				?.queue,
 		).toBeUndefined();
-		removeSession(s.sessionId);
+		await removeSession(s.sessionId);
 	} finally {
 		release();
 		runtime.unregisterProvider("faux-prompt-image");
@@ -4287,7 +4288,7 @@ test("compactSession rejects an overlapping manual compaction", async () => {
 		await firstCompaction;
 	} finally {
 		releaseCompaction();
-		if (sessionId) removeSession(sessionId);
+		if (sessionId) await removeSession(sessionId);
 		runtime.unregisterProvider("faux-compact-lock");
 	}
 }, 20000);
@@ -4306,7 +4307,7 @@ test("removeQueuedSession on an idle session never strands the keepers — they 
 	expect(result.removed).toEqual({ text: "parked one" });
 	expect(result.queue).toEqual({ steering: [], followUp: [] });
 	expect(seen(s.sessionId)).toContain("PARKED_DELIVERED");
-	removeSession(s.sessionId);
+	await removeSession(s.sessionId);
 });
 
 test("removeWorkspaceSessions: archives a workspace's live sessions + purges their on-disk transcripts, leaving siblings", async () => {
@@ -4340,7 +4341,7 @@ test("removeWorkspaceSessions: archives a workspace's live sessions + purges the
 		expect(await listSessions("ws-doomed", doomedCwd)).toHaveLength(0);
 		expect(hasSession(survivor.sessionId)).toBe(true);
 		expect(await listSessions("ws-keep", keepCwd)).toHaveLength(1);
-		removeSession(survivor.sessionId);
+		await removeSession(survivor.sessionId);
 	} finally {
 		setSessionManagerFactory(() => SessionManager.inMemory());
 	}
