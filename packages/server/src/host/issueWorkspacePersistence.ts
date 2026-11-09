@@ -11,7 +11,11 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { type IssueReference, isIssueReference } from "@thinkrail/contracts";
+import {
+	type IssueReference,
+	isIssueReference,
+	isIssueRepositoriesInput,
+} from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import type { IssueWorkspaceRecord } from "../issues";
 import { logger } from "../log";
@@ -68,9 +72,22 @@ function keyFor(projectId: string, ref: IssueReference) {
 function record(value: unknown, expected: string): IssueWorkspaceRecord {
 	if (
 		!object(value) ||
-		!shape(value, ["projectId", "reference"], ["design", "implementation", "sessionPending"]) ||
+		!shape(
+			value,
+			["projectId", "reference"],
+			["design", "implementation", "sessionPending", "repositoryProjectIds"],
+		) ||
 		!id(value.projectId) ||
 		keyFor(value.projectId, reference(value.reference)) !== expected
+	)
+		stop();
+	if (
+		Object.hasOwn(value, "repositoryProjectIds") &&
+		!isIssueRepositoriesInput({
+			projectId: value.projectId,
+			reference: value.reference,
+			projectIds: value.repositoryProjectIds,
+		})
 	)
 		stop();
 	if (Object.hasOwn(value, "design")) {

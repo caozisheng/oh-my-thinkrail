@@ -5,6 +5,7 @@ import {
 	type IssueReference,
 	type IssueSessionLaunch,
 	isIssueReference,
+	isIssueRepositoriesInput,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 
@@ -30,6 +31,7 @@ interface CompletedWorkspace extends Omit<PendingWorkspace, "state"> {
 export interface IssueWorkspaceRecord {
 	projectId: string;
 	reference: IssueReference;
+	repositoryProjectIds?: string[];
 	/** Durable uncertainty fence; only provable reconciliation of the recorded stage may clear it. */
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
@@ -154,10 +156,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		if (!pending) return record;
 		if (!options.boundSession) stop();
 		const sessionId = await options.boundSession(pending.stage, pending.workspaceId);
-		const recovered: IssueWorkspaceRecord = {
-			projectId: record.projectId,
-			reference: record.reference,
-		};
+		const { sessionPending: _pending, ...recovered } = record;
 		if (record.design) recovered.design = { ...record.design };
 		if (record.implementation) recovered.implementation = { ...record.implementation };
 		if (sessionId) {
@@ -283,6 +282,23 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	return {
+		repositories(reference: IssueReference) {
+			return run(reference, async (_key, record) => ({
+				projectIds: [...(record.repositoryProjectIds ?? [])],
+				locked: record.implementation !== undefined,
+			}));
+		},
+		setRepositories(reference: IssueReference, projectIds: string[]) {
+			return run(reference, async (key, record) => {
+				if (
+					record.implementation ||
+					!isIssueRepositoriesInput({ projectId, reference, projectIds })
+				)
+					stop();
+				await options.save(key, { ...record, repositoryProjectIds: [...projectIds] });
+				return { projectIds: [...projectIds], locked: false };
+			});
+		},
 		ownedImplementation(reference: IssueReference): Promise<WorkspaceHandle> {
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;

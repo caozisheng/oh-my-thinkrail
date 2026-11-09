@@ -35,6 +35,21 @@ const failure = {
 	message: "Issue workspace requires reconciliation.",
 };
 
+test("repository selections survive restart and reject duplicate, primary and foreign fields", async () => {
+	const { dir, store } = setup();
+	const selected = { ...record, repositoryProjectIds: ["api", "web"] };
+	await store.withLaunch("local", ref, (p) => p.save(key(), selected));
+	expect(
+		await createIssueWorkspacePersistence(dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(selected);
+	for (const repositoryProjectIds of [["local"], ["api", "api"], ["../api"], [""]]) {
+		const f = setup();
+		await expect(
+			f.store.withLaunch("local", ref, (p) => p.save(key(), { ...record, repositoryProjectIds })),
+		).rejects.toMatchObject(failure);
+	}
+});
+
 test("successful callbacks persist snapshots, release fences and disable retained ports", async () => {
 	const { dir, store } = setup();
 	let retained: Parameters<Parameters<typeof store.withLaunch>[2]>[0] | undefined;

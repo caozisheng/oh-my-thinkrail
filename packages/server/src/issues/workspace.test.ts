@@ -109,6 +109,38 @@ async function fixture() {
 	};
 }
 
+test("repository selection defaults empty, persists by full identity and locks at preparation", async () => {
+	const f = await fixture();
+	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: [], locked: false });
+	await f.coordinator().setRepositories(ref, ["api", "web"]);
+	expect(await f.coordinator().repositories(ref)).toEqual({
+		projectIds: ["api", "web"],
+		locked: false,
+	});
+	expect(await f.coordinator().repositories({ ...ref, projectId: "8" })).toEqual({
+		projectIds: [],
+		locked: false,
+	});
+	for (const ids of [["local"], ["api", "api"], ["../api"]])
+		await expect(f.coordinator().setRepositories(ref, ids)).rejects.toThrow();
+	expect(f.events).not.toContain("create");
+	await f.coordinator().setRepositories(ref, []);
+	f.failCreate();
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: [], locked: true });
+	await expect(f.coordinator().setRepositories(ref, ["api"])).rejects.toThrow();
+});
+
+test("session reconciliation retains the repository selection", async () => {
+	const f = await fixture();
+	await f.coordinator().setRepositories(ref, ["api"]);
+	f.failSession();
+	await expect(f.coordinator().design(ref)).rejects.toThrow();
+	f.failSession(false);
+	await f.coordinator().design(ref);
+	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: ["api"], locked: false });
+});
+
 test("design uses Default, persists workspace before session and reuses an idle session", async () => {
 	const f = await fixture();
 	const c = f.coordinator();

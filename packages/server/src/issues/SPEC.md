@@ -216,6 +216,14 @@ version, approval and pending-operation metadata, never credentials or client ob
 
 ## Workspace/session coordination
 
+Repository selection is stored on the provider-qualified workspace ownership record as optional
+`repositoryProjectIds`; absence means an empty selection for old records. The coordinator exposes
+`repositories` and `setRepositories` under the same local-project launch serialization. Selection
+contains at most 32 distinct local project ids excluding the primary, and becomes immutable as soon
+as implementation preparation reserves ownership, including a failed preparation. Host composition
+validates that selected projects are open and available before saving or launching; selection grants
+no resource trust. Recovery preserves the selection together with both stage records.
+
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second
 store or runtime. It reserves a provider-qualified ownership record before creating exactly
 `.worktrees/issue-<IID>`, persists the registered workspace before starting a session, and reuses recorded idle

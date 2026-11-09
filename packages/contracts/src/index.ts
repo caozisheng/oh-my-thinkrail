@@ -83,6 +83,8 @@ export {
 	isIssueImplementationTarget,
 	isIssuePublication,
 	isIssueReference,
+	isIssueRepositories,
+	isIssueRepositoriesInput,
 	isIssueSessionLaunch,
 	isIssueSessionStartupTarget,
 	isIssueTarget,
