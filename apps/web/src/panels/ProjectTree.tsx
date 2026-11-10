@@ -402,14 +402,14 @@ export function ProjectTree() {
 					) : (
 						<li key={`group:${entry.id}`} data-testid="project-group" data-group={entry.id}>
 							<div
-								className="flex h-panel-row min-w-0 items-center gap-6 pr-8 pl-8 text-text-muted"
+								className="flex h-panel-row min-w-0 items-center gap-4 pr-8 pl-8 text-text-muted"
 								title={entry.root}
 							>
 								<RiStackLine className="size-14 shrink-0" aria-hidden="true" />
 								<span className="truncate tr-text-eyebrow">{entry.name}</span>
 							</div>
 							<ul
-								className="flex flex-col border-l border-border-muted ml-14"
+								className="ml-16 flex flex-col border-border-muted border-l"
 								aria-label={t("panels.projectTree.group", { name: entry.name })}
 							>
 								{entry.projects.map(renderProject)}
