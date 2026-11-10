@@ -39,6 +39,12 @@ function stubOpenChat(): Array<[string, string]> {
 		sessionId: string,
 	) => {
 		opened.push([workspaceId, sessionId]);
+		useAppStore.setState((state) => ({
+			tabsByWorkspace: {
+				...state.tabsByWorkspace,
+				[workspaceId]: [{ kind: "chat", id: sessionId, workspaceId, sessionId, name: sessionId }],
+			},
+		}));
 	}) as never);
 	restore.push(() => spy.mockRestore());
 	return opened;
@@ -78,11 +84,45 @@ test("a launch whose workspace the project list omits still activates the host's
 test("a failed workspace refresh reports a keyed toast and opens nothing", async () => {
 	stubWorkspaces(new Error("offline"));
 	const opened = stubOpenChat();
-	await openIssueSession("p1", { workspaceId: "w1", sessionId: "s1" });
+	await expect(openIssueSession("p1", { workspaceId: "w1", sessionId: "s1" })).rejects.toThrow(
+		"offline",
+	);
 	const state = useAppStore.getState();
 	expect(opened).toEqual([]);
 	expect(state.activeWorkspaceId).toBeNull();
 	expect(state.toasts.map((toast) => toast.message)).toEqual([
 		EN["shell.workbench.issueLaunchFailed"] ?? "",
 	]);
+});
+
+test("a launch invalidated while workspaces load cannot navigate", async () => {
+	let release = () => {};
+	const barrier = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const spy = spyOn(wireTransport, "getTransport").mockReturnValue({
+		request: async () => {
+			await barrier;
+			return [row("w1", "p1")];
+		},
+		httpBase: () => "",
+	} as never);
+	restore.push(() => spy.mockRestore());
+	const opened = stubOpenChat();
+	let current = true;
+	const result = openIssueSession("p1", { workspaceId: "w1", sessionId: "s1" }, () => current);
+	current = false;
+	release();
+	await result;
+	expect(opened).toEqual([]);
+	expect(useAppStore.getState().activeWorkspaceId).toBeNull();
+});
+
+test("a swallowed chat hydration failure is still a navigation failure", async () => {
+	stubWorkspaces([row("w1", "p1")]);
+	const spy = spyOn(openChat, "openChatInTab").mockResolvedValue(undefined);
+	restore.push(() => spy.mockRestore());
+	await expect(openIssueSession("p1", { workspaceId: "w1", sessionId: "s1" })).rejects.toThrow(
+		"Issue chat navigation failed",
+	);
 });

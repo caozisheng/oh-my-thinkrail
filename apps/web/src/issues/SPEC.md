@@ -176,7 +176,7 @@ product and therefore appear nowhere: no control, menu entry, label or disabled 
 them. The two controls sit **on the issue title row, right-aligned**, as icon-only `IconButton`s (quill = run
 design, code box = run implementation) inside their own `TooltipProvider`; each keeps its action name as
 `aria-label`, a blocked one names its reason in the same tooltip plus `data-reason`, and a completed one is
-rendered with the shared `soft-primary` button variant and `data-done`. A pending action disables every control. Dispatch goes through the one
+rendered with the shared `soft-primary` button variant and `data-done`. A pending action disables every control. Its own card immediately shows a localized, live status with a reduced-motion-aware spinner: starting design/implementation during the RPC, then opening chat while awaiting shell navigation. No percentage, cancellation or automatic retry is implied. Progress and failures are local to the issue and current project/connection request; refresh, disconnect and identity changes invalidate old continuations, including navigation after workspace loading. Navigation failure is distinct from host launch failure; without a navigation callback, a valid launch simply ends waiting. Dispatch goes through the one
 `onRunAction(issue, action)` prop, whose keyed result the tool turns into the `actionPending`/`actionError`
 props the panel renders.
 
@@ -208,7 +208,7 @@ contention and lock-release failure have distinct keyed notices; a transport `Re
 says only that the browser stopped waiting, never that host execution stopped or its lock was released; `issues.error.unsupported` remains the catalog's keyed refusal for a host
 below a control's floor, while the control itself stays disabled with `needs-newer-host`. Credentials and
 transport text are never echoed in UI errors and the token never leaves the form. A successful launch is forwarded once to the optional
-`onLaunchSession({ workspaceId, sessionId })`; the tool creates no session and sends no prompt, and re-reads
+`onLaunchSession({ workspaceId, sessionId }, isCurrent)`; the callback may return a promise and must check request freshness before navigation after an await; the tool creates no session and sends no prompt, and re-reads
 the summaries after a start; starting does not move stage labels. Without `onLaunchSession` the launch
 still happens and navigates nowhere. The shell answers that callback by refreshing `workspace.list` for the
 project, activating the returned workspace and opening its chat tab — again without creating or prompting a

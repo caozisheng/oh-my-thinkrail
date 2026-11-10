@@ -27,6 +27,8 @@ token. It includes:
   HTTP connections and no plaintext storage fallback.
 - An issue list with **Design** and **Implement** actions. Sessions use the Issue title; implementation
   creates or reuses an owned `.worktrees/issue-<IID>` workspace. The two activities can interleave.
+  The issue card shows startup and chat-opening feedback immediately, with stage actions disabled until
+  navigation finishes or an error is reported.
 - **Linked repositories**: an issue can name other open projects it also touches. Design reads their
   own checkouts; implementation then prepares a worktree in each of those repositories under its own
   `.worktrees/`, starts a single session only when every one is ready, and tags each worktree in the
