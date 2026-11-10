@@ -80,6 +80,48 @@ export interface Project {
 	mcpOverrides?: Record<string, McpProjectOverride>;
 	/** "Always allow" MCP tools per server name (never written to `.pi/mcp.json`). */
 	mcpToolGrants?: Record<string, McpToolGrant>;
+	/** Membership in a project group imported from one folder; absent before `PROJECT_GROUPS_PROTOCOL_VERSION`. */
+	projectGroup?: ProjectGroupMembership;
+}
+
+/**
+ * One repository's place in a project group: every member of a group carries the same `id`, `name`
+ * and host-absolute `root`; `path` is this repository's folder relative to `root` (`""` for the root).
+ */
+export interface ProjectGroupMembership {
+	id: string;
+	name: string;
+	root: string;
+	path: string;
+}
+
+/** A repository found below a group root; `path` is relative to the root, `""` for the root itself. */
+export interface ProjectGroupCandidate {
+	path: string;
+	name: string;
+}
+
+export interface ProjectGroupScan {
+	/** The resolved host-absolute folder that was scanned. */
+	root: string;
+	/** Default group name: the folder's basename. */
+	name: string;
+	/** Shallow-first, then by path; at most `PROJECT_GROUP_MAX_REPOSITORIES`. */
+	repositories: ProjectGroupCandidate[];
+	/** The scan stopped at its directory, repository or time budget before seeing everything. */
+	truncated: boolean;
+}
+
+export interface ProjectGroupImportInput {
+	root: string;
+	/** Relative candidate paths the user kept; each must still be found by a fresh scan. */
+	paths: string[];
+	name?: string;
+}
+
+export interface ProjectGroupImport {
+	projects: Project[];
+	failed: { path: string; reason: string }[];
 }
 
 /** Tools (pi tool names) granted while the server keeps the command + args or URL hashed as `target`. */

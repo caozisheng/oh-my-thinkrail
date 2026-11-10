@@ -36,6 +36,15 @@ token. It includes:
   it has linked repositories). Changes, review and commits stay attributed per repository; commits
   across repositories are not atomic, so a failure keeps the successful ones and is reported. Build
   and integration paths between the worktrees are the agent's normal reviewed work, not automatic.
+- **Project groups**: "Import folder as project group…" scans a folder (the folder itself may be a
+  repository or not) for nested Git repositories up to four levels deep, skipping hidden, dependency
+  and build folders and never following symlinks, lets you untick any, and opens the rest as projects
+  shown together under the group name in the project rail. An issue started from a group member links
+  the group's other open, trusted members by default (change the selection as before). When every
+  linked repository is in the group and the group's root repository (if any) takes part, implementation
+  places the worktrees in one `.worktrees/issue-<n>…/` folder under the group root that mirrors the
+  original layout, so relative paths between repositories keep working; the agent still starts in the
+  issue's own repository. Submodules are not imported as separate repositories.
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.

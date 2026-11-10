@@ -1418,14 +1418,29 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 117`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 118`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
-hosts (through v115). Issues content/detail/repositories retain their v113/v114/v115 floors.
+hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 118` (below). Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
 `WORKSPACE_CREATION_PROTOCOL_VERSION = 111`; extension settings and Discuss answers share
 `EXTENSION_SETTINGS_PROTOCOL_VERSION = 112` and `ASK_DISCUSS_PROTOCOL_VERSION = 112`.
 The existing Issues feature floors v103–v110 remain unchanged; the historical sections below
 record their introduction, not the current wire version.
+
+## Project groups (v118)
+
+`PROJECT_GROUPS_PROTOCOL_VERSION = 118` adds **`project.scanGroup`** (`{ path }` → `ProjectGroupScan`:
+the resolved real `root`, a default `name`, and the nested repositories found below it as
+`{ path, name }` with `/`-separated `path` relative to the root — `""` is the root itself — shallow
+first, at most `PROJECT_GROUP_MAX_REPOSITORIES` (64), plus `truncated` when a scan budget stopped the
+walk) and **`project.importGroup`** (`ProjectGroupImportInput` `{ root, paths, name? }` →
+`ProjectGroupImport` `{ projects, failed: { path, reason }[] }`). Import re-scans and refuses
+(`RANGE_INVALID`) any path the fresh scan no longer finds; each kept repository is opened as an
+ordinary project and a per-path failure (`ALREADY_OPEN`, a path guard) is reported in `failed`
+instead of failing the whole import. Membership travels on the project record itself as optional
+**`Project.projectGroup`** (`ProjectGroupMembership` `{ id, name, root, path }`), so the existing
+`project.updated` push and `project.list` carry it and there is no separate group channel. Older
+clients ignore the field; a newer client hides the import entry below v118.
 
 ## Issues read protocol (v103)
 
