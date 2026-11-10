@@ -80,6 +80,7 @@ To connect, enter a **Repository address** and a personal access token in the Is
 - GitLab addresses select GitLab, including self-hosted instances with a confirmed instance URL.
 - Each local project has at most one Issue association: GitHub, GitLab, or none. Disconnect the current
   association before switching trackers in the UI.
+- **Find anything from one box.** `⌘K` (or a double tap of Shift) opens a palette that finds chats and the messages inside them, workspaces and projects, files in the current workspace, specs, and plans, with a preview pane. It also runs the app's commands and opens Settings sections, and with nothing typed it lists the chats waiting for you. Type a task and press `⌘↵` to open Create workspace with it as the prompt.
 
 The connection token remains in the host OS credential vault, never in agent prompts. GitHub Enterprise
 Server and SSH/SCP repository addresses are not supported by this association flow. Approval and
@@ -87,6 +88,7 @@ publication workflow APIs remain GitLab-only as described above; ordinary Design
 not require those APIs on either provider.
 
 ## Inherited IDE capabilities
+- **Skills.** ThinkRail imports skills from `pi`, Claude, Codex, and other coding agents, as well as any already in your project. A large library is listed within a small prompt budget, and the agent finds the rest with a skill search.
 
 Workspaces use Git worktrees; managed checkout creation runs in the background with progress so large
 repositories do not freeze the host. The shared IDE includes editor tabs, terminals, GitHub PR controls,

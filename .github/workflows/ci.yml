@@ -41,6 +41,113 @@ jobs:
         run: bash .github/scripts/prepare-electrobun.sh
       - run: bun run typecheck
 
+  test:
+    name: Unit Tests
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
+  pi-packages:
+    name: Pi package parity (vanilla pi under Node)
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      # Vanilla pi is an npm CLI on Node; the gate loads the packed packages under Node on purpose.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run check:pi-packages
+
+  e2e-shard:
+    name: E2E (no-agent) shard ${{ matrix.shard }}/3
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      THINKRAIL_E2E_JOB_SHARD: ${{ matrix.shard }}/3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Start Playwright Chromium and WebKit download
+        run: .github/scripts/install-playwright.sh start webkit
+      - run: bun run build:web
+      - name: Install Playwright Chromium and WebKit
+        timeout-minutes: 8
+        run: .github/scripts/install-playwright.sh wait
+      # `bun run e2e` boots the host on an isolated port + state dir, runs this job's slice of the
+      # @agent-free suite headless, then tears it all down. It reuses the web build above.
+      - run: bun run e2e
+        env:
+          THINKRAIL_E2E_SKIP_BUILD: "1"
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 7
+
+  binary-shard:
+    name: Binary smoke & e2e shard ${{ matrix.shard }}/4
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.artifacts == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Start Playwright Chromium download
+        run: .github/scripts/install-playwright.sh start
+      # Build the single-file binary for the runner's platform, then boot the artifact and assert it
+      # serves the staged UI + skills, completes a real OAuth login up to its auth URL, and shuts down
+      # cleanly — regressions in the extension/asset/provider-flow bundling only exist inside the
+      # compiled binary, so from-source suites can't catch them.
+      - run: bun run build:binary
+      - run: bun run smoke:binary
+        if: ${{ matrix.shard == 1 }}
+      - name: Install Playwright Chromium
+        timeout-minutes: 5
+        run: .github/scripts/install-playwright.sh wait
+      # This shard of the no-agent e2e suite against the artifact (grep-inverts @dev-seam too — the fake
+      # login providers only exist in the dev boot): the broad net for works-from-source/broken-in-the-binary.
+      - run: bun run e2e:binary
+        env:
+          THINKRAIL_E2E_JOB_SHARD: ${{ matrix.shard }}/4
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report-binary-${{ matrix.shard }}
+          path: playwright-report-binary/
+          retention-days: 7
   binary-windows:
     name: Binary smoke (windows)
     timeout-minutes: 20
@@ -79,6 +186,68 @@ jobs:
       - run: bun run desktop:build
       - run: bun run smoke:desktop
 
+  desktop-shard:
+    name: Desktop smoke & e2e shard ${{ matrix.shard }}/4
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.artifacts == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Start Playwright Chromium download
+        run: .github/scripts/install-playwright.sh start
+      - name: Install desktop runtime packages
+        uses: ./.github/actions/desktop-apt
+        timeout-minutes: 10
+      - name: Start virtual display
+        run: |
+          for attempt in 1 2 3; do
+            Xvfb :99 -screen 0 1280x1024x24 -nolisten tcp > "$RUNNER_TEMP/xvfb.log" 2>&1 &
+            xvfb_pid=$!
+            for _ in $(seq 100); do
+              if xdpyinfo -display :99 > /dev/null 2>&1; then
+                echo "DISPLAY=:99" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              sleep 0.1
+            done
+            kill -9 "$xvfb_pid" 2> /dev/null || true
+            wait "$xvfb_pid" 2> /dev/null || true
+            rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+            echo "::warning::Xvfb did not accept a client on attempt $attempt; restarting"
+          done
+          cat "$RUNNER_TEMP/xvfb.log"
+          exit 1
+      - name: Download the Electrobun toolchain
+        run: .github/scripts/prepare-electrobun.sh
+      - run: bun run desktop:build
+      - name: Smoke native desktop window and packaged runtime
+        if: ${{ matrix.shard == 1 }}
+        run: env LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 bun run smoke:desktop
+      - name: Install Playwright Chromium
+        timeout-minutes: 5
+        run: .github/scripts/install-playwright.sh wait
+      - name: Run no-agent e2e against the embedded desktop host
+        run: env LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 bun run e2e:desktop
+        env:
+          THINKRAIL_E2E_JOB_SHARD: ${{ matrix.shard }}/4
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report-desktop-${{ matrix.shard }}
+          path: playwright-report-desktop/
+          retention-days: 7
+
+  # The one required check in the main ruleset.
   ci-passed:
     name: CI passed
     needs: [lint, binary-windows, desktop-windows]

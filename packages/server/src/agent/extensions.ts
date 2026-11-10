@@ -47,6 +47,7 @@ import { requestReviewExtension } from "./requestReviewTool";
 import { reviewToolExtension } from "./reviewTool";
 import { decideSkill, type SkillAdmissionContext } from "./skillAdmission";
 import { skillCarryover } from "./skillCarryover";
+import { skillCatalog } from "./skillCatalog";
 import {
 	type CompatibilitySkillSource,
 	candidateCompatibilitySkillRoots,
@@ -369,6 +370,7 @@ export function childExtensionFactories(): InlineExtension[] {
 	return [
 		headlessSearchPolicy,
 		specGraphExtension,
+		skillCatalog,
 		...registryInlineExtensions("childExtensions", isExtensionDisabled),
 	];
 }
@@ -400,6 +402,7 @@ export async function buildResourceLoader(
 		setTitleExtension,
 		{ name: "issue-tools", factory: issueToolsExtension },
 		oversizedImageGuard,
+		skillCatalog,
 		skillCarryover,
 		...extraFactories,
 	];

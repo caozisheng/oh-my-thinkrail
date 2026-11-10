@@ -286,7 +286,7 @@ treatment.
   `FileTree` and `ChangesTree` so the two trees stay identical. `TreeRow`'s optional `onWarm` reports
   `hover` (pointer enter) or `focus`. `FileTree` file rows warm at once on focus and through
   `warmOnHover` on hover, which keeps one pending row and fires after the pointer rests 150 ms, so a
-  sweep across the tree loads nothing. A warm preloads the code view and the row's grammar
+  sweep across the tree loads nothing. A warm preloads the code view
   through **`useEditorWarm`** (`editorWarm.ts`, also used by the shell's idle preload): it returns
   `usePreloadResourceView`'s callback, or `undefined` on phone-class viewports and `saveData` connections.
   `editorWarm` also owns the boot gate: a `FileTree` holds `holdEditorWarm()` until its first listing
@@ -1213,7 +1213,9 @@ a project picker, the prompt hero, and the reused
   `packages.list` for the active workspace (user scope alone without one) through **one** request path
   (`listPackages`, generation-guarded so a slow older response never overwrites a newer one), re-run on
   mount, on a workspace change and on the store's `packagesVersion` (the `packages.changed` push, which
-  the host also sends after a package switch so a re-enabled row regains its chips). The update check
+  the host also sends after a package switch so a re-enabled row regains its chips). The mount and
+  workspace-change reads pass `force`, so the host rebuilds its catalog: an extension file dropped into a
+  scanned folder by hand changes nothing the host watches, and a cached list would hide it for minutes. The update check
   is guarded the same way: a check started later (a workspace switch, a manual check, the re-check
   after an update) wins, and only the latest clears "Checking…" or re-flags rows. A **package row** (`PackageRow`) is name ·
   kind / scope tags (`npm` / `git` / `local`, Global / Repository) · an **Update available** tag when the
@@ -1693,7 +1695,7 @@ own section. The kebab menu (`plan-menu`, a
   presentational.
 - **Public surface:** layout-agnostic feature renderers (`ProjectTree`, `WelcomePanel`, file/diff/doc/chat
   panes, singleton side tools, terminal bodies, Settings, and `Toaster`), imported **per-file** so
-  Monaco/shiki/xterm stay lazy. Tab strips, group headers, side stacks, and center topology are not panel
+  Monaco/xterm stay lazy. Tab strips, group headers, side stacks, and center topology are not panel
   surfaces; the shell layout module wraps these renderers.
 - **Allowed deps:** `store`, `transport`, `components` (`SkeletonRows` — every async panel's pending
   state renders content-shaped skeleton rows, never a bare "Loading…" line), `@thinkrail/ui/*` (incl. `popover`/`command`/`textarea` for the
@@ -1709,6 +1711,7 @@ own section. The kebab menu (`plan-menu`, a
   `notifyIssueAssociation` signal that gate and settle the post-open association prompt — panels never
   imports `issues` internals), `@remixicon/react`; and the heavy libs each lazy
   panel owns (`shiki`, `@xterm/*`) loaded via `import()`.
+  `contracts`; `@remixicon/react`; and the heavy libs each lazy panel owns (`@xterm/*`) loaded via `import()`.
 - **Forbidden:** `server`/`shared`/`pi`; importing `shell`; reaching across unrelated panels.
 
 - **Ship — the branch's delivery state and actions, one implementation for topbar and Plan pane.**
@@ -1872,7 +1875,7 @@ own section. The kebab menu (`plan-menu`, a
   **Pierre owns every diff and every phone-class code file.** Threads with a `lineRange` become
   `lineAnnotations` at the range's end line (`base` → `deletions`, `worktree` → `additions`) and render
   `ReviewThreadCard`; annotation metadata and arrays preserve comment-id identity across unrelated
-  review pushes. Because Pierre 1.5.1 keys React annotation wrappers by array index, each mount keeps
+  review pushes. Because Pierre keys React annotation wrappers by array index, each mount keeps
   append-only comment-id slots with tombstones and reserves the always-present first slot for the composer.
   Line-number selection and the gutter utility open a composer on that exact side. A
   selection crossing both side spaces (unified view, a drag from a deleted line into an added one) opens
@@ -1893,35 +1896,38 @@ own section. The kebab menu (`plan-menu`, a
 
   **Pierre diff text-selection crash (WebKit) — a vendored `@pierre/diffs` patch.** Drag-selecting code
   in a review diff crashed WebKit's web-content process (Electrobun desktop: "A problem repeatedly
-  occurred"; `EXC_BREAKPOINT` in `WebCore::EventHandler::handleMouseDraggedEvent`). Pierre's
-  `InteractionManager` moves the gutter utility into the hovered line's number cell whenever the hovered
-  line changes and removes it on `pointerleave`; with our `renderGutterUtility` that node holds a
-  `<slot>`. WebKit rebuilds the renderers of the whole shadow host on every slot insertion or removal, and
-  doing so synchronously inside a pointer handler of a text drag crashes it: a Pierre-free page reproduces
-  the signature, while a moved plain element, the same slot move deferred to a frame, or a diff under
-  ~100 lines does not. Invariant: a Pierre surface never inserts, removes, or moves a `<slot>`
-  synchronously from a pointer or mouse handler. `patches/@pierre%2Fdiffs@1.5.1.patch` (root
-  `patchedDependencies`) carries the open upstream proposal pierrecomputer/pierre#1185 (issue
-  pierrecomputer/pierre#1184) plus two additions it lacks: placement is a no-op while a mouse button is
-  held outside Pierre's own selection session — armed by `pointermove` and by `pointerleave`, so a drag
-  whose first move already exits the diff cannot remove the slot — and the first button-free move
-  re-places the utility, even on the row where the drag ended. Bun applies a patch only to its exact
-  version and skips a mismatched one silently (install succeeds and the lockfile drops the entry), so
-  the review e2e tests "a text-selection drag leaves the comment button on the line it started from"
-  and "… that leaves the diff on its first move keeps the comment button" are the guard: they fail on
-  Chromium whenever the patched behavior is missing, including a Pierre release that carries only
-  #1185. A Pierre bump keeps them green and, once a release contains the fix, deletes the patch file and
-  its `patchedDependencies` entry. The same patch also fixes `FileDiff.trimColumnRows`: when a
-  virtualized window's end shrinks, 1.5.1 trims the annotation and no-newline rows trailing the last
-  kept line along with the dropped lines, and later appended chunks never re-emit them, so a composer,
-  thread, or toolbar on that line vanishes until a full render (seen when a composer's focus scroll
-  moved the window). Rows trailing a kept line now stay; separators, which precede their line, still go.
-  The guard is "Changes keeps unsaved composer selection…" in `e2e/changes-review-drafts.spec.ts`.
-  Turbo hashes `patches/**`, so an edited patch rebuilds the web
-  bundle instead of restoring a stale one from cache. The tests' controls (the utility sat on the start
-  line; the selection holds the dragged text) keep an emptied layout from passing — earlier
-  `display:grid` bisections "fixed" the crash only that way. The crash itself reproduces only in WebKit
-  (a temporary Playwright `webkit` project). Tracked in #683.
+  occurred"; `EXC_BREAKPOINT` in `WebCore::EventHandler::handleMouseDraggedEvent`). The root cause is a
+  WebKit regression from 307588@main (WebKit bug 307875): `handleMouseDraggedEvent` holds a `CheckedPtr`
+  to the drag target's renderer across `hitTest()` / `updateStyleIfNeeded()`. A `<slot>` moved
+  synchronously from `pointermove` invalidates the shadow host's style, that update destroys the
+  renderer, and the `CheckedPtr` crashes. A Pierre-free page reproduces it; a moved plain element or the
+  same slot move deferred to a frame does not. Pierre's `InteractionManager` moves the gutter utility
+  into the hovered line's number cell whenever the hovered line changes and removes it on
+  `pointerleave`. Only a custom `renderGutterUtility`, which we use, puts a `<slot>` in that node; the
+  default gutter button does not crash, and the crash does not depend on diff size. Invariant: a Pierre
+  surface never inserts, removes, or moves a `<slot>` synchronously from a pointer or mouse handler.
+  `patches/@pierre%2Fdiffs@1.6.4.patch` (root `patchedDependencies`) makes placement a no-op while a
+  mouse button is held outside Pierre's own selection session — armed by `pointermove` and by
+  `pointerleave`, so a drag whose first move already exits the diff cannot remove the slot — and the
+  first button-free move re-places the utility, even on the row where the drag ended. Upstream tracking:
+  pierrecomputer/pierre#1184 and WebKit bug 330739. Removal gate: a Pierre release stops moving the slot synchronously during a
+  pointer drag. A WebKit fix alone is not enough: the desktop app uses the system WebKit, and users update
+  macOS late. The same patch also fixes `FileDiff.trimColumnRows`: when a virtualized window's end
+  shrinks, Pierre trims the annotation and no-newline rows trailing the last kept line along with the
+  dropped lines, and later appended chunks never re-emit them, so a composer, thread, or toolbar on that
+  line stays hidden while the line is still rendered. Rows trailing a kept line now stay; separators,
+  which precede their line, still go. Removal gate: a Pierre release that keeps those rows. Bun applies
+  a patch only to its exact version and skips a mismatched one silently (install succeeds and the
+  lockfile drops the entry), so Chromium e2e tests that fail without the patch are the guards. Crash
+  half: "a text-selection drag leaves the comment button on the line it started from" and "… that leaves
+  the diff on its first move keeps the comment button" in `e2e/review.spec.ts`. `trimColumnRows` half:
+  "a diff composer stays shown while a scroll-up shrinks the virtual window to its line" in
+  `e2e/changes-review-drafts.spec.ts`. A Pierre bump keeps them green; delete the patch file and its
+  `patchedDependencies` entry only when both removal gates hold. Turbo hashes `patches/**`, so an edited
+  patch rebuilds the web bundle instead of restoring a stale one from cache. The crash tests' controls
+  (the utility sat on the start line; the selection holds the dragged text) keep an emptied layout from
+  passing — earlier `display:grid` bisections "fixed" the crash only that way. The crash itself
+  reproduces only in WebKit (a temporary Playwright `webkit` project). Tracked in #683.
 
   **Monaco renders desktop files only.** `reviewWidgets.ts` keeps its content-widget selection affordance,
   context-menu action, decorations, and view-zone reconciliation for that one surface. It exposes stable
@@ -2531,7 +2537,7 @@ own section. The kebab menu (`plan-menu`, a
   key handler intercepts keydown at `keyCode === 229` and derives the control bytes from `event.code`
   (which stays accurate under an IME) via `imeControlBytes`, writing them to the PTY itself; anything
   that isn't a rescued chord is left to normal text input.
-- Heavy deps (Monaco / shiki / xterm) load via `React.lazy(() => import())` to stay out of the eager bundle.
+- Heavy deps (Monaco / xterm) load via `React.lazy(() => import())` to stay out of the eager bundle.
   A lazy chunk that fails to load (or a render throw) is contained by the `components/ErrorBoundary` the
   **shell** wraps each region in (see `shell/SPEC.md`), so a single panel degrades instead of blanking the
   app; panels themselves don't own the boundary.

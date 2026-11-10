@@ -14,13 +14,13 @@ import {
 import { type ReactNode, useMemo } from "react";
 import { Markdown } from "../chat/Markdown";
 import { cssColorToHex, usePhoneViewport } from "../lib";
-import { SHIKI_FILE_LANGUAGES, shikiLanguageId } from "../lib/highlighter";
+import { CODE_LANGUAGES, codeLanguageId } from "../lib/codeLanguages";
 import { openFileComparisonInTab, openFileInTab } from "../panels/openTabs";
 import { resourceBytesUrl } from "../panels/resourcePane";
 import { SendReviewButton } from "../panels/SendReviewButton";
 import { useFileReview } from "../panels/useReviewCommenting";
 import { selectFileChangeSince, selectHostSearchReady, useAppStore } from "../store";
-import { resolveThinkrailShikiTheme } from "../themes";
+import { resolveThinkrailEditorTheme, THINKRAIL_PIERRE_THEME } from "../themes";
 import { getTransport, wsErrorCode } from "../transport";
 
 registerBundledResourceRenderers();
@@ -36,9 +36,11 @@ function ReviewSend({ workspaceId, paths, sessionId }: ResourceReviewSendProps) 
 const HOST: ResourceHost = {
 	markdown: Markdown,
 	code: {
-		languages: SHIKI_FILE_LANGUAGES,
-		languageId: shikiLanguageId,
-		theme: (options) => resolveThinkrailShikiTheme({ ...options, toHex: cssColorToHex }),
+		languages: CODE_LANGUAGES,
+		languageId: codeLanguageId,
+		editorTheme: (readVariable) =>
+			resolveThinkrailEditorTheme({ readVariable, toHex: cssColorToHex }),
+		pierreTheme: THINKRAIL_PIERRE_THEME,
 	},
 	bytesUrl: resourceBytesUrl,
 	openFile: (workspaceId, path, options) => {
