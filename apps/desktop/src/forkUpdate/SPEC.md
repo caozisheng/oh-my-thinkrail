@@ -35,7 +35,8 @@ Settings card's manual **Check again** is the only retry path.
 Fork tags are `vX.Y.Z.<fork sha8>` and the running build carries the same identity, so the comparison is
 that triple plus the sha: a larger base is an update, a smaller base is ignored (never a downgrade), an equal
 base with a different sha is an update (a re-published rebuild), and an equal base with the same sha is
-current. A tag outside the strict pattern is no answer at all. The release page is composed locally from the
+current. A tag outside the strict pattern is no answer at all. Linux CLI Releases use `cli-v…` tags and are never marked latest
+([[module-ci-release]]), so they never reach this check. The release page is composed locally from the
 validated tag; the response's own URL is never used or trusted.
 
 ## Notification and memory
@@ -47,4 +48,4 @@ at most one repeated notice. Notifications carry no click action ([[module-deskt
 callbacks are unlanded); the card and chip are the entry points.
 
 **Deferred:** in-app download/verify/install and restart, re-enabling the Electrobun feed, a macOS/Linux fork
-build, notification click-through, and a user setting that disables the check.
+desktop build, notification click-through, and a user setting that disables the check.

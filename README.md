@@ -119,6 +119,43 @@ latest Release at launch, notifies you once per new version, and Settings → So
 the release page so you install subsequent releases manually. Release builds
 carry no upstream PostHog project key. Source-run privacy behavior is unchanged below.
 
+## Linux CLI releases
+
+Run **Actions → Release Linux CLI → Run workflow** (merged into the default branch first). It builds
+the single-file `thinkrail` CLI for Linux x64 and arm64 on native runners, smoke-boots each binary,
+and publishes `thinkrail-linux-x64`, `thinkrail-linux-arm64`, `SHA256SUMS` and `build-info.json` under a
+`cli-v<version>` tag, using the same version scheme as the Windows releases. Choose one `arch`, or
+`dry_run` to build and smoke without publishing. CLI releases are never marked **Latest**, so the
+Windows desktop update check keeps pointing at Windows releases.
+
+**Auto-release switch (off by default).** The workflow also listens to pushes to `main` (docs-only
+pushes such as `*.md` changes are ignored), but a push only releases when the repository variable
+`LINUX_CLI_AUTO_RELEASE` is `true`; unset or anything else skips the run. Manual runs always work.
+Enable it under **Settings → Secrets and variables → Actions → Variables**, or:
+
+```bash
+gh variable set LINUX_CLI_AUTO_RELEASE --body true -R caozisheng/oh-my-thinkrail
+```
+
+Set it to `false` (or delete it) to turn auto-release off again. An automatic run whose `cli-v<version>`
+tag already exists is skipped instead of failing; runs are serialized and never overwrite a release.
+
+The upstream `install.sh` and `thinkrail update` only know `JetBrains/thinkrail` releases, so install the
+fork CLI by hand and do not run `thinkrail update` on it (that would install upstream ThinkRail):
+
+```bash
+tag=cli-v0.3.2.abcdef01   # pick from Releases
+arch=x64                  # or arm64
+base=https://github.com/caozisheng/oh-my-thinkrail/releases/download/$tag
+curl -fL -O "$base/thinkrail-linux-$arch" -O "$base/SHA256SUMS"
+sha256sum --check --ignore-missing SHA256SUMS
+install -Dm755 "thinkrail-linux-$arch" ~/.local/bin/thinkrail
+thinkrail --no-open
+```
+
+On a remote Linux machine keep the default `localhost` bind and connect through an SSH tunnel:
+`ssh -L 24242:127.0.0.1:24242 user@host`, then open `http://127.0.0.1:24242` locally.
+
 ## Development
 
 Use the Bun version pinned in `package.json`, Node.js **22.23.4+**, and Git. The website build and

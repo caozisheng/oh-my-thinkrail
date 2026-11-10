@@ -12,7 +12,7 @@ depends-on: [module-cli, module-desktop, module-shared, module-repo-scripts, mod
 Public PR gates, contribution templates, and reusable native build recipes. Release orchestration,
 signing/notary credentials,
 source authorization, tags, checksums, and signed upstream publication belong to `JetBrains/thinkrail-signing`.
-This fork separately owns unsigned Windows-only manual releases described below. This module owns the public action inputs/outputs and artifact/version contract consumed by that private
+This fork separately owns unsigned manual Windows Desktop and Linux CLI releases described below. This module owns the public action inputs/outputs and artifact/version contract consumed by that private
 pipeline.
 
 ## Boundary
@@ -30,11 +30,12 @@ pipeline.
 
 ### Fork development policy: Windows only
 
-During active fork development, `ci.yml`, `build-preview.yml`, and the manual Windows release workflow remain active. CI retains
+During active fork development, `ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI retains
 Windows lint/typecheck, existing Windows-targeted unit checks and native CLI/desktop smoke; the
 `CI passed` aggregate requires all three jobs to succeed (no allowed skipped jobs). Full POSIX
 unit, source/browser, binary-browser and desktop-browser suites are temporarily suspended, not
-claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by active workflows.
+claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by CI; only the Linux CLI release (manual, or on `main` pushes when
+explicitly enabled) uses Linux runners, and its binary smoke is release verification, not restored Linux application CI.
 
 The synchronized upstream cross-platform CI recipe is retained fully commented in
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
@@ -183,6 +184,31 @@ identify the unsigned independent fork and the Windows SmartScreen risk.
 A published Release is also the fork build's upgrade signal: [[submodule-desktop-fork-update]] reads this
 repository's `releases/latest`, so a Release must stay non-draft and non-prerelease with its `vX.Y.Z.<sha8>`
 tag, and its page is where a user installs the next version by hand.
+
+## Fork Linux CLI releases
+
+`release-linux-cli.yml` is manually triggered (`arch`: `both` by default, `x64` or `arm64`; `dry_run`
+builds and smokes without publishing) and builds only the unsigned single-file Linux CLI. A prepare job
+resolves the same `X.Y.Z.<fork sha8>` identity as the Windows release once, refuses an existing tag, and
+hands it to native `ubuntu-24.04` / `ubuntu-24.04-arm` builds; each re-verifies it against its checkout,
+stamps shared version (stable channel, no analytics key), builds the web UI and `thinkrail-linux-<arch>`,
+then requires `--version` to report that version, `--help`, and the [[module-artifact-tests]] binary
+smoke. A separate contents-write job re-checks every checksum, writes `SHA256SUMS` and `build-info.json`,
+and creates a Release at the full fork SHA.
+
+Pushes to `main` that change more than docs (`**/*.md`, `docs/**`, changesets, issue/readme/PR assets)
+also trigger it, but every job is skipped unless the repository variable `LINUX_CLI_AUTO_RELEASE` is
+`true`, so auto-release is off by default and manual dispatch is unaffected. A push run builds both arches
+and publishes; where a manual run refuses an existing `cli-v…` tag, an automatic run skips it cleanly.
+Runs share one non-cancelling concurrency group, so at most one waits behind the active release.
+
+The tag is `cli-vX.Y.Z.<sha8>` and the Release is created with `--latest=false`. The Windows advisory
+reads only `releases/latest` and accepts only `vX.Y.Z.<sha8>`, so a CLI release can neither be offered to
+Windows users nor displace the Windows Release as latest; the separate prefix also lets both releases
+exist for one fork commit. Asset names and `SHA256SUMS` lines match the upstream installer contract, but
+`install.sh` and `thinkrail update` still resolve `JetBrains/thinkrail` stable `vX.Y.Z` tags, so fork CLI
+installs are manual and `thinkrail update` would replace them with upstream. A fork-aware installer and
+self-update are deferred.
 
 ## Native build contract
 
