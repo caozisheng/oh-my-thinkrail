@@ -500,7 +500,10 @@ channel fan-out, and the process-boot wrapper both launchers share.
   - The **workspace-archive teardown** — the other composition of `agent` + `terminal` + `workspaces` only
     the host may make. `workspace.remove` **rejects a `kind: "default"` workspace loudly, before any
     side-effect** (the record's `worktreePath` is the project folder — the reclaim's `rm -rf` fallback
-    must never see it; the UI hides Remove, this guard is for buggy/rogue clients). Otherwise it
+    must never see it; the UI hides Remove, this guard is for buggy/rogue clients). It equally rejects,
+    with `WORKSPACE_HAS_NESTED_WORKSPACES`, a managed workspace that still holds another workspace's
+    folder (`nestedWorkspaces` — a project group's layout nests members inside an ancestor member's
+    worktree, and the forced reclaim would delete them). Otherwise it
     reaps *everything* rooted in the worktree (for a user-owned `kind: "external"` one, everything except
     the checkout itself) but is **non-blocking**:
     it does the fast part synchronously — `forgetWorkspace` (drop the record → gone from `workspace.list`
@@ -1051,6 +1054,16 @@ callback; failures retain uncertainty for explicit reconciliation, never automat
 Server-only `repositories` / `setRepositories` actions use the same full-identity launch fence and
 strict selection DTOs. Saving requires open trusted member projects. Launch pins their source paths and
 rechecks availability/trust around every awaited port.
+
+**Project groups.** `project.scanGroup` / `project.importGroup` delegate to `projects`
+(`scanProjectGroup` / `importProjectGroup`). For Issue actions the host supplies the coordinator's
+`defaultRepositoryProjectIds` from `groupRepositoryDefaults` — the primary's open, **trusted** other
+group members (untrusted members are skipped, since selection never grants trust), at most 32 — and uses
+the same default as the pinned selection when no selection is saved. `groupWorkspaceLayout` answers the
+coordinator's `layout` port only when every participant is in the primary's group, still sits at its
+recorded relative place under the real group root, and the group's root repository (if it has one)
+participates — otherwise that root's main working tree would gain an unexcluded `.worktrees` folder — and
+returns null (ordinary per-repository paths) in every other case.
 
 They are registered as `issues.repositories` (read) and `issues.setRepositories` (write whole selection)
 behind `ISSUES_REPOSITORIES_PROTOCOL_VERSION` = v113, with the same static credential-free gate wording

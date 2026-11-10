@@ -181,6 +181,93 @@ test("partial member preparation retains successes and resumes without duplicate
 	expect(f.sessions.size).toBe(1);
 });
 
+test("a project group's members are the default selection until one is saved", async () => {
+	const f = await fixture();
+	await mkdir(join(f.root, "api"));
+	f.options.projectPath = (id) => (id === "api" ? join(f.root, "api") : f.root);
+	f.options.listGitWorktrees = (id) =>
+		f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	f.options.defaultWorkspace = async (projectId) => ({
+		id: `default-${projectId}`,
+		projectId,
+		worktreePath: projectId === "api" ? join(f.root, "api") : f.root,
+		branch: "main",
+		kind: "default",
+	});
+	f.options.defaultRepositoryProjectIds = ["api"];
+	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: ["api"], locked: false });
+	expect((await f.coordinator().contexts(ref, "design")).map((c) => c.projectId)).toEqual([
+		"local",
+		"api",
+	]);
+	await f.coordinator().setRepositories(ref, []);
+	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: [], locked: false });
+	const other = { ...ref, number: 43 };
+	await f.coordinator().implementation(other);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["api", "local"]);
+	const saved = [...f.records.values()].find((row) => row.reference.number === 43);
+	expect(saved?.repositoryProjectIds).toEqual(["api"]);
+	f.options.defaultRepositoryProjectIds = [];
+	expect(await f.coordinator().repositories(other)).toEqual({ projectIds: ["api"], locked: true });
+});
+
+async function groupFixture(primaryPath: string) {
+	const f = await fixture();
+	const group = join(f.root, "suite");
+	const places: Record<string, string> = { local: primaryPath, api: "libs/api" };
+	for (const place of Object.values(places)) await mkdir(join(group, place), { recursive: true });
+	f.options.projectPath = (id) => join(group, required(places[id]));
+	f.options.listGitWorktrees = (id) =>
+		f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	const layoutRoots: (string | undefined)[] = [];
+	const create = f.options.createWorkspaceAtPath;
+	f.options.createWorkspaceAtPath = (id, path, branch, name, layoutRoot) => {
+		layoutRoots.push(layoutRoot);
+		return create(id, path, branch, name, layoutRoot);
+	};
+	f.options.defaultRepositoryProjectIds = ["api"];
+	f.options.layout = (ids) => ({
+		root: group,
+		paths: ids.map((projectId) => ({ projectId, path: required(places[projectId]) })),
+	});
+	return { ...f, group, layoutRoots };
+}
+
+test("a group Issue mirrors the repositories' layout with the root repository first", async () => {
+	const f = await groupFixture("");
+	const launch = await f.coordinator().implementation(ref);
+	const slot = join(f.group, ".worktrees", "issue-42");
+	expect(f.workspaces.map((ws) => [ws.projectId, ws.worktreePath])).toEqual([
+		["local", slot],
+		["api", join(slot, "libs", "api")],
+	]);
+	expect(f.layoutRoots).toEqual([f.group, f.group]);
+	expect(launch.workspaceId).toBe(required(f.workspaces[0]).id);
+	expect((await f.coordinator().ownedImplementation(ref)).worktreePath).toBe(slot);
+	expect(
+		(await f.coordinator().contexts(ref, "implementation")).map((context) => context.path),
+	).toEqual([slot, join(slot, "libs", "api")]);
+	expect(await f.coordinator().implementation(ref)).toEqual(launch);
+	expect(f.workspaces).toHaveLength(2);
+});
+
+test("a nested primary shares a digest-named group slot so it cannot collide with the root's Issue", async () => {
+	const f = await groupFixture("app");
+	await f.coordinator().implementation(ref);
+	const [local, api] = f.workspaces;
+	expect(api?.projectId).toBe("api");
+	expect(local?.worktreePath).toMatch(/[/\\]\.worktrees[/\\]issue-42-[a-f0-9]{16}[/\\]app$/);
+	expect(api?.worktreePath).toBe(join(required(local).worktreePath, "..", "libs", "api"));
+	const row = required([...f.records.values()][0]);
+	expect(row.layout?.root).toBe(f.group);
+	f.options.layout = () => null;
+	expect((await f.coordinator().ownedImplementation(ref)).id).toBe(required(local).id);
+});
+
 test("preparation membership cannot be appended to legacy implementation ownership", async () => {
 	const f = await fixture();
 	await f.coordinator().implementation(ref);

@@ -238,7 +238,20 @@ ordered auxiliary project ids at preparation start and stores each pending/compl
 separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
 number and a stable digest of the full primary binding; reserved branches remain unpredictable.
 Every auxiliary member is verified before a primary session may be created or reused. Missing completed
-members stop instead of being recreated; partial preparation retains successful worktrees. Host wiring
+members stop instead of being recreated; partial preparation retains successful worktrees.
+
+**Project groups.** Optional `defaultRepositoryProjectIds` is the selection a record without a saved
+`repositoryProjectIds` reads as (until preparation starts; an explicit save, including `[]`, always
+wins), and preparation writes it out as the saved selection with the frozen members. Optional
+`layout(projectIds)` may return `{ root, paths }` — a shared folder and each participant's `/`-relative
+place — when preparation freezes the members; it is stored on the record as `layout` and never
+recomputed. With a layout every checkout, primary included, lives at
+`<root>/.worktrees/<slot>/<place>`, where `<slot>` is `issue-<IID>` when the primary is the group root
+(so its path equals the ordinary primary path) and `issue-<IID>-<binding digest>` otherwise, so
+repositories keep their relative layout. Creation runs shallow-first, so an outer checkout exists before a
+nested one is placed inside it, and the `layoutRoot` is passed to `createWorkspaceAtPath`. Lookups
+(`ownedImplementation`, `contexts`) derive paths from the frozen layout. The session cwd stays the
+primary's own worktree — never a group folder no workspace owns — so one cwd keeps one identity. Host wiring
 must supply project-aware lookup ports before exposing this coordinator capability to clients.
 
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second

@@ -1229,6 +1229,29 @@ test("workspace mutation handlers reject the Default before any side effect", as
 	expect(after[0]?.id).toBe(def.id);
 });
 
+test("workspace.remove refuses a workspace that still holds a nested group member's worktree", async () => {
+	const outer = join(repo, ".worktrees", "issue-7");
+	const inner = join(outer, "libs", "core");
+	mkdirSync(inner, { recursive: true });
+	const record = (id: string, worktreePath: string) => ({
+		id,
+		projectId: "p1",
+		name: id,
+		branch: id,
+		worktreePath,
+		baseBranch: "main",
+	});
+	writeFileSync(
+		join(dataDir, "workspaces.json"),
+		JSON.stringify([record("outer", outer), record("inner", inner)]),
+	);
+	await expect(handleRequest("workspace.remove", { id: "outer" }, CTX)).rejects.toMatchObject({
+		code: "WORKSPACE_HAS_NESTED_WORKSPACES",
+	});
+	expect(existsSync(inner)).toBe(true);
+	expect(getWorkspace("outer").worktreePath).toBe(outer);
+});
+
 test("resource handlers scope every read/control to a registered workspace and actual parent", async () => {
 	const priorAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const priorOffline = process.env.PI_OFFLINE;

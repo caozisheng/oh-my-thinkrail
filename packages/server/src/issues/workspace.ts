@@ -28,11 +28,20 @@ interface CompletedWorkspace extends Omit<PendingWorkspace, "state"> {
 	workspaceId: string;
 	session?: { id: string };
 }
+/**
+ * A project group's shared folder and each participating repository's `/`-separated place below it
+ * (`""` is the root); frozen with the members so later group changes never move recorded paths.
+ */
+export interface IssueWorkspaceLayout {
+	root: string;
+	paths: { projectId: string; path: string }[];
+}
 export interface IssueWorkspaceRecord {
 	projectId: string;
 	reference: IssueReference;
 	repositoryProjectIds?: string[];
 	members?: { projectId: string; ownership?: PendingWorkspace | CompletedWorkspace }[];
+	layout?: IssueWorkspaceLayout;
 	/** Durable uncertainty fence; only provable reconciliation of the recorded stage may clear it. */
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
@@ -63,7 +72,13 @@ export interface IssueWorkspaceOptions {
 		branch: string,
 		/** Human-readable workspace name; the branch stays the exact reserved ref. */
 		name: string,
+		/** The frozen layout root when the path mirrors a project group's layout. */
+		layoutRoot?: string,
 	): Awaitable<WorkspaceHandle>;
+	/** The selection an Issue without a saved one starts from (its project group's other members). */
+	defaultRepositoryProjectIds?: readonly string[];
+	/** A shared layout for the primary plus selected projects, or null to keep per-repository paths. */
+	layout?(projectIds: readonly string[]): Awaitable<IssueWorkspaceLayout | null>;
 	defaultWorkspace(projectId: string): Awaitable<WorkspaceHandle>;
 	/** Look up the session in this workspace; do not hydrate or prompt it. */
 	sessionExists(sessionId: string, workspaceId: string): Awaitable<false | "idle" | "busy">;
@@ -177,6 +192,48 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return recovered;
 	}
 
+	function selection(record: IssueWorkspaceRecord): string[] {
+		if (record.repositoryProjectIds) return [...record.repositoryProjectIds];
+		if (record.implementation || record.members) return [];
+		return [...(options.defaultRepositoryProjectIds ?? [])];
+	}
+
+	function segments(path: string): string[] {
+		return path.split("/").filter(Boolean);
+	}
+
+	/** Where the Issue's checkout of `id` lives: the group layout when frozen, else per repository. */
+	async function worktreePathFor(record: IssueWorkspaceRecord, id: string): Promise<string> {
+		const number = record.reference.number;
+		const suffix = createHash("sha256")
+			.update(keyFor(projectId, record.reference))
+			.digest("hex")
+			.slice(0, 16);
+		if (record.layout) {
+			const place = (id: string) =>
+				record.layout?.paths.find((entry) => entry.projectId === id)?.path;
+			const own = place(id);
+			const primary = place(projectId);
+			if (own === undefined || primary === undefined) stop();
+			const slot = primary === "" ? `issue-${number}` : `issue-${number}-${suffix}`;
+			const root = record.layout.root;
+			if (!isAbsolute(root)) stop();
+			return join(await realpath(root), ".worktrees", slot, ...segments(own));
+		}
+		const name = id === projectId ? `issue-${number}` : `issue-${number}-${suffix}`;
+		return join(await projectRoot(id), ".worktrees", name);
+	}
+
+	/** Without a layout, members first then the primary; with one, shallow folders before nested ones. */
+	function creationOrder(record: IssueWorkspaceRecord): string[] {
+		const ids = [...(record.members ?? []).map((member) => member.projectId), projectId];
+		const layout = record.layout;
+		if (!layout) return ids;
+		const depth = (id: string) =>
+			segments(layout.paths.find((entry) => entry.projectId === id)?.path ?? "").length;
+		return ids.sort((a, b) => depth(a) - depth(b));
+	}
+
 	async function projectRoot(memberProjectId = projectId): Promise<string> {
 		const path = await options.projectPath(memberProjectId);
 		if (!isAbsolute(path)) stop();
@@ -273,6 +330,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					path,
 					ownership.branch,
 					`issue-${record.reference.number}`,
+					record.layout?.root,
 				),
 				ownership,
 				path,
@@ -284,62 +342,67 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return completed;
 	}
 
-	async function prepareMembers(key: string, record: IssueWorkspaceRecord) {
-		const selected = record.repositoryProjectIds ?? [];
+	async function freezeMembers(key: string, record: IssueWorkspaceRecord) {
+		const selected = selection(record);
 		if (!selected.length && !record.members) return record;
 		if (!record.members) {
 			if (record.implementation) stop();
-			record = { ...record, members: selected.map((projectId) => ({ projectId })) };
+			const layout = options.layout ? await options.layout([projectId, ...selected]) : null;
+			record = {
+				...record,
+				repositoryProjectIds: selected,
+				members: selected.map((projectId) => ({ projectId })),
+				...(layout ? { layout } : {}),
+			};
 			await options.save(key, record);
 		}
 		if (record.members?.map((member) => member.projectId).join("\n") !== selected.join("\n"))
 			stop();
-		const suffix = createHash("sha256").update(key).digest("hex").slice(0, 16);
-		for (const member of record.members ?? []) {
-			const path = join(
-				await projectRoot(member.projectId),
-				".worktrees",
-				`issue-${record.reference.number}-${suffix}`,
-			);
-			let ownership = member.ownership;
-			const state = await implementationPathState(path, member.projectId);
-			const registered = await options.findWorkspace({ worktreePath: path });
-			if (ownership?.state === "pending" && !state.occupied && !state.trees.length && !registered)
-				ownership = undefined;
-			if (ownership) {
-				const ws = await verifyImplementation(ownership, path, member.projectId);
-				member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
-			} else {
-				if (state.occupied || state.trees.length || registered) stop();
-				ownership = {
-					state: "pending",
-					worktreePath: path,
-					branch: `issue-${record.reference.number}-${randomUUID()}`,
-				};
-				member.ownership = ownership;
-				await options.save(key, record);
-				const ws = verifyWorkspace(
-					await options.createWorkspaceAtPath(
-						member.projectId,
-						path,
-						ownership.branch,
-						`issue-${record.reference.number}`,
-					),
-					ownership,
-					path,
-					member.projectId,
-				);
-				member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
-			}
-			await options.save(key, record);
-		}
 		return record;
+	}
+
+	async function prepareMember(key: string, record: IssueWorkspaceRecord, memberProjectId: string) {
+		const member = record.members?.find((candidate) => candidate.projectId === memberProjectId);
+		if (!member) stop();
+		const path = await worktreePathFor(record, member.projectId);
+		let ownership = member.ownership;
+		const state = await implementationPathState(path, member.projectId);
+		const registered = await options.findWorkspace({ worktreePath: path });
+		if (ownership?.state === "pending" && !state.occupied && !state.trees.length && !registered)
+			ownership = undefined;
+		if (ownership) {
+			const ws = await verifyImplementation(ownership, path, member.projectId);
+			member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
+		} else {
+			if (state.occupied || state.trees.length || registered) stop();
+			ownership = {
+				state: "pending",
+				worktreePath: path,
+				branch: `issue-${record.reference.number}-${randomUUID()}`,
+			};
+			member.ownership = ownership;
+			await options.save(key, record);
+			const ws = verifyWorkspace(
+				await options.createWorkspaceAtPath(
+					member.projectId,
+					path,
+					ownership.branch,
+					`issue-${record.reference.number}`,
+					record.layout?.root,
+				),
+				ownership,
+				path,
+				member.projectId,
+			);
+			member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
+		}
+		await options.save(key, record);
 	}
 
 	return {
 		contexts(reference: IssueReference, stage: "design" | "implementation") {
 			return run(reference, async (_key, record) => {
-				const ids = [projectId, ...(record.repositoryProjectIds ?? [])];
+				const ids = [projectId, ...selection(record)];
 				return Promise.all(
 					ids.map(async (id) => {
 						let ws: WorkspaceHandle;
@@ -357,15 +420,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 									? record.implementation
 									: record.members?.find((member) => member.projectId === id)?.ownership;
 							if (ownership?.state !== "completed") stop();
-							const name =
-								id === projectId
-									? `issue-${reference.number}`
-									: `issue-${reference.number}-${createHash("sha256").update(keyFor(projectId, reference)).digest("hex").slice(0, 16)}`;
-							ws = await verifyImplementation(
-								ownership,
-								join(await projectRoot(id), ".worktrees", name),
-								id,
-							);
+							ws = await verifyImplementation(ownership, await worktreePathFor(record, id), id);
 						}
 						return {
 							projectId: id,
@@ -379,7 +434,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		},
 		repositories(reference: IssueReference) {
 			return run(reference, async (_key, record) => ({
-				projectIds: [...(record.repositoryProjectIds ?? [])],
+				projectIds: selection(record),
 				locked: record.implementation !== undefined || record.members !== undefined,
 			}));
 		},
@@ -399,8 +454,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
 				if (ownership?.state !== "completed" || !ownership.workspaceId) stop();
-				const path = join(await projectRoot(), ".worktrees", `issue-${record.reference.number}`);
-				return verifyImplementation(ownership, path);
+				return verifyImplementation(ownership, await worktreePathFor(record, projectId));
 			});
 		},
 		design(reference: IssueReference): Promise<IssueSessionLaunch> {
@@ -437,9 +491,22 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(
 				reference,
 				async (key, record) => {
-					record = await prepareMembers(key, record);
-					const path = join(await projectRoot(), ".worktrees", `issue-${record.reference.number}`);
-					const ownership = await resolveImplementation(key, record, path);
+					record = await freezeMembers(key, record);
+					let primary: CompletedWorkspace | undefined;
+					for (const id of creationOrder(record)) {
+						if (id !== projectId) {
+							await prepareMember(key, record, id);
+							continue;
+						}
+						primary = await resolveImplementation(
+							key,
+							record,
+							await worktreePathFor(record, projectId),
+						);
+						record = { ...record, implementation: primary };
+					}
+					if (!primary) stop();
+					const ownership = primary;
 					const { workspaceId, session } = ownership;
 					const status = await sessionStatus(workspaceId, session?.id);
 					if (session && status === "idle") return { workspaceId, sessionId: session.id };

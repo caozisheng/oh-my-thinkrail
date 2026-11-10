@@ -10,7 +10,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { rm } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
 	DEFAULT_WORKSPACE_NAME,
 	type DiffStats,
@@ -305,8 +305,18 @@ export async function createWorkspaceAtPathWithBranch(
 	branch: string,
 	baseRef?: string,
 	name?: string,
+	placement: ExplicitPlacement = {},
 ): Promise<Workspace> {
-	return createExplicitWorkspace(projectId, name, baseRef, targetPath, branch);
+	return createExplicitWorkspace(projectId, name, baseRef, targetPath, branch, placement);
+}
+
+/**
+ * `layoutRoot` (a real ancestor-or-self of the project folder) widens the allowed target from a
+ * direct child of `<project>/.worktrees` to `<layoutRoot>/.worktrees/<slot>/<project relative to
+ * layoutRoot>`, so sibling repositories of one project group keep their relative layout.
+ */
+export interface ExplicitPlacement {
+	layoutRoot?: string;
 }
 
 function exactBranch(project: Project, branch: string): string {
@@ -318,17 +328,47 @@ function exactBranch(project: Project, branch: string): string {
 	return branch;
 }
 
-function explicitTarget(project: Project, targetPath: string): string {
-	const root = realpathSync.native(project.path);
-	const parent = join(root, ".worktrees");
-	const target = resolve(targetPath);
-	if (!isAbsolute(targetPath) || dirname(target) !== parent)
+function assertRealDirectory(dir: string): void {
+	const entry = lstatSync(dir, { throwIfNoEntry: false });
+	if (entry && (!entry.isDirectory() || realpathSync.native(dir) !== dir))
+		throw new Error(`Workspace target parent must be a real directory: ${dir}`);
+}
+
+function layoutParents(root: string, target: string, layoutRoot: string): string[] {
+	const base = realpathSync.native(layoutRoot);
+	const position = relative(base, root);
+	if (position === ".." || position.startsWith(`..${sep}`) || isAbsolute(position))
+		throw new Error("Workspace layout root must contain the project folder");
+	const worktrees = join(base, ".worktrees");
+	const slot = relative(worktrees, target).split(sep)[0];
+	if (!slot || slot === "." || slot === ".." || join(worktrees, slot, position) !== target)
 		throw new Error(
-			"Workspace target must be a direct child of the real project .worktrees directory",
+			"Workspace target must mirror the project's place below the layout root's .worktrees slot",
 		);
-	const entry = lstatSync(parent, { throwIfNoEntry: false });
-	if (entry && (!entry.isDirectory() || realpathSync.native(parent) !== parent))
-		throw new Error(`Workspace target parent must be a real directory: ${parent}`);
+	const parents = [worktrees];
+	for (const segment of relative(worktrees, dirname(target)).split(sep).filter(Boolean))
+		parents.push(join(parents[parents.length - 1] ?? worktrees, segment));
+	return parents;
+}
+
+function explicitTarget(
+	project: Project,
+	targetPath: string,
+	placement: ExplicitPlacement,
+): string {
+	const root = realpathSync.native(project.path);
+	const target = resolve(targetPath);
+	if (placement.layoutRoot === undefined) {
+		const parent = join(root, ".worktrees");
+		if (!isAbsolute(targetPath) || dirname(target) !== parent)
+			throw new Error(
+				"Workspace target must be a direct child of the real project .worktrees directory",
+			);
+		assertRealDirectory(parent);
+	} else {
+		if (!isAbsolute(targetPath)) throw new Error("Workspace target must be an absolute path");
+		for (const dir of layoutParents(root, target, placement.layoutRoot)) assertRealDirectory(dir);
+	}
 	if (lstatSync(target, { throwIfNoEntry: false }))
 		throw new Error(`Workspace target already exists: ${target}`);
 	if (
@@ -339,8 +379,12 @@ function explicitTarget(project: Project, targetPath: string): string {
 	return target;
 }
 
-async function validateExplicitTarget(project: Project, targetPath: string): Promise<string> {
-	const target = explicitTarget(project, targetPath);
+async function validateExplicitTarget(
+	project: Project,
+	targetPath: string,
+	placement: ExplicitPlacement,
+): Promise<string> {
+	const target = explicitTarget(project, targetPath, placement);
 	validateGitEntry(project);
 	const entries = await gitWorktreeEntries(project.path);
 	if (!entries[0] || canonicalPath(entries[0].path) !== canonicalPath(project.path))
@@ -348,7 +392,7 @@ async function validateExplicitTarget(project: Project, targetPath: string): Pro
 	if (entries.some((entry) => canonicalPath(entry.path) === canonicalPath(target)))
 		throw new Error(`Workspace target is already registered with Git: ${target}`);
 	// The registry read yielded; re-check repository-controlled parents and app records.
-	return explicitTarget(project, targetPath);
+	return explicitTarget(project, targetPath, placement);
 }
 
 function validateGitEntry(project: Project): void {
@@ -414,9 +458,10 @@ async function createExplicitWorkspace(
 	baseRef?: string,
 	targetPath?: string,
 	requestedBranch?: string,
+	placement: ExplicitPlacement = {},
 ): Promise<Workspace> {
 	const project = openProjectById(projectId);
-	if (targetPath !== undefined) await validateExplicitTarget(project, targetPath);
+	if (targetPath !== undefined) await validateExplicitTarget(project, targetPath, placement);
 
 	// A caller that reserves an exact ref may still want a readable name (`issue-42` on `issue-42-<uuid>`).
 	const displayName = name ? toDisplayName(name) : (requestedBranch ?? null);
@@ -459,10 +504,10 @@ async function createExplicitWorkspace(
 	const worktreePath =
 		targetPath === undefined
 			? join(dataDir(), "worktrees", project.slug, branch)
-			: await validateExplicitTarget(project, targetPath);
+			: await validateExplicitTarget(project, targetPath, placement);
 	if (targetPath !== undefined) excludeLocalWorktrees(project);
 	mkdirSync(dirname(worktreePath), { recursive: true });
-	if (targetPath !== undefined) explicitTarget(project, targetPath);
+	if (targetPath !== undefined) explicitTarget(project, targetPath, placement);
 	// Explicit issue-owned paths deliberately do not enter the retry/cleanup job registry.
 	const added = await gitAsync(
 		project.path,
@@ -986,6 +1031,20 @@ export function forgetWorkspace(id: string): Workspace | null {
 	observedHeadSha.delete(id);
 	emit({ kind: "removed", projectId: ws.projectId, id: ws.id });
 	return ws;
+}
+
+/**
+ * Managed workspaces whose folder lies strictly inside `id`'s: a project group's layout nests member
+ * worktrees inside an ancestor member's, and `worktree remove --force` on the outer one deletes them.
+ */
+export function nestedWorkspaces(id: string): Workspace[] {
+	const workspaces = loadWorkspaces();
+	const outer = workspaces.find((ws) => ws.id === id);
+	if (!outer || outer.kind === "default" || outer.kind === "external") return [];
+	const prefix = canonicalPath(outer.worktreePath) + sep;
+	return workspaces.filter(
+		(ws) => ws.id !== id && canonicalPath(ws.worktreePath).startsWith(prefix),
+	);
 }
 
 export async function reclaimWorktree(ws: Workspace): Promise<void> {
