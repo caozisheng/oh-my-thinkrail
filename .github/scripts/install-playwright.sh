@@ -3,7 +3,7 @@
 # optional font and X-server group, with `start webkit`), retrying the download a bounded number of times.
 webkit() {
 	bunx playwright install webkit || return 1
-	sudo find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' \) \
+	sudo find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' -o -name '*mirrors*.txt' \) \
 		-exec sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} + || return 1
 	sudo apt-get update -q || return 1
 	local report
