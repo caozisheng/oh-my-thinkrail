@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TodoStore } from "pi-todos/core";
 import { gitCommitPaths } from "../git";
-import { maybeAttachChangeArtifacts } from "./artifacts";
+import { maybeAttachChangeArtifacts, setSessionMemberWorkspaces } from "./artifacts";
 import { listTodos } from "./todos";
 
 let dataDir: string;
@@ -18,6 +18,7 @@ function sh(cwd: string, ...args: string[]): void {
 }
 
 beforeEach(() => {
+	setSessionMemberWorkspaces(async () => []);
 	dataDir = mkdtempSync(join(tmpdir(), "trpi-todos-decor-"));
 	process.env.THINKRAIL_DATA_DIR = dataDir;
 	repo = join(dataDir, "repo");
@@ -50,6 +51,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	setSessionMemberWorkspaces(() => []);
 	rmSync(dataDir, { recursive: true, force: true });
 	if (savedDataDir === undefined) delete process.env.THINKRAIL_DATA_DIR;
 	else process.env.THINKRAIL_DATA_DIR = savedDataDir;
