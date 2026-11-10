@@ -13,6 +13,7 @@ import {
 	MODEL_PICKER_PROTOCOL_VERSION,
 	ONBOARDING_PROTOCOL_VERSION,
 	PROJECT_CLONE_PROTOCOL_VERSION,
+	PROJECT_GROUPS_PROTOCOL_VERSION,
 	PROJECT_TRUST_PROTOCOL_VERSION,
 	type Project,
 	RESOURCE_HISTORY_PROTOCOL_VERSION,
@@ -151,6 +152,10 @@ export function selectCanRenameChat(state: ProtocolState): boolean {
 
 export function selectSupportsProjectTrust(state: ProtocolState): boolean {
 	return state.protocolVersion !== null && state.protocolVersion >= PROJECT_TRUST_PROTOCOL_VERSION;
+}
+
+export function selectSupportsProjectGroups(state: ProtocolState): boolean {
+	return state.protocolVersion !== null && state.protocolVersion >= PROJECT_GROUPS_PROTOCOL_VERSION;
 }
 
 export function selectSupportsProjectClone(state: ProtocolState): boolean {

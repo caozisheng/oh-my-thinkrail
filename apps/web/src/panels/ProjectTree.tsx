@@ -19,6 +19,7 @@ import {
 	RiFolderOpenFill,
 	RiGitBranchFill,
 	RiHome2Fill,
+	RiStackLine,
 	RiDeleteBin6Line as Trash2,
 	RiCloseLine as X,
 } from "@remixicon/react";
@@ -77,6 +78,7 @@ import { AddProjectMenu } from "./AddProjectMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExistingWorktreeDialog } from "./ExistingWorktreeDialog";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
+import { projectRailEntries } from "./projectGroups";
 import { RemoveWorkspaceDialog } from "./RemoveWorkspaceDialog";
 import {
 	announceSettledShelf,
@@ -241,11 +243,18 @@ export function ProjectTree() {
 		if (willExpand) void loadWorkspaces(projectId);
 	};
 
-	const { openProject, pickAndOpen, enterHostPath, startNewProject, cloneRepository, dialogs } =
-		useOpenProject(async (project, { setup }) => {
-			await selectProject(project.id).catch(() => {});
-			if (setup) await startProjectSetupChat(project.id);
-		});
+	const {
+		openProject,
+		pickAndOpen,
+		enterHostPath,
+		startNewProject,
+		cloneRepository,
+		importGroup,
+		dialogs,
+	} = useOpenProject(async (project, { setup }) => {
+		await selectProject(project.id).catch(() => {});
+		if (setup) await startProjectSetupChat(project.id);
+	});
 
 	const onExistingWorktreeOpened = async (workspace: Workspace) => {
 		const rows = await getTransport().request("workspace.list", {
@@ -282,6 +291,86 @@ export function ProjectTree() {
 		setExistingDialogProjectId(projectId);
 	};
 
+	const renderProject = (project: Project) => {
+		const isExpanded = expandedProjectIds[project.id] === true;
+		const list = workspaces[project.id];
+		const stateProjection = { sessionStateByWorkspace };
+		return (
+			<li key={project.id}>
+				<ProjectRow
+					project={project}
+					isSelected={selectedProjectId === project.id}
+					isExpanded={isExpanded}
+					needsAttention={!isExpanded && selectProjectNeedsAttention(stateProjection, project.id)}
+					isRunning={!isExpanded && selectProjectIsRunning(stateProjection, project.id)}
+					workspaceCount={(list ?? []).filter((w) => !isDefaultWorkspace(w)).length}
+					onToggle={() => toggleExpand(project.id)}
+					onSelect={() => void selectProject(project.id)}
+					canRename={canRenameProject(protocolVersion)}
+					onRename={(name) => renameProject(project, name)}
+					onClose={() => closeProject(project)}
+					onAddWorkspace={() => openWorkspaceDialog(project.id, false)}
+					onAddWorkspaceFromMenu={() => openWorkspaceDialog(project.id, true)}
+					onOpenExistingWorktree={() => openExistingWorktreeDialog(project.id)}
+					onRegisterNameButton={(element) => registerProjectNameButton(project.id, element)}
+					onRestoreFocus={() => focusProjectNameOrAdd(project.id)}
+				/>
+				{isExpanded && list === undefined && <LoadingRegion rows={2} className="py-4 pr-8 pl-16" />}
+				{isExpanded && list !== undefined && (
+					<SettledPartition
+						enabled={supportsSettling}
+						projectId={project.id}
+						partition={selectWorkspacePartition(partitionState, project.id, now)}
+						shelfExpanded={settledShelfExpanded[project.id] === true}
+						shelfShown={settledShelfShown[project.id] ?? SETTLED_SHELF_PAGE}
+						renderRow={(ws, settled) =>
+							workspaceCreations[ws.id] ? null : (
+								<WorkspaceRow
+									key={ws.id}
+									workspace={ws}
+									settled={settled}
+									now={now}
+									isActive={activeWorkspaceId === ws.id}
+									needsAttention={selectWorkspaceNeedsAttention(stateProjection, ws.id)}
+									isRunning={selectWorkspaceIsRunning(stateProjection, ws.id)}
+									canRename={canRenameWorkspace(protocolVersion, ws)}
+									canSettle={canSettleWorkspace(protocolVersion, ws)}
+									readAction={
+										supportsWorkspaceReadState(protocolVersion)
+											? selectWorkspaceReadAction(stateProjection, ws.id)
+											: null
+									}
+									editors={editors}
+									onSelect={() => selectWorkspace(ws)}
+									onOpenIn={(editor) => openWorkspaceIn(ws, editor)}
+									onCopyPath={() => void copyText(ws.worktreePath)}
+									onReveal={() => revealWorkspace(ws)}
+									onRename={(name) => renameWorkspace(ws, name)}
+									onSettle={() => settleWorkspace(ws.id)}
+									onKeepActive={() => unsettleWorkspace(ws.id)}
+									onMarkRead={() => markWorkspaceRead(ws.id)}
+									onMarkUnread={() => markWorkspaceUnread(ws.id)}
+								/>
+							)
+						}
+					/>
+				)}
+				{isExpanded && (creationsByProject[project.id]?.length ?? 0) > 0 && (
+					<ul aria-label={t("panels.workspaceCreation.listLabel")}>
+						{creationsByProject[project.id]?.map((creation) => (
+							<WorkspaceCreationRow
+								key={creation.id}
+								creation={creation}
+								isActive={activeCreationId === creation.id}
+								onSelect={() => useAppStore.getState().selectCreation(creation.id)}
+							/>
+						))}
+					</ul>
+				)}
+			</li>
+		);
+	};
+
 	return (
 		<nav data-testid="project-tree" className="flex flex-col gap-4">
 			<header className="flex h-panel-row items-center justify-between pr-4 pl-8">
@@ -291,6 +380,7 @@ export function ProjectTree() {
 					onOpen={() => void pickAndOpen()}
 					onEnterHostPath={enterHostPath}
 					onClone={cloneRepository}
+					onImportGroup={importGroup}
 					onOpenRecent={(p) => void openProject(p)}
 					{...(supportsCreate ? { onStartNew: startNewProject } : {})}
 				>
@@ -306,89 +396,27 @@ export function ProjectTree() {
 			</header>
 
 			<ul className="flex flex-col">
-				{projects.map((project) => {
-					const isExpanded = expandedProjectIds[project.id] === true;
-					const list = workspaces[project.id];
-					const stateProjection = { sessionStateByWorkspace };
-					return (
-						<li key={project.id}>
-							<ProjectRow
-								project={project}
-								isSelected={selectedProjectId === project.id}
-								isExpanded={isExpanded}
-								needsAttention={
-									!isExpanded && selectProjectNeedsAttention(stateProjection, project.id)
-								}
-								isRunning={!isExpanded && selectProjectIsRunning(stateProjection, project.id)}
-								workspaceCount={(list ?? []).filter((w) => !isDefaultWorkspace(w)).length}
-								onToggle={() => toggleExpand(project.id)}
-								onSelect={() => void selectProject(project.id)}
-								canRename={canRenameProject(protocolVersion)}
-								onRename={(name) => renameProject(project, name)}
-								onClose={() => closeProject(project)}
-								onAddWorkspace={() => openWorkspaceDialog(project.id, false)}
-								onAddWorkspaceFromMenu={() => openWorkspaceDialog(project.id, true)}
-								onOpenExistingWorktree={() => openExistingWorktreeDialog(project.id)}
-								onRegisterNameButton={(element) => registerProjectNameButton(project.id, element)}
-								onRestoreFocus={() => focusProjectNameOrAdd(project.id)}
-							/>
-							{isExpanded && list === undefined && (
-								<LoadingRegion rows={2} className="py-4 pr-8 pl-16" />
-							)}
-							{isExpanded && list !== undefined && (
-								<SettledPartition
-									enabled={supportsSettling}
-									projectId={project.id}
-									partition={selectWorkspacePartition(partitionState, project.id, now)}
-									shelfExpanded={settledShelfExpanded[project.id] === true}
-									shelfShown={settledShelfShown[project.id] ?? SETTLED_SHELF_PAGE}
-									renderRow={(ws, settled) =>
-										workspaceCreations[ws.id] ? null : (
-											<WorkspaceRow
-												key={ws.id}
-												workspace={ws}
-												settled={settled}
-												now={now}
-												isActive={activeWorkspaceId === ws.id}
-												needsAttention={selectWorkspaceNeedsAttention(stateProjection, ws.id)}
-												isRunning={selectWorkspaceIsRunning(stateProjection, ws.id)}
-												canRename={canRenameWorkspace(protocolVersion, ws)}
-												canSettle={canSettleWorkspace(protocolVersion, ws)}
-												readAction={
-													supportsWorkspaceReadState(protocolVersion)
-														? selectWorkspaceReadAction(stateProjection, ws.id)
-														: null
-												}
-												editors={editors}
-												onSelect={() => selectWorkspace(ws)}
-												onOpenIn={(editor) => openWorkspaceIn(ws, editor)}
-												onCopyPath={() => void copyText(ws.worktreePath)}
-												onReveal={() => revealWorkspace(ws)}
-												onRename={(name) => renameWorkspace(ws, name)}
-												onSettle={() => settleWorkspace(ws.id)}
-												onKeepActive={() => unsettleWorkspace(ws.id)}
-												onMarkRead={() => markWorkspaceRead(ws.id)}
-												onMarkUnread={() => markWorkspaceUnread(ws.id)}
-											/>
-										)
-									}
-								/>
-							)}
-							{isExpanded && (creationsByProject[project.id]?.length ?? 0) > 0 && (
-								<ul aria-label={t("panels.workspaceCreation.listLabel")}>
-									{creationsByProject[project.id]?.map((creation) => (
-										<WorkspaceCreationRow
-											key={creation.id}
-											creation={creation}
-											isActive={activeCreationId === creation.id}
-											onSelect={() => useAppStore.getState().selectCreation(creation.id)}
-										/>
-									))}
-								</ul>
-							)}
+				{projectRailEntries(projects).map((entry) =>
+					entry.kind === "project" ? (
+						renderProject(entry.project)
+					) : (
+						<li key={`group:${entry.id}`} data-testid="project-group" data-group={entry.id}>
+							<div
+								className="flex h-panel-row min-w-0 items-center gap-4 pr-8 pl-8 text-text-muted"
+								title={entry.root}
+							>
+								<RiStackLine className="size-14 shrink-0" aria-hidden="true" />
+								<span className="truncate tr-text-eyebrow">{entry.name}</span>
+							</div>
+							<ul
+								className="ml-16 flex flex-col border-border-muted border-l"
+								aria-label={t("panels.projectTree.group", { name: entry.name })}
+							>
+								{entry.projects.map(renderProject)}
+							</ul>
 						</li>
-					);
-				})}
+					),
+				)}
 			</ul>
 
 			{dialogProjectId !== null ? (

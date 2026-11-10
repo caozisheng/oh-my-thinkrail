@@ -80,11 +80,18 @@ export function WelcomePanel() {
 		};
 	}, [project?.id]);
 
-	const { openProject, pickAndOpen, enterHostPath, startNewProject, cloneRepository, dialogs } =
-		useOpenProject((opened, { setup }) => {
-			useAppStore.getState().selectProject(opened.id, { reveal: true });
-			if (setup) void startProjectSetupChat(opened.id);
-		});
+	const {
+		openProject,
+		pickAndOpen,
+		enterHostPath,
+		startNewProject,
+		cloneRepository,
+		importGroup,
+		dialogs,
+	} = useOpenProject((opened, { setup }) => {
+		useAppStore.getState().selectProject(opened.id, { reveal: true });
+		if (setup) void startProjectSetupChat(opened.id);
+	});
 	const noProjects = project == null;
 	const showWizard = wizard === "shown" && noProjects;
 
@@ -108,6 +115,7 @@ export function WelcomePanel() {
 			onOpen={() => void pickAndOpen()}
 			onEnterHostPath={enterHostPath}
 			onClone={cloneRepository}
+			onImportGroup={importGroup}
 			onOpenRecent={(path) => void openProject(path)}
 			align="start"
 		>

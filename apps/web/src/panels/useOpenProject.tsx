@@ -1,4 +1,4 @@
-import type { Project } from "@thinkrail/contracts";
+import type { Project, ProjectGroupScan } from "@thinkrail/contracts";
 import { T, useT } from "@thinkrail/locales/react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
@@ -8,11 +8,12 @@ import {
 	shouldOfferAssociation,
 	supportsIssueAuth,
 } from "../issues";
-import { selectSupportsProjectClone, useAppStore } from "../store";
+import { selectSupportsProjectClone, selectSupportsProjectGroups, useAppStore } from "../store";
 import { errorText, getTransport } from "../transport";
 import { CloneProjectDialog } from "./CloneProjectDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CreateProjectDialog } from "./CreateProjectDialog";
+import { ImportProjectGroupDialog } from "./ImportProjectGroupDialog";
 import { createLatestOperation } from "./latestOperation";
 import { NoticeDialog } from "./NoticeDialog";
 import { OpenProjectPathDialog } from "./OpenProjectPathDialog";
@@ -40,17 +41,26 @@ export function useOpenProject(
 	enterHostPath: () => void;
 	startNewProject: () => void;
 	cloneRepository: (() => void) | undefined;
+	importGroup: (() => void) | undefined;
 	dialogs: ReactNode;
 } {
 	const t = useT();
 	const supportsClone = useAppStore(selectSupportsProjectClone);
+	const supportsGroups = useAppStore(selectSupportsProjectGroups);
 	const supportsAssociation = supportsIssueAuth(useAppStore((s) => s.protocolVersion));
 	const [association, setAssociation] = useState<AssociationPrompt | null>(null);
 	const [cloneIntent, setCloneIntent] = useState<{ isCurrent: () => boolean } | null>(null);
 	const [initTarget, setInitTarget] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [openError, setOpenError] = useState<string | null>(null);
-	const [pathEntry, setPathEntry] = useState<{ reason: string | null } | null>(null);
+	const [pathEntry, setPathEntry] = useState<{
+		reason: string | null;
+		purpose: "open" | "group";
+	} | null>(null);
+	const [groupScan, setGroupScan] = useState<{
+		scan: ProjectGroupScan;
+		isCurrent: () => boolean;
+	} | null>(null);
 
 	useEffect(() => {
 		const close = () => setAssociation(null);
@@ -158,8 +168,41 @@ export function useOpenProject(
 
 	const enterHostPath = () => {
 		beginIntent();
-		setPathEntry({ reason: null });
+		setPathEntry({ reason: null, purpose: "open" });
 	};
+
+	const scanGroupForIntent = async (rawPath: string, isCurrent: () => boolean) => {
+		const path = rawPath.trim();
+		if (!path || !isCurrent()) return;
+		try {
+			const scan = await getTransport().request("project.scanGroup", { path });
+			if (isCurrent()) setGroupScan({ scan, isCurrent });
+		} catch (err) {
+			if (isCurrent()) setOpenError(errorText(err, t("panels.importGroup.scanFailed", { path })));
+		}
+	};
+
+	const importGroup = supportsGroups
+		? async () => {
+				const isCurrent = beginIntent();
+				let path: string | null;
+				try {
+					({ path } = await getTransport().request(
+						"dialog.selectDirectory",
+						{},
+						{ timeoutMs: PICK_TIMEOUT_MS },
+					));
+				} catch (err) {
+					if (!isCurrent()) return;
+					setPathEntry({
+						reason: errorText(err, t("panels.openProject.pickerFailed")),
+						purpose: "group",
+					});
+					return;
+				}
+				if (isCurrent() && path) await scanGroupForIntent(path, isCurrent);
+			}
+		: undefined;
 
 	const pickAndOpen = async () => {
 		const isCurrent = beginIntent();
@@ -172,7 +215,10 @@ export function useOpenProject(
 			));
 		} catch (err) {
 			if (!isCurrent()) return;
-			setPathEntry({ reason: errorText(err, t("panels.openProject.pickerFailed")) });
+			setPathEntry({
+				reason: errorText(err, t("panels.openProject.pickerFailed")),
+				purpose: "open",
+			});
 			return;
 		}
 		if (!isCurrent()) return;
@@ -214,6 +260,18 @@ export function useOpenProject(
 					onCreated={(project, setup) => void adopt(project, beginIntent(), { setup }, "create")}
 				/>
 			) : null}
+			{groupScan?.isCurrent() ? (
+				<ImportProjectGroupDialog
+					scan={groupScan.scan}
+					onClose={() => setGroupScan(null)}
+					onImported={(projects) => {
+						const store = useAppStore.getState();
+						for (const project of projects) store.applyProjectUpdated(project);
+						const [first] = projects;
+						if (first) void adopt(first, groupScan.isCurrent, { setup: false }, "open");
+					}}
+				/>
+			) : null}
 			{association?.isCurrent() ? (
 				<IssueAssociationDialog
 					projectId={association.projectId}
@@ -228,7 +286,11 @@ export function useOpenProject(
 				onOpenChange={(open) => {
 					if (!open) setPathEntry(null);
 				}}
-				onSubmit={(path) => void openProject(path)}
+				onSubmit={(path) =>
+					void (pathEntry?.purpose === "group"
+						? scanGroupForIntent(path, beginIntent())
+						: openProject(path))
+				}
 			/>
 			<NoticeDialog
 				open={openError !== null}
@@ -242,5 +304,13 @@ export function useOpenProject(
 		</>
 	);
 
-	return { openProject, pickAndOpen, enterHostPath, startNewProject, cloneRepository, dialogs };
+	return {
+		openProject,
+		pickAndOpen,
+		enterHostPath,
+		startNewProject,
+		cloneRepository,
+		importGroup: importGroup ? () => void importGroup() : undefined,
+		dialogs,
+	};
 }

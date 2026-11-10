@@ -1,6 +1,7 @@
 import {
 	RiEditLine as Edit,
 	RiFolderLine as Folder,
+	RiFoldersLine as Folders,
 	RiGlobalLine as Globe,
 	RiSparkling2Line as Sparkles,
 } from "@remixicon/react";
@@ -24,12 +25,14 @@ export function AddProjectMenu({
 	onOpenRecent,
 	onStartNew,
 	onClone,
+	onImportGroup,
 	align = "end",
 	children,
 }: {
 	recentProjects: Project[];
 	onStartNew?: () => void;
 	onClone?: (() => void) | undefined;
+	onImportGroup?: (() => void) | undefined;
 	onOpen: () => void;
 	onEnterHostPath: () => void;
 	onOpenRecent: (path: string) => void;
@@ -62,6 +65,12 @@ export function AddProjectMenu({
 					<DropdownMenuItem data-testid="menu-clone-project" onSelect={onClone}>
 						<Globe />
 						<span>{t("panels.addProject.clone")}</span>
+					</DropdownMenuItem>
+				) : null}
+				{onImportGroup ? (
+					<DropdownMenuItem data-testid="menu-import-group" onSelect={onImportGroup}>
+						<Folders />
+						<span>{t("panels.addProject.importGroup")}</span>
 					</DropdownMenuItem>
 				) : null}
 				{recentProjects.length > 0 && (
