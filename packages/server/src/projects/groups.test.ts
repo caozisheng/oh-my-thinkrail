@@ -157,6 +157,30 @@ test("import opens kept repositories as projects that share one persisted group"
 	]);
 });
 
+test("a re-scan offers the group's name and a rename on re-import reaches every member", async () => {
+	const root = join(work, "suite");
+	makeRepo(root);
+	makeRepo(join(root, "app"));
+	makeRepo(join(root, "api"));
+	await importProjectGroup({ root, paths: ["", "app", "api"], name: "Platform" });
+	expect((await scanProjectGroup(root)).name).toBe("Platform");
+	expect((await scanProjectGroup(root)).repositories[0]).toEqual({ path: "", name: "suite" });
+	const published: Project[] = [];
+	setProjectPublisher((project) => published.push(project));
+	await importProjectGroup({ root, paths: ["app"], name: "Platform 2" });
+	expect(getProjects().map((p) => p.projectGroup?.name)).toEqual([
+		"Platform 2",
+		"Platform 2",
+		"Platform 2",
+	]);
+	expect(new Set(getProjects().map((p) => p.projectGroup?.id)).size).toBe(1);
+	expect([...new Set(published.map((p) => p.projectGroup?.path))].sort()).toEqual([
+		"",
+		"api",
+		"app",
+	]);
+});
+
 test("import refuses a path a fresh scan does not find and reports per-repository failures", async () => {
 	makeRepo(join(work, "app"));
 	makeRepo(join(work, "api"));

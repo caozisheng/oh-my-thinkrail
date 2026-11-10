@@ -120,8 +120,10 @@ every other project mutation, so `project.updated` carries it.
   scan does not find, so a client cannot name an arbitrary folder. Each kept path is opened through
   `openProject` (path guard and `ALREADY_OPEN` unchanged), must resolve to that exact repository root, and
   gets the membership; a per-path failure lands in `failed` and does not undo the others. Re-importing the
-  same root reuses its group id and name and adds members; a project belongs to at most one group (the
-  latest import wins). Import grants no trust.
+  same root reuses its group id and adds members; a given name renames the whole group, so every member
+  (including ones this import did not touch) carries the same name. A re-scan of an imported root offers
+  the group's current name. A project belongs to at most one group (the latest import wins). Import grants
+  no trust.
 - **`projectGroupMembers(id)`** lists the other open members, shallow-first — the host's default Issue
   repository selection reads it.
 

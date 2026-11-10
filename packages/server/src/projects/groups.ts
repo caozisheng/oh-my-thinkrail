@@ -6,6 +6,7 @@ import {
 	type Project,
 	type ProjectGroupImport,
 	type ProjectGroupImportInput,
+	type ProjectGroupMembership,
 	type ProjectGroupScan,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
@@ -127,13 +128,14 @@ export async function scanProjectGroup(
 			queue.push(path ? `${path}/${child.name}` : child.name);
 		}
 	}
-	const name = basename(root) || root;
+	const folderName = basename(root) || root;
 	return {
 		root,
-		name,
+		// Re-scanning an imported root offers its current group name, so confirming keeps it.
+		name: existingGroup(root)?.name ?? folderName,
 		repositories: found
 			.sort(shallowFirst)
-			.map((path) => ({ path, name: path ? basename(path) : name })),
+			.map((path) => ({ path, name: path ? basename(path) : folderName })),
 		truncated,
 	};
 }
@@ -141,6 +143,13 @@ export async function scanProjectGroup(
 function groupName(requested: string | undefined, fallback: string): string {
 	const name = requested?.replace(/\s+/g, " ").trim();
 	return name && name.length <= GROUP_NAME_MAX_LENGTH ? name : fallback;
+}
+
+function existingGroup(root: string): ProjectGroupMembership | undefined {
+	const rootKey = canonicalPath(root);
+	return getProjects().find(
+		(project) => project.projectGroup && canonicalPath(project.projectGroup.root) === rootKey,
+	)?.projectGroup;
 }
 
 function invalidImport(): never {
@@ -169,10 +178,7 @@ export async function importProjectGroup(
 	const scan = await scanProjectGroup(input.root);
 	const known = new Set(scan.repositories.map((repository) => repository.path));
 	if (input.paths.some((path) => !known.has(path))) invalidImport();
-	const rootKey = canonicalPath(scan.root);
-	const existing = getProjects().find(
-		(project) => project.projectGroup && canonicalPath(project.projectGroup.root) === rootKey,
-	)?.projectGroup;
+	const existing = existingGroup(scan.root);
 	const id = existing?.id ?? randomUUID();
 	const name = groupName(input.name, existing?.name ?? scan.name);
 	const projects: Project[] = [];
@@ -188,6 +194,13 @@ export async function importProjectGroup(
 		} catch (error) {
 			failed.push({ path, reason: error instanceof Error ? error.message : String(error) });
 		}
+	}
+	// One group has one name: a rename on re-import reaches the members this import did not touch.
+	const imported = new Set(projects.map((project) => project.id));
+	for (const project of getProjects()) {
+		const group = project.projectGroup;
+		if (group?.id === id && group.name !== name && !imported.has(project.id))
+			setProjectGroupMembership(project.id, { ...group, name });
 	}
 	return { projects, failed };
 }
