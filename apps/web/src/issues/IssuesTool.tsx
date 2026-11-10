@@ -23,6 +23,7 @@ import {
 	type ConnectResult,
 	type IssueActionCapabilities,
 	type IssueActionId,
+	type IssueActionProgress,
 	type IssueActionResult,
 	type IssuePanelError,
 	type IssueToolSnapshot,
@@ -73,7 +74,7 @@ export function IssuesTool({
 }: {
 	projectId: string;
 	onOpenIssue?: (reference: IssueReference) => Promise<void> | void;
-	onLaunchSession?: (launch: IssueSessionLaunch) => void;
+	onLaunchSession?: (launch: IssueSessionLaunch, isCurrent: () => boolean) => Promise<void> | void;
 	/** Host refuses stage actions for an untrusted project; the shell performs the grant. */
 	onTrustProject?: () => void;
 }) {
@@ -98,9 +99,14 @@ export function IssuesTool({
 		}),
 		[version, trusted],
 	);
-	const [actionPending, setActionPending] = useState(false);
-	const [actionError, setActionError] = useState<IssuePanelError | null>(null);
-	const [actionErrorIssue, setActionErrorIssue] = useState<string | null>(null);
+	const [actionState, setActionState] = useState<{
+		identity: string;
+		progress: IssueActionProgress;
+		error: IssuePanelError | null;
+		pending: boolean;
+	} | null>(null);
+	const actionSequence = useRef(0);
+	const actionLock = useRef(false);
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}`;
 	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
 	const requestSequence = useRef(0);
@@ -137,9 +143,11 @@ export function IssuesTool({
 		async (input?: IssueConnectionInput): Promise<ConnectResult> => {
 			if (!supported || status !== "connected") return { ok: false, error: "connect" };
 			clearPreview();
+			actionSequence.current++;
+			actionLock.current = false;
+			setActionState(null);
 			const sequence = ++requestSequence.current;
 			const current = () => sequence === requestSequence.current;
-			setActionError(null);
 			setSnapshot((previous) => update(previous, { pending: true, error: null }));
 			const transport = getTransport();
 			const result = await loadIssueSnapshot(
@@ -162,6 +170,9 @@ export function IssuesTool({
 	const disconnect = useCallback(async () => {
 		if (!supported || status !== "connected") return;
 		clearPreview();
+		actionSequence.current++;
+		actionLock.current = false;
+		setActionState(null);
 		const sequence = ++requestSequence.current;
 		setSnapshot((previous) =>
 			previous ? update(previous, { pending: true, error: null }) : previous,
@@ -184,16 +195,21 @@ export function IssuesTool({
 		return () => {
 			requestSequence.current++;
 			previewSequence.current++;
+			actionSequence.current++;
+			actionLock.current = false;
 		};
 	}, [refresh]);
 
 	const runAction = useCallback(
 		async (issue: IssueSummary, action: IssueActionId): Promise<IssueActionResult> => {
+			if (actionLock.current) return { ok: false, error: "launch-blocked" };
+			actionLock.current = true;
+			const sequence = ++actionSequence.current;
+			const current = () => sequence === actionSequence.current;
+			const progress: IssueActionProgress = { issue: issueKey(issue), action, phase: "starting" };
 			const { reference } = issue;
 			const transport = getTransport();
-			setActionPending(true);
-			setActionError(null);
-			setActionErrorIssue(null);
+			setActionState({ identity, progress, error: null, pending: true });
 			const result = await runIssueAction(
 				action,
 				issueActionCall(
@@ -201,19 +217,31 @@ export function IssuesTool({
 					(requested, params) => transport.request(requested, params),
 					version,
 				),
-				(launch) => onLaunchSession?.(launch),
+				async (launch) => {
+					if (!current()) return;
+					setActionState({
+						identity,
+						progress: { ...progress, phase: "opening" },
+						error: null,
+						pending: true,
+					});
+					await onLaunchSession?.(launch, current);
+				},
 			);
-			setActionPending(false);
-			if (!result.ok) {
-				setActionError(result.error);
-				setActionErrorIssue(issueKey(issue));
-				return result;
-			}
+			if (!current()) return result;
+			actionLock.current = false;
+			setActionState({
+				identity,
+				progress,
+				pending: false,
+				error: result.ok ? null : result.error,
+			});
+			if (!result.ok) return result;
 			// Starting implementation may move the backlog label, so the summaries are re-read.
 			if (action === "implement") void refresh();
 			return result;
 		},
-		[onLaunchSession, projectId, refresh, locale, version],
+		[identity, onLaunchSession, projectId, refresh, locale, version],
 	);
 
 	useEffect(
@@ -267,6 +295,7 @@ export function IssuesTool({
 	);
 
 	const active = snapshot?.identity === identity ? snapshot : null;
+	const activeAction = actionState?.identity === identity ? actionState : null;
 	if (!supported)
 		return <p className="p-panel-inset text-text-muted tr-text-ui">{t("issues.unsupported")}</p>;
 	if (status !== "connected")
@@ -298,9 +327,10 @@ export function IssuesTool({
 				onOpenIssue={onOpenIssue}
 				onRunAction={runAction}
 				onTrustProject={onTrustProject}
-				actionPending={actionPending}
-				actionError={actionError}
-				actionErrorIssue={actionErrorIssue ?? undefined}
+				actionPending={activeAction?.pending}
+				actionProgress={activeAction?.pending ? activeAction.progress : undefined}
+				actionError={activeAction?.error}
+				actionErrorIssue={activeAction?.progress.issue}
 				repositoryProjects={projects}
 				primaryProjectId={projectId}
 				repositoriesSupported={repositoriesSupported}

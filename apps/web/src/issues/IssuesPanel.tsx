@@ -3,6 +3,7 @@ import {
 	RiCodeBoxLine,
 	RiEyeLine,
 	RiEyeOffLine,
+	RiLoader4Line,
 	RiQuillPenLine,
 } from "@remixicon/react";
 import type {
@@ -29,6 +30,7 @@ import {
 	ISSUE_ERROR_KEY,
 	type IssueActionCapabilities,
 	type IssueActionId,
+	type IssueActionProgress,
 	type IssueActionResult,
 	type IssuePanelError,
 	issueActions,
@@ -59,6 +61,7 @@ export interface IssuesPanelProps {
 		| ((issue: IssueSummary, action: IssueActionId) => Promise<IssueActionResult>)
 		| undefined;
 	actionPending?: boolean | undefined;
+	actionProgress?: IssueActionProgress | undefined;
 	actionError?: IssuePanelError | null | undefined;
 	/** The issue whose last action failed; its row carries the message inline. */
 	actionErrorIssue?: string | undefined;
@@ -158,6 +161,7 @@ export function IssuesPanel({
 	onOpenIssue,
 	onRunAction,
 	actionPending,
+	actionProgress,
 	actionError,
 	actionErrorIssue,
 	onTrustProject,
@@ -175,7 +179,6 @@ export function IssuesPanel({
 	const t = useT();
 	const previewId = useId();
 	const [state, dispatch] = useReducer(reconnectOutcome, error ?? null, associationPanelState);
-	// Nothing reaches the host until the user confirms this issue's implementation gate.
 	const { reconnecting, snapshotError } = state;
 	const showForm = !connection?.connected || reconnecting;
 	const provider = connection ? issueProviderOf(connection.instanceUrl) : null;
@@ -368,6 +371,25 @@ export function IssuesPanel({
 										/>
 									)}
 								</div>
+								{actionProgress?.issue === issueKey(issue) && (
+									<p
+										role="status"
+										data-testid="issue-action-progress"
+										className="flex items-center gap-4 text-text-muted"
+									>
+										<RiLoader4Line
+											aria-hidden="true"
+											className="size-14 shrink-0 motion-safe:animate-spin"
+										/>
+										{t(
+											actionProgress.phase === "opening"
+												? "issues.progress.opening"
+												: actionProgress.action === "design"
+													? "issues.progress.design"
+													: "issues.progress.implement",
+										)}
+									</p>
+								)}
 								{preview?.key === issueKey(issue) && onTogglePreview && (
 									<IssueBody
 										id={previewId}

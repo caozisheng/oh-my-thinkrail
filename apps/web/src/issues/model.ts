@@ -114,7 +114,8 @@ export type IssueActionError =
 	| "unsupported"
 	| "launch-blocked"
 	| "launch-release"
-	| "launch-wait";
+	| "launch-wait"
+	| "open";
 
 export const ISSUE_ERROR_KEY = {
 	read: "issues.failed",
@@ -134,6 +135,12 @@ export const ISSUE_ERROR_KEY = {
  * the app never records an approval, and closing an issue is GitLab's too.
  */
 export type IssueActionId = "design" | "implement";
+
+export interface IssueActionProgress {
+	issue: string;
+	action: IssueActionId;
+	phase: "starting" | "opening";
+}
 
 /**
  * `needs-newer-host` — the host protocol floor for this action is missing.
@@ -256,12 +263,16 @@ export function issueActionCall(
 
 async function launch(
 	send: () => Promise<IssueSessionLaunch>,
-	onLaunch: (launch: IssueSessionLaunch) => void,
+	onLaunch: (launch: IssueSessionLaunch) => Promise<void> | void,
 ): Promise<IssueActionResult> {
 	try {
 		const result = await send();
 		if (!isIssueSessionLaunch(result)) return { ok: false, error: "action" };
-		onLaunch(result);
+		try {
+			await onLaunch(result);
+		} catch {
+			return { ok: false, error: "open" };
+		}
 		return { ok: true, launch: result };
 	} catch (error) {
 		const code = wsErrorCode(error);
@@ -286,7 +297,7 @@ async function launch(
 export async function runIssueAction(
 	action: IssueActionId,
 	call: IssueActionCall,
-	onLaunch: (launch: IssueSessionLaunch) => void = () => {},
+	onLaunch: (launch: IssueSessionLaunch) => Promise<void> | void = () => {},
 ): Promise<IssueActionResult> {
 	switch (action) {
 		case "design":

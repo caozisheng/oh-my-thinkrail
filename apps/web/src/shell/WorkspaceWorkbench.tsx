@@ -105,20 +105,28 @@ import { WorkspaceChatHistory } from "./WorkspaceChatHistory";
 export async function openIssueSession(
 	projectId: string,
 	launch: IssueSessionLaunch,
+	isCurrent: () => boolean = () => true,
 ): Promise<void> {
 	let rows: Workspace[];
 	try {
 		rows = await loadProjectWorkspaces(projectId);
-	} catch {
+	} catch (error) {
+		if (!isCurrent()) return;
 		toast.error(t("shell.workbench.issueLaunchFailed"));
-		return;
+		throw error;
 	}
+	if (!isCurrent()) return;
 	const workspace = rows.find((row) => row.id === launch.workspaceId) ?? {
 		id: launch.workspaceId,
 		projectId,
 	};
 	useAppStore.getState().activateWorkspaceFromRoute(workspace, launch.sessionId);
 	await openChatInTab(launch.workspaceId, launch.sessionId);
+	if (!isCurrent()) return;
+	const opened = (useAppStore.getState().tabsByWorkspace[launch.workspaceId] ?? []).some(
+		(tab) => tab.kind === "chat" && tab.sessionId === launch.sessionId,
+	);
+	if (!opened) throw new Error("Issue chat navigation failed");
 }
 
 function PlanSummaryAutoDraft({
@@ -669,9 +677,9 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 			.catch((error: unknown) => toast.error(errorText(error), t("issues.trustAction")));
 	}, [projectId, t]);
 	const launchIssueSession = useCallback(
-		(launch: IssueSessionLaunch) => {
+		(launch: IssueSessionLaunch, isCurrent: () => boolean) => {
 			if (projectId === undefined) return;
-			void openIssueSession(projectId, launch);
+			return openIssueSession(projectId, launch, isCurrent);
 		},
 		[projectId],
 	);

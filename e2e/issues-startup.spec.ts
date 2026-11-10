@@ -23,6 +23,9 @@ for (const startup of [true, false]) {
 		let projectId = "";
 		let workspaceId = "";
 		let sessionId = "";
+		let releaseLaunch: (() => void) | undefined;
+		let releaseNavigation: (() => void) | undefined;
+		let holdNavigation = false;
 		const token = "fixture-only-pat-never-forward-to-host";
 		const reference: IssueSummary["reference"] = {
 			provider: "gitlab",
@@ -78,7 +81,10 @@ for (const startup of [true, false]) {
 					case "issues.beginImplementation":
 					case "issues.launchDesign":
 					case "issues.startImplementation":
-						reply({ workspaceId, sessionId });
+						releaseLaunch = () => {
+							holdNavigation = true;
+							reply({ workspaceId, sessionId });
+						};
 						return;
 				}
 				// A regression must not launch an agent, mutate a remote, or leak the PAT.
@@ -88,6 +94,11 @@ for (const startup of [true, false]) {
 				}
 				if (frame.method === "session.create" || frame.method === "session.prompt") {
 					browser.send(JSON.stringify({ id: frame.id, ok: false, error: "no agent in this test" }));
+					return;
+				}
+				if (frame.method === "workspace.list" && holdNavigation) {
+					holdNavigation = false;
+					releaseNavigation = () => server.send(message);
 					return;
 				}
 				server.send(message);
@@ -151,8 +162,23 @@ for (const startup of [true, false]) {
 			await expect(chat).toBeVisible();
 			await chat.getByTestId("editor-tab-close").click();
 			await expect(chat).toHaveCount(0);
+			releaseLaunch = undefined;
+			releaseNavigation = undefined;
 			await page.getByTestId(`issue-action-${action}`).click();
+			const progress = page.getByTestId("issue-action-progress");
+			await expect(progress).toContainText(
+				action === "implement" ? "正在启动实施" : "Starting design",
+			);
+			await expect(page.getByTestId("issue-action-design")).toBeDisabled();
+			await expect(page.getByTestId("issue-action-implement")).toBeDisabled();
+			await expect.poll(() => Boolean(releaseLaunch)).toBe(true);
+			(releaseLaunch as (() => void) | undefined)?.();
+			await expect(progress).toContainText(locale === "en" ? "Opening chat" : "正在打开聊天");
+			await expect(chat).toHaveCount(0);
+			await expect.poll(() => Boolean(releaseNavigation)).toBe(true);
+			(releaseNavigation as (() => void) | undefined)?.();
 			await expect(chat).toBeVisible();
+			await expect(progress).toHaveCount(0);
 			await expect(page.locator('[data-testid="editor-tab"][data-kind="chat"]')).toHaveCount(1);
 		}
 		const stageCalls = calls.filter(({ method }) =>
