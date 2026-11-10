@@ -28,23 +28,25 @@ pipeline.
 
 ## CI
 
-### Fork development policy: Windows only
+### Fork development policy: cross-platform verification
 
-During active fork development, `ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI retains
-Windows lint/typecheck, existing Windows-targeted unit checks and native CLI/desktop smoke; the
-`CI passed` aggregate requires all three jobs to succeed (no allowed skipped jobs). Full POSIX
-unit, source/browser, binary-browser and desktop-browser suites are temporarily suspended, not
-claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by CI; only the Linux CLI release (manual, or on `main` pushes when
-explicitly enabled) uses Linux runners, and its binary smoke is release verification, not restored Linux application CI.
+`ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI runs
+Windows lint/typecheck and native CLI/desktop smoke alongside Linux unit, pi-package and source/browser
+checks. Packaging-affecting changes and merge groups also run Linux binary/desktop browser suites.
+The restored `changes` classifier preserves the existing app/artifact path filters; manual dispatch runs
+all coverage. `CI passed` requires classification, lint, unit and Windows jobs to succeed, and every
+classifier-gated job to succeed or be legitimately skipped. No macOS CI runner is scheduled; Linux CLI
+release runners are separate from application CI. Source browser CI pins Ubuntu 24.04, matching the
+validated WebKit/system-library baseline rather than following `ubuntu-latest` distribution upgrades.
 
 The synchronized upstream cross-platform CI recipe is retained fully commented in
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
-but are not invoked by active workflows. Restoring Linux execution is deferred, not a deletion.
+and are invoked by the active Linux artifact jobs.
 
 Website deploy/preview/cleanup workflows are removed: website deployment belongs to the upstream
 ThinkRail repository, not this fork. The npm publication recipe remains as a `.yml.disabled` file
-and therefore does not run. Restoring npm publication or the broader CI matrix is a deliberate later
-change; the historical cross-platform policy below describes that suspended coverage, not active jobs.
+and therefore does not run. Restoring npm publication remains a separate decision; the historical cross-platform notes below
+retain upstream context where platform assignments differ from this fork's active workflow.
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 
@@ -106,7 +108,9 @@ questionnaire specs under WebKit. The image lacks WebKit's libraries, so that jo
 Playwright's `install-deps --dry-run webkit` reports missing, minus its font and X-server group
 (`fonts-*`, `xfonts-*`, `ttf-*`, `xvfb`), not `--with-deps`, which always adds that group. Those fonts
 feed no assertion, and the Azure mirror trickled one of them for minutes, past the wait deadline, in two of
-four shard runs; apt also gets a 20 s HTTP timeout with five retries for outright stalls. The browsers
+four shard runs. WebKit setup rewrites the runner's Azure Ubuntu archive URL to the canonical HTTPS
+archive before apt update/install: transfer stalls also affected required codec libraries even without
+fonts. Apt retains a 20 s HTTP timeout with five retries for outright stalls. The browsers
 themselves are not cached: the Playwright CDN download takes seconds, no slower than an Actions-cache
 restore of the same bytes. Linux jobs, here and in the website workflows,
 install dependencies without the Actions cache for the same reason: a cold `bun install --frozen-lockfile` on a hosted runner takes 3–4 s,

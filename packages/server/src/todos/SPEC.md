@@ -67,7 +67,9 @@ changed-path set + the current `HEAD` sha, captured through the git module's del
 (`.thinkrail/context/todos/<sessionId>.baselines.json`, read-modify-write like the store) — so a host
 restart mid-item changes nothing; `head` is the range base for **in-window commit adoption** (below).
 A session bound to an Issue with associated repositories is attached across them too: the host installs
-`setSessionMemberWorkspaces`, and each member workspace gets its own window under the baseline key
+`setSessionMemberWorkspaces`; the home workspace's reconcile is enqueued synchronously, before any
+asynchronous member lookup resolves, so membership discovery cannot bypass its read barrier or delay its
+plan snapshot past a subsequent agent write. Each member workspace gets its own window under the baseline key
 `<todoId>::<workspaceId>`, its own commit and its own `workspaceId`-tagged artifacts. Unattributed
 change detection, orphan pruning and the sole-window rule all stay scoped to one workspace, so the same
 relative path or the same sha in two repositories is never confused. Repository commits are not atomic:

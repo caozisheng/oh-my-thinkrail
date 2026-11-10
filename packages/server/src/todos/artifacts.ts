@@ -100,9 +100,10 @@ export function maybeAttachChangeArtifacts(workspaceId: string, sessionId: strin
 	} catch {
 		log.warn(`todo work-window capture skipped (${workspaceId}/${sessionId})`);
 	}
+	const reconcile = enqueueTodoMutation(workspaceId, () => runReconcile(workspaceId, sessionId));
 	const attachMembers = (members: readonly string[]) =>
 		Promise.all([
-			enqueueTodoMutation(workspaceId, () => runReconcile(workspaceId, sessionId)),
+			reconcile,
 			...members.map((member) => {
 				try {
 					captureNewWorkWindow(workspaceId, sessionId, member);

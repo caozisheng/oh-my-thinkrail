@@ -42,8 +42,9 @@ test("renders the branded shell and, with no workspace, the Welcome screen", asy
 	const faviconResponse = await page.request.get("/favicon.svg");
 	expect(faviconResponse.ok()).toBe(true);
 	const faviconSvg = await faviconResponse.text();
-	expect(faviconSvg).toContain("<title>ThinkRail</title>");
-	expect(faviconSvg).toContain("prefers-color-scheme: dark");
+	expect(faviconSvg).toContain("<title>ThinkRail OMT mark</title>");
+	expect(faviconSvg).toContain('viewBox="0 -128.5 623 623"');
+	expect(faviconSvg).toContain('fill="#8dff4f"');
 
 	await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", "connected");
 	await expect(page.getByTestId("connection-status")).toHaveAttribute("aria-label", "Connected");

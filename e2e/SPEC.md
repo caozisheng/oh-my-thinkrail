@@ -106,8 +106,11 @@ SDK reserve-independence canary owns that assertion.
 
 Project opening now offers a skippable GitLab association dialog. Generic workspace fixtures register a
 locator handler that explicitly chooses Skip when that dialog intercepts a later interaction; registration
-replaces the previous handler for that page. The common open helper awaits Skip before beginning a
-multi-action menu sequence. Project navigation tests using their own open path register the same handler;
+replaces the previous handler for that page. The common project-open helper disables the handler and
+awaits the association prompt and Skip explicitly before returning (except for an explicitly pre-auth
+host or a fixture modelling an already-associated project, where no prompt can appear). A one-shot visibility check is not readiness: association reads finish after project adoption,
+and keyboard shortcuts do not trigger Playwright locator handlers. Deferring dismissal until the next
+palette assertion can lose the opening shortcut or close the palette while clicking Skip. Project navigation tests using their own open path register the same handler;
 the held-picker race test instead dismisses explicitly before releasing its reply barrier. This models the user's dismissal,
 not a disabled product feature or a force-click through the modal. `issues-association.spec.ts` deliberately
 uses no auto-dismiss handler and verifies the prompt, single token field, and Skip preserving the project
