@@ -36,7 +36,8 @@ checks. Packaging-affecting changes and merge groups also run Linux binary/deskt
 The restored `changes` classifier preserves the existing app/artifact path filters; manual dispatch runs
 all coverage. `CI passed` requires classification, lint, unit and Windows jobs to succeed, and every
 classifier-gated job to succeed or be legitimately skipped. No macOS CI runner is scheduled; Linux CLI
-release runners are separate from application CI.
+release runners are separate from application CI. Source browser CI pins Ubuntu 24.04, matching the
+validated WebKit/system-library baseline rather than following `ubuntu-latest` distribution upgrades.
 
 The synchronized upstream cross-platform CI recipe is retained fully commented in
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
