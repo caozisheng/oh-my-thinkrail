@@ -1,0 +1,156 @@
+name: Release Linux CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Linux architectures to build
+        type: choice
+        options: [both, x64, arm64]
+        default: both
+      dry_run:
+        description: Build and smoke only; publish nothing
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".changeset/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pr-assets/**"
+      - ".github/readme-assets/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-linux-cli
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve Linux CLI release identity
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LINUX_CLI_AUTO_RELEASE == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      metadata: ${{ steps.identity.outputs.metadata }}
+      arches: ${{ steps.identity.outputs.arches }}
+      skip: ${{ steps.identity.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Test release helpers
+        run: bun test ./.github/scripts/linux-cli-release.test.ts ./.github/scripts/windows-release.test.ts
+      - name: Check release source formatting
+        run: bunx biome check .github/scripts/linux-cli-release.ts .github/scripts/linux-cli-release.test.ts
+      - id: identity
+        name: Resolve upstream once; refuse (manual) or skip (auto) an existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          ARCH: ${{ inputs.arch || 'both' }}
+          EXISTING: ${{ github.event_name == 'push' && 'skip' || 'refuse' }}
+        run: |
+          set -eu
+          bun .github/scripts/linux-cli-release.ts prepare "$RELEASE_REPOSITORY" "$ARCH" "$EXISTING"
+          if [ ! -f linux-cli-release.json ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "skip=false"
+            echo "metadata=$(jq -c . linux-cli-release.json)"
+            echo "arches=$(jq -c .arches linux-cli-release.json)"
+          } >> "$GITHUB_OUTPUT"
+          jq . linux-cli-release.json
+
+  build:
+    name: Build and smoke Linux ${{ matrix.arch }} CLI
+    needs: prepare
+    if: ${{ needs.prepare.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: ${{ fromJSON(needs.prepare.outputs.arches) }}
+    env:
+      METADATA: ${{ needs.prepare.outputs.metadata }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Stamp release identity at the exact checkout
+        run: |
+          set -eu
+          printf '%s\n' "$METADATA" > linux-cli-release.json
+          bun .github/scripts/linux-cli-release.ts stamp
+      - name: Build web UI
+        run: bun run build:web
+      - name: Compile single-file CLI binary
+        run: bun apps/cli/scripts/build-binary.ts --target="bun-linux-$ARCH"
+      - name: Smoke CLI binary
+        run: |
+          set -eu
+          binary="apps/cli/dist/thinkrail-linux-$ARCH"
+          expected=$(jq -r .version linux-cli-release.json)
+          actual=$("$binary" --version)
+          echo "$actual"
+          case "$actual" in *"$expected"*) ;; *) echo "::error::expected version $expected"; exit 1 ;; esac
+          "$binary" --help
+          bun run smoke:binary "$binary"
+      - name: Collect binary and its checksum record
+        run: bun .github/scripts/linux-cli-release.ts collect "$ARCH"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-cli-release-${{ github.run_id }}-${{ matrix.arch }}
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish verified Linux CLI release
+    needs: [prepare, build]
+    if: ${{ needs.prepare.outputs.skip == 'false' && !inputs.dry_run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: linux-cli-release-${{ github.run_id }}-*
+          path: release-assets
+          merge-multiple: true
+      - name: Refuse existing tag/release and publish at exact checkout SHA without becoming latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          METADATA: ${{ needs.prepare.outputs.metadata }}
+        run: |
+          set -eu
+          printf '%s\n' "$METADATA" > linux-cli-release.json
+          bun .github/scripts/linux-cli-release.ts publish "$RELEASE_REPOSITORY"

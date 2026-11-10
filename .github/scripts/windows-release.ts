@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const upstreamRepository = "JetBrains/thinkrail";
+export const upstreamRepository = "JetBrains/thinkrail";
 const fullSha = /^[0-9a-fA-F]{40}$/;
 const stableTag = /^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 
@@ -66,17 +66,17 @@ export function collectAssets(metadata: Metadata, source: string, output: string
 	return name;
 }
 
-function run(command: string[]): string {
+export function run(command: string[]): string {
 	const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "pipe" });
 	if (!result.success) throw new Error(`${command[0]} failed: ${result.stderr.toString()}`);
 	return result.stdout.toString().trim();
 }
 
-function api(endpoint: string): unknown {
+export function api(endpoint: string): unknown {
 	return JSON.parse(run(["gh", "api", endpoint]));
 }
 
-function assertAbsent(repository: string, tag: string): void {
+export function assertAbsent(repository: string, tag: string): void {
 	for (const endpoint of [`releases/tags/${tag}`, `git/ref/tags/${tag}`]) {
 		const result = Bun.spawnSync(["gh", "api", `repos/${repository}/${endpoint}`], {
 			stdout: "pipe",
@@ -89,7 +89,7 @@ function assertAbsent(repository: string, tag: string): void {
 	}
 }
 
-function repository(): string {
+export function repository(): string {
 	const value = process.argv[3];
 	if (!value || !/^[\w.-]+\/[\w.-]+$/.test(value)) throw new Error("GITHUB_REPOSITORY required");
 	return value;
