@@ -112,10 +112,11 @@ every other project mutation, so `project.updated` carries it.
   a real `.git` directory or a gitfile that is neither a submodule (`…/modules/…`) nor a linked worktree
   (`…/worktrees/…`); the root itself is included when it qualifies. The walk never follows symlinks (a
   symlinked `.git` is not a repository), never enters hidden folders (so `.git` and `.worktrees` too) or
-  `node_modules`, `bower_components`, `vendor`, `dist`, `build`, `out`, `target`, `coverage`, `venv`,
-  `__pycache__`, and still descends into a repository to find nested ones. It stops at depth
-  `PROJECT_GROUP_SCAN_DEPTH` (4) silently and at 10 000 directories, `PROJECT_GROUP_MAX_REPOSITORIES` or
-  5 s with `truncated: true`. Results are `/`-separated root-relative paths, shallow-first.
+  `node_modules`, `bower_components`, `dist`, `build`, `out`, `target`, `coverage`, `venv`,
+  `__pycache__`, and still descends into a repository to find nested ones. `vendor/` is walked: a
+  repository kept there is usually a deliberate member, and the confirm step can drop one that is not.
+  It stops at depth `PROJECT_GROUP_SCAN_DEPTH` (6) silently and at 10 000 directories,
+  `PROJECT_GROUP_MAX_REPOSITORIES` or 5 s with `truncated: true`. Results are `/`-separated root-relative paths, shallow-first.
 - **`importProjectGroup({ root, paths, name? })`** re-scans and refuses (`RANGE_INVALID`) a path the fresh
   scan does not find, so a client cannot name an arbitrary folder. Each kept path is opened through
   `openProject` (path guard and `ALREADY_OPEN` unchanged), must resolve to that exact repository root, and

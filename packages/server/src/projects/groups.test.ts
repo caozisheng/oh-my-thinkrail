@@ -70,8 +70,9 @@ test("scan of a plain folder lists only the nested repositories", async () => {
 });
 
 test("scan stops at the depth limit and skips dependency, hidden and linked folders", async () => {
-	makeRepo(join(work, "one", "two", "three", "four"));
-	makeRepo(join(work, "one", "two", "three", "four", "five"));
+	makeRepo(join(work, "one", "two", "three", "four", "five", "six"));
+	makeRepo(join(work, "one", "two", "three", "four", "five", "six", "seven"));
+	makeRepo(join(work, "libs", "vendor", "zlib"));
 	makeRepo(join(work, "node_modules", "dep"));
 	makeRepo(join(work, "build", "out"));
 	makeRepo(join(work, ".worktrees", "issue-1"));
@@ -82,9 +83,12 @@ test("scan stops at the depth limit and skips dependency, hidden and linked fold
 		symlinkSync(join(outside, "linked"), join(work, "linked"), "dir");
 		symlinkSync(outside, join(work, "parent-link"), "dir");
 		const scan = await scanProjectGroup(work);
-		expect(scan.repositories.map((r) => r.path)).toEqual(["one/two/three/four"]);
-		expect((await scanProjectGroup(work, { maxDepth: 5 })).repositories.map((r) => r.path)).toEqual(
-			["one/two/three/four", "one/two/three/four/five"],
+		expect(scan.repositories.map((r) => r.path)).toEqual([
+			"libs/vendor/zlib",
+			"one/two/three/four/five/six",
+		]);
+		expect((await scanProjectGroup(work, { maxDepth: 7 })).repositories.map((r) => r.path)).toEqual(
+			["libs/vendor/zlib", "one/two/three/four/five/six", "one/two/three/four/five/six/seven"],
 		);
 	} finally {
 		rmSync(outside, { recursive: true, force: true });

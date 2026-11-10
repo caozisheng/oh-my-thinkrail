@@ -18,7 +18,7 @@ import {
 	setProjectGroupMembership,
 } from "./projects";
 
-export const PROJECT_GROUP_SCAN_DEPTH = 4;
+export const PROJECT_GROUP_SCAN_DEPTH = 6;
 const SCAN_MAX_DIRECTORIES = 10_000;
 const SCAN_BUDGET_MS = 5_000;
 const GITFILE_MAX_BYTES = 4096;
@@ -28,7 +28,6 @@ const GROUP_NAME_MAX_LENGTH = 100;
 const SKIPPED_DIRECTORIES = new Set([
 	"node_modules",
 	"bower_components",
-	"vendor",
 	"dist",
 	"build",
 	"out",
