@@ -200,13 +200,13 @@ export async function openAppFresh(page: Page): Promise<void> {
 
 export async function openFixtureProject(
 	page: Page,
-	options: { issueAssociationSupported?: boolean } = {},
+	options: { issueAssociationSupported?: boolean; issueAlreadyAssociated?: boolean } = {},
 ): Promise<void> {
 	await openAppFresh(page);
 	await page.removeLocatorHandler(page.getByTestId("issues-associate-dialog"));
 	await page.getByTestId("add-project-menu").click();
 	await page.getByTestId("menu-open-project").click();
-	if (options.issueAssociationSupported === false) {
+	if (options.issueAssociationSupported === false || options.issueAlreadyAssociated === true) {
 		await expect(page.getByTestId("issues-associate-dialog")).toHaveCount(0);
 	} else {
 		await skipIssueAssociation(page);
