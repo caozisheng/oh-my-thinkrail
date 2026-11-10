@@ -1026,6 +1026,20 @@ export function workspaceDiffKey(
 	return `${ws.id}\u0000${ws.worktreePath}\u0000${ws.baseBranch}\u0000${ws.diffBase ?? ""}`;
 }
 
+/** A project's Default workspace record, registering it on first use; null when unknown or unreadable. */
+export function defaultWorkspaceOf(projectId: string): Workspace | null {
+	const existing = loadWorkspaces().find((w) => w.projectId === projectId && w.kind === "default");
+	if (existing) return existing;
+	const project = getProjects().find((p) => p.id === projectId);
+	if (!project) return null;
+	try {
+		return ensureDefaultWorkspace(project);
+	} catch (err) {
+		log.warn(`could not register the Default workspace of ${projectId}`, err);
+		return null;
+	}
+}
+
 export function listWorkspaceRecords(projectId: string): Workspace[] {
 	return loadWorkspaces().filter((w) => w.projectId === projectId);
 }

@@ -23,6 +23,7 @@ import {
 	backfillWorkspaceActivity,
 	completeInitialTerminalReservation,
 	createWorkspaceAtPath,
+	defaultWorkspaceOf,
 	ensureWorkspaceScratchDir,
 	forgetWorkspace,
 	listExistingWorktrees,
@@ -138,6 +139,20 @@ test("listGitWorktrees reads all actual registrations without changing workspace
 	expect(entries).toContainEqual({ path: missing, branch: "missing-branch", prunable: true });
 	expect(listWorkspaceRecords("p1")).toEqual(recordsBefore);
 	expect(events).toEqual([]);
+});
+
+test("defaultWorkspaceOf registers a never-listed project's Default once and ignores unknown ids", () => {
+	expect(listWorkspaceRecords("p1")).toHaveLength(0);
+	const first = defaultWorkspaceOf("p1");
+	expect(first).toMatchObject({
+		projectId: "p1",
+		kind: "default",
+		worktreePath: repo,
+		branch: "main",
+	});
+	expect(defaultWorkspaceOf("p1")?.id).toBe(first?.id);
+	expect(listWorkspaceRecords("p1")).toHaveLength(1);
+	expect(defaultWorkspaceOf("missing")).toBeNull();
 });
 
 test("listGitWorktrees rejects projects that are not open", async () => {

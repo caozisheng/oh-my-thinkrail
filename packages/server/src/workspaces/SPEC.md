@@ -198,7 +198,10 @@ place as `kind: "external"` — outside the data dir, never created or mutated h
   fan-out for cold navigation — an automatic reload on a shared host must not diff every worktree),
   `listWorkspaceRecords`
   (raw registry records without Default ensure, folder-truth reconciliation, or per-workspace git diffStats —
-  for internal read-only paths like history scope mapping that must not block on git spawns) and its
+  for internal read-only paths like history scope mapping that must not block on git spawns),
+  `defaultWorkspaceOf` (the stored Default record, registering it with one folder-truth read only when
+  missing, null for an unknown or unreadable project — Issue reference contexts use it so members never
+  opened in the UI still appear) and its
   project-free sibling `listAllWorkspaceRecords` (every record, for host reads that must span workspaces
   without knowing which projects are open — the all-workspace `session.stateList` read),
   `workspaceDiffStats`, **`setWorkspaceSubagentsOverride(id, override)`** — persist `"on"` / `"off"`,
@@ -406,7 +409,7 @@ place as `kind: "external"` — outside the data dir, never created or mutated h
   `setWorkspaceCreationHandoff`, `CreationHandoff`,
   `setWorkspaceCreationPublisher`, `WorkspaceCreationEvent`, `creationOwnsPath`, `listExistingWorktrees`,
   `openExistingWorktree`,
-  `listWorkspaces`, `listWorkspaceRecords`, `listAllWorkspaceRecords`, `forgetWorkspace`,
+  `listWorkspaces`, `listWorkspaceRecords`, `defaultWorkspaceOf`, `listAllWorkspaceRecords`, `forgetWorkspace`,
   `reclaimWorktree`, `removeWorkspace`, `nestedWorkspaces`, `ExplicitPlacement`,
   `workspaceDiffStats`, `workspaceDiffKey`, `getWorkspace`, `renameWorkspace`, `syncWorkspaceBranch`, `branchMoveOwed`,
   `completeInitialTerminalReservation`, `ensureWorkspaceScratchDir`, `setWorkspacePublisher`,

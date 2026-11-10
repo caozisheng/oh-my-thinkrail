@@ -22,6 +22,7 @@ export {
 	completeInitialTerminalReservation,
 	createWorkspaceAtPath,
 	createWorkspaceAtPathWithBranch,
+	defaultWorkspaceOf,
 	type ExplicitPlacement,
 	ensureWorkspaceScratchDir,
 	forgetWorkspace,

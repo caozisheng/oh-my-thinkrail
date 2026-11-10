@@ -44,6 +44,7 @@ import {
 import { getProjects, projectGroupMembers } from "../projects";
 import {
 	createWorkspaceAtPathWithBranch,
+	defaultWorkspaceOf,
 	listGitWorktrees,
 	listWorkspaceRecords,
 	listWorkspaces,
@@ -462,7 +463,7 @@ export function createIssuesActions(
 						checked(() =>
 							groupReferenceCandidates(projectId).flatMap((id) => {
 								const project = getProjects().find((p) => p.id === id);
-								const ws = listWorkspaceRecords(id).find((w) => w.kind === "default");
+								const ws = defaultWorkspaceOf(id);
 								return project && ws
 									? [{ projectId: id, workspaceId: ws.id, path: project.path }]
 									: [];
