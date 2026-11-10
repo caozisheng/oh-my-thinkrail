@@ -50,23 +50,22 @@ export function ImportProjectGroupDialog({
 		if (count === 0 || busy) return;
 		setBusy(true);
 		setError(null);
+		let result: ProjectGroupImport;
 		try {
-			const result = await getTransport().request("project.importGroup", {
+			result = await getTransport().request("project.importGroup", {
 				root: scan.root,
 				paths: scan.repositories.map((repo) => repo.path).filter((path) => kept.has(path)),
 				name,
 			});
-			if (result.projects.length > 0) onImported(result.projects);
-			if (result.failed.length === 0) {
-				onClose();
-				return;
-			}
-			setFailed(result.failed);
 		} catch (err) {
-			setError(errorText(err, t("panels.importGroup.importFailed")));
-		} finally {
 			setBusy(false);
+			setError(errorText(err, t("panels.importGroup.importFailed")));
+			return;
 		}
+		setBusy(false);
+		if (result.projects.length > 0) onImported(result.projects);
+		if (result.failed.length === 0) onClose();
+		else setFailed(result.failed);
 	};
 
 	const label = (path: string) => path || t("panels.importGroup.root");

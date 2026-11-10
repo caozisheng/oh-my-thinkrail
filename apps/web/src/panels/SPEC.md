@@ -488,6 +488,21 @@ requests cancellation. A reconnect replays the pending operation. Success adopts
 same last-intent fence as opening a local project, without starting a chat. A late result cannot steal a
 newer open-project selection.
 
+**Importing a project group.** From `PROJECT_GROUPS_PROTOCOL_VERSION` both add-project menus offer
+"Import folder as project group…": `useOpenProject` picks a folder (falling back to the host-path entry
+when the native picker fails), asks `project.scanGroup`, and opens `ImportProjectGroupDialog` with every
+found repository kept (root shown as "(folder root)"), an editable group name defaulting to the folder
+name, and the scan's truncation notice. Import sends only the kept relative paths to
+`project.importGroup`; every returned project is applied to the store and the first one is adopted through
+the same last-intent fence as opening a project. Per-repository failures (e.g. `ALREADY_OPEN`) keep the
+dialog open on a failure list with Done; nothing else is retried.
+
+**Grouping in the rail.** `projectRailEntries` folds two or more open members of one
+`Project.projectGroup` into a single entry at the first member's place in the incoming order, headed by
+the group name (folder root as its tooltip) and listing members shallow-first in an indented list; a group
+with one open member renders as a plain row. Rows inside a group are the ordinary `ProjectRow` and
+workspace rows — grouping changes placement only.
+
 **Cold-start onboarding wizard.** `OnboardingWizard` replaces the Welcome cards only on a true cold start:
 the host supports `ONBOARDING_PROTOCOL_VERSION`, `AppConfig.onboardingDismissed` is false, there are no
 open or recent projects, and the provider status snapshot reports none. The decision is **latched in the store gate** (it survives remounts) so

@@ -138,7 +138,7 @@ test("import opens kept repositories as projects that share one persisted group"
 		});
 	}
 	expect(published.at(-1)?.projectGroup?.path).toBe("libs/core");
-	expect(projectGroupMembers(core?.id ?? "").map((p) => p.id)).toEqual([rootProject?.id]);
+	expect(projectGroupMembers(core?.id ?? "").map((p) => p.id)).toEqual([rootProject?.id ?? ""]);
 
 	const again = await importProjectGroup({ root, paths: ["app"] });
 	expect(again.projects[0]?.projectGroup).toEqual({
