@@ -208,7 +208,7 @@ export async function openFixtureProject(
 	await page.getByTestId("menu-open-project").click();
 	if (options.issueAssociationSupported === false) {
 		await expect(page.getByTestId("issues-associate-dialog")).toHaveCount(0);
-	} else if (await page.getByTestId("issues-associate-dialog").isVisible()) {
+	} else {
 		await skipIssueAssociation(page);
 	}
 	await handleOptionalIssueAssociation(page);
