@@ -94,6 +94,7 @@ function renderIssues(
 		capabilities?: IssueActionCapabilities;
 		onRunAction?: (issue: IssueSummary, action: IssueActionId) => Promise<IssueActionResult>;
 		actionPending?: boolean;
+		actionProgress?: IssuesPanelProps["actionProgress"];
 		actionError?: IssuePanelError | null;
 		actionErrorIssue?: string;
 	} = {},
@@ -112,6 +113,7 @@ function renderIssues(
 		onOpenIssue: props.onOpenIssue,
 		onRunAction: props.onRunAction,
 		actionPending: props.actionPending,
+		actionProgress: props.actionProgress,
 		actionError: props.actionError,
 		actionErrorIssue: props.actionErrorIssue,
 	};
@@ -1163,4 +1165,31 @@ test("startup locale follows the resolved translator language and canonical supp
 	expect(issueStartupLocale(resolvedSystemLanguage, ["en", "ja"])).toBe("ja");
 	expect(issueStartupLocale("system", ["en", "ja"])).toBe("en");
 	expect(issueStartupLocale("missing", ["en", "ja"])).toBe("en");
+});
+
+for (const action of ["design", "implement"] as const) {
+ test(`${action} waits for navigation and reports its failure separately`, async () => {
+  const call = { launchDesign: async () => ({workspaceId: "w", sessionId: "s"}), startImplementation: async () => ({workspaceId: "w", sessionId: "s"}) };
+  let release = () => {};
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  let settled = false;
+  const result = runIssueAction(action, call, async () => { await barrier; throw new Error("private navigation detail"); }).then((value) => { settled = true; return value; });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(settled).toBe(false);
+  release();
+  expect(await result).toEqual({ok: false, error: "open"});
+ });
+}
+
+test("progress appears only on its issue and identifies startup versus navigation", () => {
+ for (const phase of ["starting", "opening"] as const) {
+  const html = renderIssues({connection: connected, issues: [inProgress], actionPending: true,
+   actionProgress: {issue: issueKey(inProgress), action: "implement", phase},
+   onRunAction: async () => ({ok: false, error: "action"})});
+  expect(html).toContain('data-testid="issue-action-progress"');
+  expect(html).toContain('role="status"');
+  expect(html).toContain(phase === "starting" ? "Starting implementation" : "Opening chat");
+ }
+ const html = renderIssues({issues: [inProgress], actionProgress: {issue: "other", action: "design", phase: "starting"}, onRunAction: async () => ({ok: false, error: "action"})});
+ expect(html).not.toContain('data-testid="issue-action-progress"');
 });
