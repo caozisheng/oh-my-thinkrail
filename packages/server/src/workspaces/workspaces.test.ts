@@ -28,6 +28,7 @@ import {
 	listExistingWorktrees,
 	listWorkspaceRecords,
 	listWorkspaces,
+	nestedWorkspaces,
 	openExistingWorktree,
 	reclaimWorktree,
 	recordWorkspaceActivity,
@@ -1740,4 +1741,70 @@ test("explicit target rejects a junction Git directory before appending excludes
 	);
 	expect(readFileSync(exclude, "utf8")).toBe(before);
 	expect(listWorkspaceRecords("p1")).toHaveLength(0);
+});
+
+function addNestedProject(): string {
+	const core = join(repo, "libs", "core");
+	mkdirSync(core, { recursive: true });
+	git(core, "init", "-b", "main");
+	git(core, "-c", "user.email=t@thinkrail.test", "-c", "user.name=test", "commit", "--allow-empty", "-m", "init");
+	writeFileSync(
+		join(dataDir, "projects.json"),
+		JSON.stringify([
+			{ id: "p1", name: "repo", path: repo, slug: "repo", lastOpened: 1 },
+			{ id: "p2", name: "core", path: core, slug: "core", lastOpened: 1 },
+		]),
+	);
+	return core;
+}
+
+test("a layout root places a group member at its mirrored path and refuses other shapes", async () => {
+	const core = addNestedProject();
+	const slot = join(repo, ".worktrees", "issue-7");
+	const outer = await createWorkspaceAtPathWithBranch("p1", slot, "issue-7-a", undefined, "issue-7", {
+		layoutRoot: repo,
+	});
+	expect(outer.worktreePath).toBe(slot);
+	for (const [target, layoutRoot] of [
+		[join(slot, "core"), repo],
+		[join(slot, "libs", "other"), repo],
+		[join(repo, ".worktrees", "libs", "core"), repo],
+		[join(slot, "libs", "core"), core],
+		[join(slot, "libs", "core"), join(dataDir, "elsewhere")],
+	] as const) {
+		mkdirSync(join(dataDir, "elsewhere"), { recursive: true });
+		await expect(
+			createWorkspaceAtPathWithBranch("p2", target, `issue-7-${basename(target)}`, undefined, "x", {
+				layoutRoot,
+			}),
+		).rejects.toThrow();
+	}
+	const inner = await createWorkspaceAtPathWithBranch(
+		"p2",
+		join(slot, "libs", "core"),
+		"issue-7-b",
+		undefined,
+		"issue-7",
+		{ layoutRoot: repo },
+	);
+	expect(gitOut(inner.worktreePath, "rev-parse", "--show-toplevel")).toBe(inner.worktreePath);
+	expect(gitOut(inner.worktreePath, "symbolic-ref", "--short", "HEAD")).toBe("issue-7-b");
+	expect(nestedWorkspaces(outer.id).map((ws) => ws.id)).toEqual([inner.id]);
+	expect(nestedWorkspaces(inner.id)).toEqual([]);
+});
+
+posix("a layout target refuses a symlinked parent inside the slot", async () => {
+	if (!canSymlink) return;
+	addNestedProject();
+	const slot = join(repo, ".worktrees", "issue-8");
+	mkdirSync(slot, { recursive: true });
+	const elsewhere = join(dataDir, "elsewhere");
+	mkdirSync(elsewhere);
+	symlinkSync(elsewhere, join(slot, "libs"));
+	await expect(
+		createWorkspaceAtPathWithBranch("p2", join(slot, "libs", "core"), "issue-8-b", undefined, "x", {
+			layoutRoot: repo,
+		}),
+	).rejects.toThrow(/real directory/);
+	expect(existsSync(join(elsewhere, "core"))).toBe(false);
 });
