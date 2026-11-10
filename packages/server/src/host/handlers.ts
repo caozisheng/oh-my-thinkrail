@@ -24,6 +24,7 @@ import {
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	isControlMessage,
 	isSpeechModel,
@@ -272,10 +273,12 @@ import { nudgeBaseRefWorkspaces } from "./fsNudge";
 import { buildHistoryScope } from "./historyScope";
 import { provisionInitialTerminal } from "./initialTerminal";
 import {
+	issuesAddRepository,
 	issuesApproveDesign,
 	issuesApproveImplementation,
 	issuesBeginDesign,
 	issuesBeginImplementation,
+	issuesCleanupRepositories,
 	issuesConnect,
 	issuesConnection,
 	issuesContent,
@@ -294,6 +297,7 @@ import {
 	issuesStartImplementation,
 	issuesValidateDesign,
 	issuesValidateImplementation,
+	setIssueWorkspaceArchiver,
 } from "./issues";
 import { dropLogin, recordLoginStart } from "./loginAnalytics";
 import {
@@ -471,6 +475,21 @@ function withIssuesRepositoriesProtocol<P, R>(handler: (params: P) => R) {
 	};
 }
 
+function withIssuesRepositoryJoinProtocol<P, R>(handler: (params: P) => R) {
+	return (params: P, ctx: RequestContext): R => {
+		if (
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION
+		) {
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Joining Issue repositories is unavailable for this protocol version.",
+			);
+		}
+		return handler(params);
+	};
+}
+
 function withIssuesActionsProtocol<P, R>(handler: (params: P) => R) {
 	return (params: P, ctx: RequestContext): R => {
 		if (
@@ -485,6 +504,29 @@ function withIssuesActionsProtocol<P, R>(handler: (params: P) => R) {
 		return handler(params);
 	};
 }
+
+/**
+ * Forget the workspace and drop its host state synchronously; the returned promise settles when the
+ * session/artifact/worktree teardown finishes (Issue cleanup awaits it, `workspace.remove` does not).
+ */
+function archiveWorkspace(id: string): Promise<void> {
+	if (nestedWorkspaces(id).length > 0)
+		throw new CodedError(
+			"WORKSPACE_HAS_NESTED_WORKSPACES",
+			"Archive the workspaces nested inside this one first.",
+		);
+	const ws = forgetWorkspace(id);
+	if (!ws) return Promise.resolve();
+	evictSpecIndex(ws.id);
+	evictSpecRoot(ws.worktreePath);
+	removeWorkspaceReviews(ws.id);
+	forgetWorkspaceChanges(ws.id);
+	forgetWorkspaceTurns(ws.id);
+	stopWatch(ws.id);
+	closeWorkspaceTerminals(ws.id);
+	return archiveTeardown(ws);
+}
+setIssueWorkspaceArchiver(archiveWorkspace);
 
 async function archiveTeardown(ws: Workspace): Promise<void> {
 	try {
@@ -939,23 +981,7 @@ const handlers: WsHandlers = {
 		records: await markWorkspaceRead(sessionStateWorkspace(getWorkspace(params.id))),
 	}),
 	"workspace.remove": (params) => {
-		const id = params.id;
-		if (nestedWorkspaces(id).length > 0)
-			throw new CodedError(
-				"WORKSPACE_HAS_NESTED_WORKSPACES",
-				"Archive the workspaces nested inside this one first.",
-			);
-		const ws = forgetWorkspace(id);
-		if (ws) {
-			evictSpecIndex(ws.id);
-			evictSpecRoot(ws.worktreePath);
-			removeWorkspaceReviews(ws.id);
-			forgetWorkspaceChanges(ws.id);
-			forgetWorkspaceTurns(ws.id);
-			stopWatch(ws.id);
-			closeWorkspaceTerminals(ws.id);
-			void archiveTeardown(ws);
-		}
+		void archiveWorkspace(params.id);
 		return { ok: true } as const;
 	},
 	"workspace.diffStats": (params) => workspaceDiffStats(params.id),
@@ -1258,6 +1284,10 @@ const handlers: WsHandlers = {
 	"issues.repositoryAddress": withIssuesAuthProtocol((p) => issuesRepositoryAddress(p)),
 	"issues.repositories": withIssuesRepositoriesProtocol((p) => issuesRepositories(p)),
 	"issues.setRepositories": withIssuesRepositoriesProtocol((p) => issuesSetRepositories(p)),
+	"issues.addRepository": withIssuesRepositoryJoinProtocol((p) => issuesAddRepository(p)),
+	"issues.cleanupRepositories": withIssuesRepositoryJoinProtocol((p) =>
+		issuesCleanupRepositories(p),
+	),
 	"issues.startImplementation": withIssuesImplementationProtocol((p) =>
 		issuesStartImplementation(p),
 	),

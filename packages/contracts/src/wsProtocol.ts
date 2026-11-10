@@ -103,8 +103,10 @@ import type {
 	IssueList,
 	IssuePublication,
 	IssueRepositories,
+	IssueRepositoriesCleanup,
 	IssueRepositoriesInput,
 	IssueRepositoryAddress,
+	IssueRepositoryJoinInput,
 	IssueSessionLaunch,
 	IssueSessionStartupTarget,
 	IssueTarget,
@@ -162,8 +164,9 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 118;
+export const PROTOCOL_VERSION = 119;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 118;
+export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 119;
 export const PROJECT_GROUP_MAX_REPOSITORIES = 64;
 export const SEARCH_PROTOCOL_VERSION = 116;
 export const SPEECH_PROTOCOL_VERSION = 117;
@@ -323,6 +326,8 @@ export const WS_METHODS = {
 	issuesRepositoryAddress: "issues.repositoryAddress",
 	issuesRepositories: "issues.repositories",
 	issuesSetRepositories: "issues.setRepositories",
+	issuesAddRepository: "issues.addRepository",
+	issuesCleanupRepositories: "issues.cleanupRepositories",
 	issuesStartImplementation: "issues.startImplementation",
 	issuesValidateDesign: "issues.validateDesign",
 	issuesValidateImplementation: "issues.validateImplementation",
@@ -824,6 +829,8 @@ export interface WsMethodMap {
 	"issues.validateImplementation": { params: IssueTarget; result: IssueApprovalResult };
 	"issues.repositories": { params: IssueTarget; result: IssueRepositories };
 	"issues.setRepositories": { params: IssueRepositoriesInput; result: IssueRepositories };
+	"issues.addRepository": { params: IssueRepositoryJoinInput; result: IssueRepositories };
+	"issues.cleanupRepositories": { params: IssueTarget; result: IssueRepositoriesCleanup };
 
 	"issues.connection": { params: { projectId: string }; result: IssueConnection | null };
 	"issues.connect": {
@@ -1470,6 +1477,7 @@ export type WsErrorCode =
 	| "WORKTREE_CHECKOUT_STALLED"
 	| "WORKSPACE_PATH_TAKEN"
 	| "WORKSPACE_HAS_NESTED_WORKSPACES"
+	| "ISSUE_REPOSITORY_REFUSED"
 	| "FILE_TOO_LARGE"
 	| SpeechErrorCode;
 

@@ -181,36 +181,33 @@ test("partial member preparation retains successes and resumes without duplicate
 	expect(f.sessions.size).toBe(1);
 });
 
-test("a project group's members are the default selection until one is saved", async () => {
+test("a project group's other members are references, never a default selection", async () => {
 	const f = await fixture();
 	await mkdir(join(f.root, "api"));
 	f.options.projectPath = (id) => (id === "api" ? join(f.root, "api") : f.root);
-	f.options.listGitWorktrees = (id) =>
-		f.trees.filter((tree) =>
-			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
-		);
-	f.options.defaultWorkspace = async (projectId) => ({
-		id: `default-${projectId}`,
-		projectId,
-		worktreePath: projectId === "api" ? join(f.root, "api") : f.root,
-		branch: "main",
-		kind: "default",
-	});
-	f.options.defaultRepositoryProjectIds = ["api"];
-	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: ["api"], locked: false });
-	expect((await f.coordinator().contexts(ref, "design")).map((c) => c.projectId)).toEqual([
-		"local",
-		"api",
-	]);
-	await f.coordinator().setRepositories(ref, []);
+	f.options.references = () => [
+		{ projectId: "api", workspaceId: "default-api", path: join(f.root, "api") },
+		{ projectId: "local", workspaceId: "default", path: f.root },
+	];
 	expect(await f.coordinator().repositories(ref)).toEqual({ projectIds: [], locked: false });
-	const other = { ...ref, number: 43 };
-	await f.coordinator().implementation(other);
-	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["api", "local"]);
-	const saved = [...f.records.values()].find((row) => row.reference.number === 43);
-	expect(saved?.repositoryProjectIds).toEqual(["api"]);
-	f.options.defaultRepositoryProjectIds = [];
-	expect(await f.coordinator().repositories(other)).toEqual({ projectIds: ["api"], locked: true });
+	expect((await f.coordinator().contexts(ref, "design")).map((c) => [c.projectId, c.role])).toEqual(
+		[
+			["local", "primary"],
+			["api", "reference"],
+		],
+	);
+	await f.coordinator().implementation(ref);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local"]);
+	expect(
+		(await f.coordinator().contexts(ref, "implementation")).map((c) => [c.projectId, c.role]),
+	).toEqual([
+		["local", "primary"],
+		["api", "reference"],
+	]);
+	// A repository outside any group keeps its exact single-repository record.
+	const row = required([...f.records.values()][0]);
+	expect(row.members).toBeUndefined();
+	expect(row.layout).toBeUndefined();
 });
 
 async function groupFixture(primaryPath: string) {
@@ -229,7 +226,6 @@ async function groupFixture(primaryPath: string) {
 		layoutRoots.push(layoutRoot);
 		return create(id, path, branch, name, layoutRoot);
 	};
-	f.options.defaultRepositoryProjectIds = ["api"];
 	f.options.layout = (ids) => ({
 		root: group,
 		paths: ids.map((projectId) => ({ projectId, path: required(places[projectId]) })),
@@ -239,6 +235,7 @@ async function groupFixture(primaryPath: string) {
 
 test("a group Issue mirrors the repositories' layout with the root repository first", async () => {
 	const f = await groupFixture("");
+	await f.coordinator().setRepositories(ref, ["api"]);
 	const launch = await f.coordinator().implementation(ref);
 	const slot = join(f.group, ".worktrees", "issue-42");
 	expect(f.workspaces.map((ws) => [ws.projectId, ws.worktreePath])).toEqual([
@@ -257,6 +254,7 @@ test("a group Issue mirrors the repositories' layout with the root repository fi
 
 test("a nested primary shares a digest-named group slot so it cannot collide with the root's Issue", async () => {
 	const f = await groupFixture("app");
+	await f.coordinator().setRepositories(ref, ["api"]);
 	await f.coordinator().implementation(ref);
 	const [local, api] = f.workspaces;
 	expect(api?.projectId).toBe("api");
@@ -683,4 +681,204 @@ test("owned implementation rejects occupied unowned paths and invalid references
 	await expect(c.ownedImplementation({ ...ref, number: 0 })).rejects.toThrow("reconciliation");
 	expect(f.events).toEqual([]);
 	expect(f.records.size).toBe(0);
+});
+
+async function joinFixture() {
+	const f = await fixture();
+	const group = join(f.root, "suite");
+	const places: Record<string, string> = {
+		local: "",
+		api: "libs/api",
+		core: "libs/api/core",
+		web: "web",
+	};
+	for (const place of Object.values(places)) await mkdir(join(group, place), { recursive: true });
+	f.options.projectPath = (id) => join(group, required(places[id]));
+	f.options.listGitWorktrees = (id) =>
+		f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	const bases: (string | undefined)[] = [];
+	const create = f.options.createWorkspaceAtPath;
+	f.options.createWorkspaceAtPath = (id, path, branch, name, layoutRoot, baseRef) => {
+		bases.push(`${id}:${baseRef ?? "HEAD"}`);
+		return create(id, path, branch, name, layoutRoot, baseRef);
+	};
+	// The host freezes every open group member's place, not only the participants'.
+	f.options.layout = (ids) => ({
+		root: group,
+		paths: [
+			...ids.map((projectId) => ({ projectId, path: required(places[projectId]) })),
+			...Object.keys(places)
+				.filter((id) => !ids.includes(id))
+				.map((projectId) => ({ projectId, path: required(places[projectId]) })),
+		],
+	});
+	f.options.baseRef = (id) => (id === "web" ? undefined : "origin/main");
+	f.options.headCommit = () => "a".repeat(40);
+	f.options.references = () =>
+		Object.keys(places)
+			.filter((id) => id !== "local")
+			.map((projectId) => ({
+				projectId,
+				workspaceId: `default-${projectId}`,
+				path: join(group, required(places[projectId])),
+			}));
+	const changed = new Set<string>();
+	const removed: string[] = [];
+	f.options.memberUnchanged = (ws) => !changed.has(ws.projectId);
+	f.options.removeMember = async (ws) => {
+		if (changed.has(ws.projectId)) return false;
+		removed.push(ws.projectId);
+		f.workspaces.splice(f.workspaces.indexOf(ws), 1);
+		f.trees.splice(
+			f.trees.findIndex((tree) => tree.path === ws.worktreePath),
+			1,
+		);
+		await rm(ws.worktreePath, { recursive: true, force: true });
+		return true;
+	};
+	const slot = join(group, ".worktrees", "issue-42");
+	return { ...f, group, slot, bases, changed, removed };
+}
+
+const roles = async (f: Awaited<ReturnType<typeof joinFixture>>) =>
+	(await f.coordinator().contexts(ref, "implementation")).map((c) => `${c.projectId}:${c.role}`);
+
+test("an Issue starts with only its primary worktree and joins members mid-way in the frozen slot", async () => {
+	const f = await joinFixture();
+	const launch = await f.coordinator().implementation(ref);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local"]);
+	expect(await roles(f)).toEqual([
+		"local:primary",
+		"api:reference",
+		"core:reference",
+		"web:reference",
+	]);
+	expect(await f.coordinator().addRepository(ref, "api")).toEqual({
+		projectIds: ["api"],
+		locked: true,
+	});
+	expect(await f.coordinator().addRepository(ref, "core")).toEqual({
+		projectIds: ["api", "core"],
+		locked: true,
+	});
+	expect(f.workspaces.map((ws) => [ws.projectId, ws.worktreePath])).toEqual([
+		["local", f.slot],
+		["api", join(f.slot, "libs", "api")],
+		["core", join(f.slot, "libs", "api", "core")],
+	]);
+	// Group members (primary too) branch from the freshly fetched default; no remote keeps HEAD.
+	expect(f.bases).toEqual(["local:origin/main", "api:origin/main", "core:origin/main"]);
+	expect(await roles(f)).toEqual([
+		"local:primary",
+		"api:associated",
+		"core:associated",
+		"web:reference",
+	]);
+	const row = required([...f.records.values()][0]);
+	expect(row.members?.map((m) => [m.projectId, m.base])).toEqual([
+		["api", "a".repeat(40)],
+		["core", "a".repeat(40)],
+	]);
+	expect(await f.coordinator().addRepository(ref, "core")).toEqual({
+		projectIds: ["api", "core"],
+		locked: true,
+	});
+	expect(f.workspaces).toHaveLength(3);
+	expect(await f.coordinator().implementation(ref)).toEqual(launch);
+	expect(f.sessions.size).toBe(1);
+	await expect(f.coordinator().setRepositories(ref, ["web"])).rejects.toThrow();
+});
+
+test("a repository holding a joined nested checkout cannot join afterwards, with a clear refusal", async () => {
+	const f = await joinFixture();
+	await f.coordinator().implementation(ref);
+	await f.coordinator().addRepository(ref, "core");
+	await expect(f.coordinator().addRepository(ref, "api")).rejects.toMatchObject({
+		code: "ISSUE_REPOSITORY_REFUSED",
+		message: expect.stringContaining("libs/api/core"),
+	});
+	await expect(f.coordinator().addRepository(ref, "local")).rejects.toMatchObject({
+		code: "ISSUE_REPOSITORY_REFUSED",
+	});
+	expect((await f.coordinator().repositories(ref)).projectIds).toEqual(["core"]);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local", "core"]);
+});
+
+test("joining before implementation extends the saved selection instead of creating anything", async () => {
+	const f = await joinFixture();
+	expect(await f.coordinator().addRepository(ref, "web")).toEqual({
+		projectIds: ["web"],
+		locked: false,
+	});
+	expect(f.events).not.toContain("create");
+	await f.coordinator().implementation(ref);
+	expect(f.bases).toEqual(["local:origin/main", "web:HEAD"]);
+});
+
+test("cleanup removes only unchanged members, deepest first, and a removed member can rejoin", async () => {
+	const f = await joinFixture();
+	await f.coordinator().implementation(ref);
+	for (const id of ["api", "core", "web"]) await f.coordinator().addRepository(ref, id);
+	f.changed.add("api");
+	const result = await f.coordinator().cleanupRepositories(ref);
+	expect(f.removed).toEqual(["core", "web"]);
+	expect(result).toEqual({ projectIds: ["api"], locked: true, removed: ["core", "web"] });
+	expect(await roles(f)).toEqual([
+		"local:primary",
+		"api:associated",
+		"core:reference",
+		"web:reference",
+	]);
+	await f.coordinator().addRepository(ref, "core");
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local", "api", "core"]);
+	f.changed.delete("api");
+	const second = await f.coordinator().cleanupRepositories(ref);
+	expect(second.removed).toEqual(["core", "api"]);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local"]);
+	await f.coordinator().addRepository(ref, "api");
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local", "api"]);
+});
+
+test("a member still holding another checkout or without a recorded base is never cleaned up", async () => {
+	const f = await joinFixture();
+	await f.coordinator().implementation(ref);
+	await f.coordinator().addRepository(ref, "api");
+	await f.coordinator().addRepository(ref, "core");
+	f.changed.add("core");
+	expect((await f.coordinator().cleanupRepositories(ref)).removed).toEqual([]);
+	const key = required([...f.records.keys()][0]);
+	const row = required(f.records.get(key));
+	for (const member of row.members ?? []) delete member.base;
+	f.records.set(key, row);
+	f.changed.clear();
+	expect((await f.coordinator().cleanupRepositories(ref)).removed).toEqual([]);
+	expect(f.workspaces).toHaveLength(3);
+});
+
+test("a recorded removal settles on the next action: finished when unchanged, reverted otherwise", async () => {
+	const f = await joinFixture();
+	await f.coordinator().implementation(ref);
+	await f.coordinator().addRepository(ref, "web");
+	await f.coordinator().addRepository(ref, "api");
+	const key = required([...f.records.keys()][0]);
+	const mark = () => {
+		const row = required(f.records.get(key));
+		for (const member of row.members ?? []) member.removing = true;
+		f.records.set(key, row);
+	};
+	mark();
+	f.changed.add("api");
+	// A member mid-removal is neither editable nor offered as a reference until it settles.
+	expect(await roles(f)).toEqual(["local:primary", "core:reference"]);
+	await f.coordinator().implementation(ref);
+	expect(f.removed).toEqual(["web"]);
+	expect(required(f.records.get(key)).members).toEqual([
+		{
+			projectId: "api",
+			base: "a".repeat(40),
+			ownership: expect.objectContaining({ state: "completed" }),
+		},
+	]);
 });

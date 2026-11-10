@@ -395,14 +395,14 @@ async function validateExplicitTarget(
 	return explicitTarget(project, targetPath, placement);
 }
 
-function validateGitEntry(project: Project): void {
+function validateGitEntry(project: Pick<Project, "path">): void {
 	// Git may canonicalize a symlinked .git directory. A regular gitfile is allowed.
 	const gitEntry = join(realpathSync.native(project.path), ".git");
 	if (lstatSync(gitEntry, { throwIfNoEntry: false })?.isSymbolicLink())
 		throw new Error(`Git metadata must be a real directory: ${gitEntry}`);
 }
 
-function localExcludePath(project: Project): string {
+function localExcludePath(project: Pick<Project, "path">): string {
 	validateGitEntry(project);
 	const located = git(project.path, [
 		"rev-parse",
@@ -441,7 +441,7 @@ function validateExcludeComponents(file: string): void {
 		throw new Error(`Git exclude must be a regular file: ${file}`);
 }
 
-function excludeLocalWorktrees(project: Project): void {
+function excludeLocalWorktrees(project: Pick<Project, "path">): void {
 	const file = localExcludePath(project);
 	mkdirSync(dirname(file), { recursive: true });
 	// Revalidate created directories too, before reading/appending the leaf.
@@ -450,6 +450,18 @@ function excludeLocalWorktrees(project: Project): void {
 	const content = entry ? readFileSync(file, "utf8") : "";
 	if (content.split(/\r?\n/).includes("/.worktrees/")) return;
 	appendFileSync(file, `${content && !content.endsWith("\n") ? "\n" : ""}/.worktrees/\n`);
+}
+
+/**
+ * A layout root that is itself a repository's top level (a group's root repository, joined or not)
+ * would otherwise show the shared `.worktrees` folder as untracked in its main working tree.
+ */
+function excludeLayoutRootWorktrees(layoutRoot: string): void {
+	const root = realpathSync.native(layoutRoot);
+	if (!lstatSync(join(root, ".git"), { throwIfNoEntry: false })) return;
+	const top = git(root, ["rev-parse", "--show-toplevel"]);
+	if (!top.ok || canonicalPath(top.out) !== root) return;
+	excludeLocalWorktrees({ path: root });
 }
 
 async function createExplicitWorkspace(
@@ -506,6 +518,7 @@ async function createExplicitWorkspace(
 			? join(dataDir(), "worktrees", project.slug, branch)
 			: await validateExplicitTarget(project, targetPath, placement);
 	if (targetPath !== undefined) excludeLocalWorktrees(project);
+	if (placement.layoutRoot !== undefined) excludeLayoutRootWorktrees(placement.layoutRoot);
 	mkdirSync(dirname(worktreePath), { recursive: true });
 	if (targetPath !== undefined) explicitTarget(project, targetPath, placement);
 	// Explicit issue-owned paths deliberately do not enter the retry/cleanup job registry.

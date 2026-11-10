@@ -106,7 +106,10 @@ test("a frozen group layout round trips and rejects drift, escapes and a layout 
 		{ ...selected, members: undefined, repositoryProjectIds: undefined },
 		{ ...selected, layout: { ...layout, root: "relative" } },
 		{ ...selected, layout: { ...layout, paths: [...layout.paths].reverse() } },
-		{ ...selected, layout: { ...layout, paths: layout.paths.slice(0, 1) } },
+		{ ...selected, layout: { ...layout, paths: layout.paths.slice(1) } },
+		{ ...selected, layout: { ...layout, paths: [...layout.paths, layout.paths[1]] } },
+		{ ...selected, members: [{ projectId: "api", base: "not-a-sha" }] },
+		{ ...selected, members: [{ projectId: "api", removing: true }] },
 		...["../api", "/abs", "libs//api", "libs\\api", "./api"].map((path) => ({
 			...selected,
 			layout: { ...layout, paths: [layout.paths[0], { projectId: "api", path }] },
@@ -118,6 +121,27 @@ test("a frozen group layout round trips and rejects drift, escapes and a layout 
 			other.store.withLaunch("local", ref, (p) => p.save(key(), row)),
 		).rejects.toMatchObject(failure);
 	}
+});
+
+test("a layout may place group members that have not joined, and members keep base and removal intent", async () => {
+	const f = setup();
+	const row: IssueWorkspaceRecord = {
+		...record,
+		repositoryProjectIds: ["api"],
+		members: [{ projectId: "api", base: "a".repeat(40), removing: true }],
+		layout: {
+			root: join(f.dir, "suite"),
+			paths: [
+				{ projectId: "local", path: "app" },
+				{ projectId: "web", path: "web" },
+				{ projectId: "root", path: "" },
+			],
+		},
+	};
+	await f.store.withLaunch("local", ref, (p) => p.save(key(), row));
+	expect(
+		await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(row);
 });
 
 test("successful callbacks persist snapshots, release fences and disable retained ports", async () => {

@@ -15,9 +15,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
 import { useAppStore } from "../store";
-import { getTransport } from "../transport";
+import { getTransport, wsErrorCode } from "../transport";
 import type { IssuePreview } from "./IssueBody";
-import type { IssueRepositoriesView } from "./IssueRepositoriesControl";
+import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
 import { IssuesPanel } from "./IssuesPanel";
 import {
 	type ConnectResult,
@@ -40,6 +40,7 @@ import {
 	supportsIssueGithub,
 	supportsIssueImplementation,
 	supportsIssueRepositories,
+	supportsIssueRepositoryJoin,
 	supportsIssueSessionStartup,
 	supportsIssues,
 } from "./model";
@@ -66,6 +67,9 @@ async function readIssueContent(
 	}
 }
 
+/** A join or cleanup may fetch each repository first and create or remove worktrees. */
+const REPOSITORY_JOIN_TIMEOUT_MS = 120_000;
+
 export function IssuesTool({
 	projectId,
 	onOpenIssue,
@@ -90,6 +94,7 @@ export function IssuesTool({
 	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
 	const projects = useAppStore((s) => s.projects);
 	const repositoriesSupported = supportsIssueRepositories(version);
+	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
 		() => ({
 			actionsSupported: supportsIssueActions(version),
@@ -294,6 +299,50 @@ export function IssuesTool({
 		[projectId, repositories],
 	);
 
+	const joinRepository = useCallback(
+		async (
+			issue: IssueSummary,
+			repositoryProjectId: string,
+		): Promise<IssueRepositoriesNotice | null> => {
+			const key = issueKey(issue);
+			try {
+				const saved = await getTransport().request(
+					"issues.addRepository",
+					{ projectId, reference: issue.reference, repositoryProjectId },
+					{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
+				);
+				setRepositories((state) => ({ ...state, [key]: saved }));
+				return null;
+			} catch (error) {
+				// Only a host refusal (nesting, limit) carries a reason worth showing beside the key.
+				return wsErrorCode(error) === "ISSUE_REPOSITORY_REFUSED" && error instanceof Error
+					? { kind: "joinFailed", detail: error.message }
+					: { kind: "joinFailed" };
+			}
+		},
+		[projectId],
+	);
+	const cleanupRepositories = useCallback(
+		async (issue: IssueSummary): Promise<IssueRepositoriesNotice> => {
+			const key = issueKey(issue);
+			try {
+				const result = await getTransport().request(
+					"issues.cleanupRepositories",
+					{ projectId, reference: issue.reference },
+					{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
+				);
+				setRepositories((state) => ({
+					...state,
+					[key]: { projectIds: result.projectIds, locked: result.locked },
+				}));
+				return { kind: "cleaned", count: result.removed.length };
+			} catch {
+				return { kind: "cleanupFailed" };
+			}
+		},
+		[projectId],
+	);
+
 	const active = snapshot?.identity === identity ? snapshot : null;
 	const activeAction = actionState?.identity === identity ? actionState : null;
 	if (!supported)
@@ -339,6 +388,8 @@ export function IssuesTool({
 					void loadRepositories(issue);
 				}}
 				onToggleRepository={toggleRepository}
+				onJoinRepository={joinSupported ? joinRepository : undefined}
+				onCleanupRepositories={joinSupported ? cleanupRepositories : undefined}
 			/>
 		</QuietScrollArea>
 	);

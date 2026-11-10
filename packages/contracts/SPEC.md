@@ -1418,7 +1418,7 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 118`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 119`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
 hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 118` (below). Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
@@ -1426,6 +1426,18 @@ Background workspace creation is gated at
 `EXTENSION_SETTINGS_PROTOCOL_VERSION = 112` and `ASK_DISCUSS_PROTOCOL_VERSION = 112`.
 The existing Issues feature floors v103–v110 remain unchanged; the historical sections below
 record their introduction, not the current wire version.
+
+## On-demand Issue repositories (v119)
+
+`ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 119` adds **`issues.addRepository`**
+(`IssueRepositoryJoinInput` `{ projectId, reference, repositoryProjectId }` → `IssueRepositories`; strict
+`isIssueRepositoryJoinInput`, the joining id never the primary) and **`issues.cleanupRepositories`**
+(`IssueTarget` → `IssueRepositoriesCleanup` `{ projectIds, locked, removed }`). Before implementation
+the join extends the saved selection; afterwards it is add-only and creates the repository's Issue
+worktree at once. Cleanup removes only joined repositories without commits or changes. An expected
+refusal (nesting, member limit, implementation not started) carries the new
+**`ISSUE_REPOSITORY_REFUSED`** code with a readable reason. A newer client hides join/cleanup below v119
+and keeps the v115 read-only locked list.
 
 ## Project groups (v118)
 

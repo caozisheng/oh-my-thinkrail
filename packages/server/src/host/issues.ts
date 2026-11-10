@@ -241,6 +241,12 @@ export function createIssuesHost(
 						projectId: target.projectId,
 						reference: target.reference,
 					}),
+		join: (target, repositoryProjectId) =>
+			actions.addRepository({
+				projectId: target.projectId,
+				reference: target.reference,
+				repositoryProjectId,
+			}),
 		locale: () => {
 			const locale = getConfig().locale;
 			return locale === "system" ? Intl.DateTimeFormat().resolvedOptions().locale : locale;
@@ -393,6 +399,9 @@ export const issuesPublishImplementation = issuesHost.publishImplementation;
 export const issuesRepositoryAddress = issuesHost.repositoryAddress;
 export const issuesRepositories = issuesHost.repositories;
 export const issuesSetRepositories = issuesHost.setRepositories;
+export const issuesAddRepository = issuesHost.addRepository;
+export const issuesCleanupRepositories = issuesHost.cleanupRepositories;
+export { setIssueWorkspaceArchiver } from "./issuesActions";
 export const issuesStartImplementation = issuesHost.startImplementation;
 export const issuesValidateDesign = issuesHost.validateDesign;
 export const issuesValidateImplementation = issuesHost.validateImplementation;

@@ -1810,6 +1810,21 @@ test("a layout root places a group member at its mirrored path and refuses other
 	expect(nestedWorkspaces(inner.id)).toEqual([]);
 });
 
+test("a nested member alone in a root repository's layout keeps the root's tree clean", async () => {
+	addNestedProject();
+	const slot = join(repo, ".worktrees", "issue-8-abc");
+	const inner = await createWorkspaceAtPathWithBranch(
+		"p2",
+		join(slot, "libs", "core"),
+		"issue-8-b",
+		undefined,
+		"issue-8",
+		{ layoutRoot: repo },
+	);
+	expect(inner.worktreePath).toBe(join(slot, "libs", "core"));
+	expect(gitOut(repo, "status", "--porcelain", "--", ".worktrees")).toBe("");
+});
+
 posix("a layout target refuses a symlinked parent inside the slot", async () => {
 	if (!canSymlink) return;
 	addNestedProject();

@@ -21,7 +21,11 @@ import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { useEffect, useId, useReducer } from "react";
 import { IssueAssociationForm } from "./IssueAssociationForm";
 import { IssueBody, type IssuePreview } from "./IssueBody";
-import { IssueRepositoriesControl, type IssueRepositoriesView } from "./IssueRepositoriesControl";
+import {
+	IssueRepositoriesControl,
+	type IssueRepositoriesNotice,
+	type IssueRepositoriesView,
+} from "./IssueRepositoriesControl";
 import {
 	associationPanelState,
 	type ConnectResult,
@@ -78,6 +82,11 @@ export interface IssuesPanelProps {
 	onToggleRepository?:
 		| ((issue: IssueSummary, projectId: string) => Promise<IssueRepositories | null>)
 		| undefined;
+	/** Present when this host joins repositories on demand after implementation starts (v119). */
+	onJoinRepository?:
+		| ((issue: IssueSummary, projectId: string) => Promise<IssueRepositoriesNotice | null>)
+		| undefined;
+	onCleanupRepositories?: ((issue: IssueSummary) => Promise<IssueRepositoriesNotice>) | undefined;
 }
 
 interface IssueActionRowProps {
@@ -171,6 +180,8 @@ export function IssuesPanel({
 	repositoriesFor,
 	onLoadRepositories,
 	onToggleRepository,
+	onJoinRepository,
+	onCleanupRepositories,
 	previewSupported,
 	preview,
 	onTogglePreview,
@@ -358,6 +369,14 @@ export function IssuesPanel({
 													onToggle={(projectId) => {
 														void onToggleRepository(issue, projectId);
 													}}
+													onJoin={
+														onJoinRepository
+															? (projectId) => onJoinRepository(issue, projectId)
+															: undefined
+													}
+													onCleanup={
+														onCleanupRepositories ? () => onCleanupRepositories(issue) : undefined
+													}
 												/>
 											</TooltipProvider>
 										)}

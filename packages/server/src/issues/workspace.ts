@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { lstat, readdir, realpath, rmdir } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
 	type IssueReference,
 	type IssueSessionLaunch,
@@ -36,11 +36,20 @@ export interface IssueWorkspaceLayout {
 	root: string;
 	paths: { projectId: string; path: string }[];
 }
+/** One repository joined to an Issue's implementation besides the primary. */
+export interface IssueWorkspaceMember {
+	projectId: string;
+	ownership?: PendingWorkspace | CompletedWorkspace;
+	/** The commit the worktree started at; only a member created with it recorded can be cleaned up. */
+	base?: string;
+	/** Durable removal intent for an unchanged member; settling it finishes or reverts the removal. */
+	removing?: true;
+}
 export interface IssueWorkspaceRecord {
 	projectId: string;
 	reference: IssueReference;
 	repositoryProjectIds?: string[];
-	members?: { projectId: string; ownership?: PendingWorkspace | CompletedWorkspace }[];
+	members?: IssueWorkspaceMember[];
 	layout?: IssueWorkspaceLayout;
 	/** Durable uncertainty fence; only provable reconciliation of the recorded stage may clear it. */
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
@@ -74,11 +83,24 @@ export interface IssueWorkspaceOptions {
 		name: string,
 		/** The frozen layout root when the path mirrors a project group's layout. */
 		layoutRoot?: string,
+		/** The ref to branch from (e.g. `origin/main`); absent keeps the repository's local HEAD. */
+		baseRef?: string,
 	): Awaitable<WorkspaceHandle>;
-	/** The selection an Issue without a saved one starts from (its project group's other members). */
-	defaultRepositoryProjectIds?: readonly string[];
-	/** A shared layout for the primary plus selected projects, or null to keep per-repository paths. */
+	/**
+	 * A shared layout covering at least the primary plus `projectIds` (it may place further group
+	 * members, which can join later), or null to keep per-repository paths.
+	 */
 	layout?(projectIds: readonly string[]): Awaitable<IssueWorkspaceLayout | null>;
+	/** Best-effort freshly fetched base ref for a new member worktree, or undefined for local HEAD. */
+	baseRef?(projectId: string): Awaitable<string | undefined>;
+	/** The commit checked out at a just-created worktree. */
+	headCommit?(path: string): Awaitable<string | null>;
+	/** Other repositories an Issue may read (as `reference`) and join: their main checkouts. */
+	references?(): Awaitable<readonly { projectId: string; workspaceId: string; path: string }[]>;
+	/** True only when the worktree has no commits beyond `base` and no tracked or untracked change. */
+	memberUnchanged?(ws: WorkspaceHandle, base: string): Awaitable<boolean>;
+	/** Re-check unchanged, then archive the workspace and delete its branch; false keeps it. */
+	removeMember?(ws: WorkspaceHandle, base: string): Awaitable<boolean>;
 	defaultWorkspace(projectId: string): Awaitable<WorkspaceHandle>;
 	/** Look up the session in this workspace; do not hydrate or prompt it. */
 	sessionExists(sessionId: string, workspaceId: string): Awaitable<false | "idle" | "busy">;
@@ -97,6 +119,12 @@ const tails = new Map<string, Promise<unknown>>();
 function stop(): never {
 	throw new CodedError("RESOURCE_UNAVAILABLE", "Issue workspace requires reconciliation.");
 }
+
+/** A clear, expected refusal that leaves the record untouched; it passes through unchanged. */
+function refuse(message: string): never {
+	throw new CodedError("ISSUE_REPOSITORY_REFUSED", message);
+}
+const MAX_MEMBERS = 32;
 
 function keyFor(projectId: string, ref: IssueReference): string {
 	return JSON.stringify([projectId, ref.provider, ref.instanceUrl, ref.projectId, ref.number]);
@@ -147,7 +175,8 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		tails.set(slot, task);
 		try {
 			return await task;
-		} catch {
+		} catch (error) {
+			if (error instanceof CodedError && error.code === "ISSUE_REPOSITORY_REFUSED") throw error;
 			return stop();
 		} finally {
 			if (tails.get(slot) === task) tails.delete(slot);
@@ -192,46 +221,74 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return recovered;
 	}
 
+	/** Before preparation the saved pre-selection; afterwards the joined members not being removed. */
 	function selection(record: IssueWorkspaceRecord): string[] {
-		if (record.repositoryProjectIds) return [...record.repositoryProjectIds];
-		if (record.implementation || record.members) return [];
-		return [...(options.defaultRepositoryProjectIds ?? [])];
+		if (record.members)
+			return record.members.filter((member) => !member.removing).map((member) => member.projectId);
+		return [...(record.repositoryProjectIds ?? [])];
+	}
+
+	function locked(record: IssueWorkspaceRecord): boolean {
+		return record.implementation !== undefined || record.members !== undefined;
 	}
 
 	function segments(path: string): string[] {
 		return path.split("/").filter(Boolean);
 	}
 
-	/** Where the Issue's checkout of `id` lives: the group layout when frozen, else per repository. */
-	async function worktreePathFor(record: IssueWorkspaceRecord, id: string): Promise<string> {
-		const number = record.reference.number;
-		const suffix = createHash("sha256")
+	function digest(record: IssueWorkspaceRecord): string {
+		return createHash("sha256")
 			.update(keyFor(projectId, record.reference))
 			.digest("hex")
 			.slice(0, 16);
-		if (record.layout) {
-			const place = (id: string) =>
-				record.layout?.paths.find((entry) => entry.projectId === id)?.path;
-			const own = place(id);
-			const primary = place(projectId);
-			if (own === undefined || primary === undefined) stop();
-			const slot = primary === "" ? `issue-${number}` : `issue-${number}-${suffix}`;
-			const root = record.layout.root;
-			if (!isAbsolute(root)) stop();
-			return join(await realpath(root), ".worktrees", slot, ...segments(own));
+	}
+
+	/** The group slot `<root>/.worktrees/<slot>` every layout-placed checkout of this Issue lives in. */
+	async function slotFor(record: IssueWorkspaceRecord): Promise<string> {
+		const primary = placeOf(record, projectId);
+		const root = record.layout?.root;
+		if (primary === undefined || root === undefined || !isAbsolute(root)) stop();
+		const number = record.reference.number;
+		const slot = primary === "" ? `issue-${number}` : `issue-${number}-${digest(record)}`;
+		return join(await realpath(root), ".worktrees", slot);
+	}
+
+	/** Where the Issue's checkout of `id` lives: the group layout when frozen, else per repository. */
+	async function worktreePathFor(record: IssueWorkspaceRecord, id: string): Promise<string> {
+		const own = placeOf(record, id);
+		if (record.layout && (own !== undefined || id === projectId)) {
+			if (own === undefined) stop();
+			return join(await slotFor(record), ...segments(own));
 		}
-		const name = id === projectId ? `issue-${number}` : `issue-${number}-${suffix}`;
+		const number = record.reference.number;
+		const name = id === projectId ? `issue-${number}` : `issue-${number}-${digest(record)}`;
 		return join(await projectRoot(id), ".worktrees", name);
+	}
+
+	/** A repository's frozen place in the layout; a later-joined non-group project has none. */
+	function placeOf(record: IssueWorkspaceRecord, id: string): string | undefined {
+		return record.layout?.paths.find((entry) => entry.projectId === id)?.path;
 	}
 
 	/** Without a layout, members first then the primary; with one, shallow folders before nested ones. */
 	function creationOrder(record: IssueWorkspaceRecord): string[] {
-		const ids = [...(record.members ?? []).map((member) => member.projectId), projectId];
-		const layout = record.layout;
-		if (!layout) return ids;
-		const depth = (id: string) =>
-			segments(layout.paths.find((entry) => entry.projectId === id)?.path ?? "").length;
+		const ids = [
+			...(record.members ?? []).filter((member) => !member.removing).map((m) => m.projectId),
+			projectId,
+		];
+		if (!record.layout) return ids;
+		const depth = (id: string) => segments(placeOf(record, id) ?? "").length;
 		return ids.sort((a, b) => depth(a) - depth(b));
+	}
+
+	/** The fresh base for a new worktree: always for members, for the primary only in a group layout. */
+	async function baseFor(record: IssueWorkspaceRecord, id: string): Promise<string | undefined> {
+		if (id === projectId && !record.layout) return undefined;
+		try {
+			return (await options.baseRef?.(id)) || undefined;
+		} catch {
+			return undefined;
+		}
 	}
 
 	async function projectRoot(memberProjectId = projectId): Promise<string> {
@@ -324,6 +381,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				branch: `issue-${record.reference.number}-${randomUUID()}`,
 			};
 			await options.save(key, { ...record, implementation: ownership });
+			const base = await baseFor(record, projectId);
 			ws = verifyWorkspace(
 				await options.createWorkspaceAtPath(
 					projectId,
@@ -331,6 +389,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					ownership.branch,
 					`issue-${record.reference.number}`,
 					record.layout?.root,
+					base,
 				),
 				ownership,
 				path,
@@ -344,10 +403,13 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 
 	async function freezeMembers(key: string, record: IssueWorkspaceRecord) {
 		const selected = selection(record);
-		if (!selected.length && !record.members) return record;
+		// Primary-only ownership (no members) stays as it was; joining adds members later.
+		if (!selected.length && !record.members && record.implementation) return record;
 		if (!record.members) {
 			if (record.implementation) stop();
 			const layout = options.layout ? await options.layout([projectId, ...selected]) : null;
+			// A single repository with nothing selected keeps its exact pre-group record shape.
+			if (!selected.length && !layout) return record;
 			record = {
 				...record,
 				repositoryProjectIds: selected,
@@ -356,14 +418,17 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			};
 			await options.save(key, record);
 		}
-		if (record.members?.map((member) => member.projectId).join("\n") !== selected.join("\n"))
+		if (
+			record.members?.map((member) => member.projectId).join("\n") !==
+			(record.repositoryProjectIds ?? []).join("\n")
+		)
 			stop();
 		return record;
 	}
 
 	async function prepareMember(key: string, record: IssueWorkspaceRecord, memberProjectId: string) {
 		const member = record.members?.find((candidate) => candidate.projectId === memberProjectId);
-		if (!member) stop();
+		if (!member || member.removing) stop();
 		const path = await worktreePathFor(record, member.projectId);
 		let ownership = member.ownership;
 		const state = await implementationPathState(path, member.projectId);
@@ -382,20 +447,128 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			};
 			member.ownership = ownership;
 			await options.save(key, record);
+			const base = await baseFor(record, member.projectId);
 			const ws = verifyWorkspace(
 				await options.createWorkspaceAtPath(
 					member.projectId,
 					path,
 					ownership.branch,
 					`issue-${record.reference.number}`,
-					record.layout?.root,
+					placeOf(record, member.projectId) === undefined ? undefined : record.layout?.root,
+					base,
 				),
 				ownership,
 				path,
 				member.projectId,
 			);
 			member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
+			const head = await options.headCommit?.(ws.worktreePath);
+			if (head && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head)) member.base = head;
 		}
+		await options.save(key, record);
+	}
+
+	function inside(path: string, outer: string): boolean {
+		return path.startsWith(outer.endsWith(sep) ? outer : `${outer}${sep}`);
+	}
+
+	/** The Issue's joined checkouts (primary first) with their recorded worktree paths. */
+	async function joinedPaths(record: IssueWorkspaceRecord) {
+		const rows: { projectId: string; path: string }[] = [];
+		for (const id of [projectId, ...selection(record)])
+			rows.push({ projectId: id, path: await worktreePathFor(record, id) });
+		return rows;
+	}
+
+	/** Finish or revert a recorded removal: a member that changed since cleanup chose it stays. */
+	async function settleRemovals(key: string, record: IssueWorkspaceRecord) {
+		for (const member of [...(record.members ?? [])]) {
+			if (!member.removing) continue;
+			const ownership = member.ownership;
+			const path = await worktreePathFor(record, member.projectId);
+			const ws = await options.findWorkspace({ worktreePath: path });
+			let removed = !ws;
+			if (ws) {
+				if (ownership?.state !== "completed" || !member.base || !options.removeMember) stop();
+				removed = await options.removeMember(
+					verifyWorkspace(ws, ownership, path, member.projectId),
+					member.base,
+				);
+			}
+			if (removed) {
+				await pruneEmptyParents(record, path);
+				record.members = (record.members ?? []).filter((m) => m !== member);
+				record.repositoryProjectIds = (record.repositoryProjectIds ?? []).filter(
+					(id) => id !== member.projectId,
+				);
+			} else delete member.removing;
+			await options.save(key, record);
+		}
+		return record;
+	}
+
+	/** Drop the empty folders a removed nested checkout leaves inside the group slot. */
+	async function pruneEmptyParents(record: IssueWorkspaceRecord, path: string) {
+		if (!record.layout) return;
+		const slot = await slotFor(record);
+		const kept = new Set((await joinedPaths(record)).map((row) => row.path));
+		for (let dir = dirname(path); inside(dir, slot) && !kept.has(dir); dir = dirname(dir)) {
+			try {
+				await rmdir(dir);
+			} catch {
+				return;
+			}
+		}
+	}
+
+	/** An empty folder left at a member's place (by an earlier nested checkout) is not ownership. */
+	async function clearEmptyPlace(path: string) {
+		try {
+			if ((await lstat(path)).isDirectory() && (await readdir(path)).length === 0)
+				await rmdir(path);
+		} catch {}
+	}
+
+	async function exists(path: string): Promise<boolean> {
+		try {
+			await lstat(path);
+			return true;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+			throw error;
+		}
+	}
+
+	/** Reserve a new member's place, refusing one that would swallow or collide with a joined checkout. */
+	async function admitMember(key: string, record: IssueWorkspaceRecord, memberId: string) {
+		const members = record.members ?? [];
+		if (members.length >= MAX_MEMBERS)
+			refuse(`An Issue can join at most ${MAX_MEMBERS} repositories besides its own.`);
+		if (record.layout && placeOf(record, memberId) === undefined && options.layout) {
+			// A group member imported after the layout froze: extend it additively, never moving a place.
+			const fresh = await options.layout([projectId, ...selection(record), memberId]);
+			const entry = fresh?.paths.find((candidate) => candidate.projectId === memberId);
+			if (fresh && entry && fresh.root === record.layout.root)
+				record.layout = { ...record.layout, paths: [...record.layout.paths, { ...entry }] };
+		}
+		const target = await worktreePathFor(record, memberId);
+		const describe = (id: string) => {
+			const place = placeOf(record, id);
+			return place === undefined ? id : place === "" ? "/" : place;
+		};
+		for (const other of await joinedPaths(record)) {
+			if (other.path === target || inside(other.path, target))
+				refuse(
+					`Cannot join ${describe(memberId)}: the joined repository ${describe(other.projectId)} already lives inside its folder in this Issue's worktree. Join outer repositories before the ones nested in them.`,
+				);
+		}
+		await clearEmptyPlace(target);
+		if (await exists(target))
+			refuse(
+				`Cannot join ${describe(memberId)}: ${target} already exists (a joined repository tracks that path).`,
+			);
+		record.members = [...members, { projectId: memberId }];
+		record.repositoryProjectIds = [...(record.repositoryProjectIds ?? []), memberId];
 		await options.save(key, record);
 	}
 
@@ -403,7 +576,16 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		contexts(reference: IssueReference, stage: "design" | "implementation") {
 			return run(reference, async (_key, record) => {
 				const ids = [projectId, ...selection(record)];
-				return Promise.all(
+				const taken = new Set([...ids, ...(record.members ?? []).map((m) => m.projectId)]);
+				const references = ((await options.references?.()) ?? [])
+					.filter((candidate) => !taken.has(candidate.projectId))
+					.map((candidate) => ({
+						projectId: candidate.projectId,
+						workspaceId: candidate.workspaceId,
+						path: candidate.path,
+						role: "reference" as const,
+					}));
+				const joined = await Promise.all(
 					ids.map(async (id) => {
 						let ws: WorkspaceHandle;
 						if (stage === "design") {
@@ -430,13 +612,79 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 						};
 					}),
 				);
+				return [...joined, ...references];
 			});
 		},
 		repositories(reference: IssueReference) {
 			return run(reference, async (_key, record) => ({
 				projectIds: selection(record),
-				locked: record.implementation !== undefined || record.members !== undefined,
+				locked: locked(record),
 			}));
+		},
+		/**
+		 * Add one repository: before preparation it extends the saved selection; afterwards it joins the
+		 * running implementation at once, in the same frozen slot. Add-only; resuming a half-made join.
+		 */
+		addRepository(reference: IssueReference, memberId: string) {
+			return run(reference, async (key, record) => {
+				if (!isIssueRepositoriesInput({ projectId, reference, projectIds: [memberId] }))
+					refuse("That repository cannot join this Issue.");
+				if (!locked(record)) {
+					const ids = selection(record);
+					if (!ids.includes(memberId)) {
+						if (ids.length >= MAX_MEMBERS)
+							refuse(`An Issue can join at most ${MAX_MEMBERS} repositories besides its own.`);
+						ids.push(memberId);
+						await options.save(key, { ...record, repositoryProjectIds: ids });
+					}
+					return { projectIds: ids, locked: false };
+				}
+				if (record.implementation?.state !== "completed")
+					refuse("Start the Issue's implementation before joining more repositories.");
+				record.members ??= [];
+				record.repositoryProjectIds ??= [];
+				record = await settleRemovals(key, record);
+				if (!record.members?.some((member) => member.projectId === memberId))
+					await admitMember(key, record, memberId);
+				await prepareMember(key, record, memberId);
+				return { projectIds: selection(record), locked: true };
+			});
+		},
+		/**
+		 * Remove joined members whose worktree has no commit beyond its recorded base and no change,
+		 * deepest first; a member still holding another checkout, or without a recorded base, stays.
+		 */
+		cleanupRepositories(reference: IssueReference) {
+			return run(reference, async (key, record) => {
+				if (record.implementation?.state !== "completed")
+					refuse("Start the Issue's implementation before cleaning up its repositories.");
+				record = await settleRemovals(key, record);
+				const candidates: { id: string; path: string }[] = [];
+				for (const id of selection(record))
+					candidates.push({ id, path: await worktreePathFor(record, id) });
+				candidates.sort((a, b) => segments(b.path).length - segments(a.path).length);
+				const removed: string[] = [];
+				for (const { id, path } of candidates) {
+					const member = record.members?.find((candidate) => candidate.projectId === id);
+					const ownership = member?.ownership;
+					if (!member?.base || ownership?.state !== "completed") continue;
+					if (!options.memberUnchanged || !options.removeMember) break;
+					const holders = await joinedPaths(record);
+					if (holders.some((other) => other.projectId !== id && inside(other.path, path))) continue;
+					let ws: WorkspaceHandle;
+					try {
+						ws = await verifyImplementation(ownership, path, id);
+					} catch {
+						continue;
+					}
+					if (!(await options.memberUnchanged(ws, member.base))) continue;
+					member.removing = true;
+					await options.save(key, record);
+					record = await settleRemovals(key, record);
+					if (!record.members?.some((candidate) => candidate.projectId === id)) removed.push(id);
+				}
+				return { projectIds: selection(record), locked: true, removed };
+			});
 		},
 		setRepositories(reference: IssueReference, projectIds: string[]) {
 			return run(reference, async (key, record) => {
@@ -492,6 +740,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				reference,
 				async (key, record) => {
 					record = await freezeMembers(key, record);
+					record = await settleRemovals(key, record);
 					let primary: CompletedWorkspace | undefined;
 					for (const id of creationOrder(record)) {
 						if (id !== projectId) {

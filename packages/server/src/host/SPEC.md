@@ -1057,13 +1057,30 @@ rechecks availability/trust around every awaited port.
 
 **Project groups.** `project.scanGroup` / `project.importGroup` delegate to `projects`
 (`scanProjectGroup` / `importProjectGroup`). For Issue actions the host supplies the coordinator's
-`defaultRepositoryProjectIds` from `groupRepositoryDefaults` — the primary's open, **trusted** other
-group members (untrusted members are skipped, since selection never grants trust), at most 32 — and uses
-the same default as the pinned selection when no selection is saved. `groupWorkspaceLayout` answers the
-coordinator's `layout` port only when every participant is in the primary's group, still sits at its
-recorded relative place under the real group root, and the group's root repository (if it has one)
-participates — otherwise that root's main working tree would gain an unexcluded `.worktrees` folder — and
-returns null (ordinary per-repository paths) in every other case.
+`references` port from `groupReferenceCandidates` — the primary's open, **trusted** other group members
+(untrusted members are never offered, since joining never grants trust), at most 64 — each as its
+Default workspace id and main project path. `groupWorkspaceLayout` answers the `layout` port only when
+every listed participant is in the primary's group and still sits at its recorded relative place under
+the real group root, and then also places every other open member found at its place; it returns null
+(ordinary per-repository paths) in every other case. The group's root repository no longer has to
+participate: `workspaces` excludes `/.worktrees/` in a layout root that is a repository.
+
+**On-demand joins (v119).** `issues.addRepository` (`IssueRepositoryJoinInput`) and
+`issues.cleanupRepositories` (`IssueTarget` → `IssueRepositoriesCleanup`) run under the same launch
+fence with the `release-on-settle` policy, behind `ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION`. The joining
+project must be open and trusted like a saved selection, and is pinned with it. `baseRef` is
+`freshBaseRef`: with an `origin` remote it fetches that remote's default branch (non-interactive env,
+`BatchMode` SSH unless the user set `GIT_SSH_COMMAND`, 30 s deadline, failure ignored) and returns
+`origin/<default>` when that ref exists, else undefined (local HEAD). `memberUnchanged` is
+`worktreeUnchanged` (`rev-list <base>..HEAD` empty and `status --porcelain --untracked-files=all`
+empty; ignored build output does not count and is discarded). `removeMember` re-checks that and the
+`nestedWorkspaces` guard, awaits the full workspace-archive teardown (`setIssueWorkspaceArchiver`, which
+`handlers` registers with the same teardown `workspace.remove` uses), then deletes the reserved branch
+only while its tip is contained in `base`. A successful join re-announces the new workspace so the rail
+tag converges. The bound `issue_join_repository` tool reaches the same join through
+`IssueAgentSessionHost.joinCandidate` / `joinRepository`: only an implementation-stage binding may ask,
+only for a repository its current contexts list as `reference`, and the tool obtains the user's
+confirmation through the session's UI `confirm` dialog before the host joins anything.
 
 They are registered as `issues.repositories` (read) and `issues.setRepositories` (write whole selection)
 behind `ISSUES_REPOSITORIES_PROTOCOL_VERSION` = v113, with the same static credential-free gate wording
