@@ -1747,7 +1747,17 @@ function addNestedProject(): string {
 	const core = join(repo, "libs", "core");
 	mkdirSync(core, { recursive: true });
 	git(core, "init", "-b", "main");
-	git(core, "-c", "user.email=t@thinkrail.test", "-c", "user.name=test", "commit", "--allow-empty", "-m", "init");
+	git(
+		core,
+		"-c",
+		"user.email=t@thinkrail.test",
+		"-c",
+		"user.name=test",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"init",
+	);
 	writeFileSync(
 		join(dataDir, "projects.json"),
 		JSON.stringify([
@@ -1761,9 +1771,16 @@ function addNestedProject(): string {
 test("a layout root places a group member at its mirrored path and refuses other shapes", async () => {
 	const core = addNestedProject();
 	const slot = join(repo, ".worktrees", "issue-7");
-	const outer = await createWorkspaceAtPathWithBranch("p1", slot, "issue-7-a", undefined, "issue-7", {
-		layoutRoot: repo,
-	});
+	const outer = await createWorkspaceAtPathWithBranch(
+		"p1",
+		slot,
+		"issue-7-a",
+		undefined,
+		"issue-7",
+		{
+			layoutRoot: repo,
+		},
+	);
 	expect(outer.worktreePath).toBe(slot);
 	for (const [target, layoutRoot] of [
 		[join(slot, "core"), repo],

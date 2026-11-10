@@ -351,7 +351,11 @@ function layoutParents(root: string, target: string, layoutRoot: string): string
 	return parents;
 }
 
-function explicitTarget(project: Project, targetPath: string, placement: ExplicitPlacement): string {
+function explicitTarget(
+	project: Project,
+	targetPath: string,
+	placement: ExplicitPlacement,
+): string {
 	const root = realpathSync.native(project.path);
 	const target = resolve(targetPath);
 	if (placement.layoutRoot === undefined) {

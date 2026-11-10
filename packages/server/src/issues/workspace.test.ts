@@ -261,9 +261,7 @@ test("a nested primary shares a digest-named group slot so it cannot collide wit
 	const [local, api] = f.workspaces;
 	expect(api?.projectId).toBe("api");
 	expect(local?.worktreePath).toMatch(/[/\\]\.worktrees[/\\]issue-42-[a-f0-9]{16}[/\\]app$/);
-	expect(api?.worktreePath).toBe(
-		join(required(local).worktreePath, "..", "libs", "api"),
-	);
+	expect(api?.worktreePath).toBe(join(required(local).worktreePath, "..", "libs", "api"));
 	const row = required([...f.records.values()][0]);
 	expect(row.layout?.root).toBe(f.group);
 	f.options.layout = () => null;

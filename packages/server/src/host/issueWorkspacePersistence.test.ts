@@ -114,9 +114,9 @@ test("a frozen group layout round trips and rejects drift, escapes and a layout 
 	]) {
 		const other = setup();
 		const row = JSON.parse(JSON.stringify(bad));
-		await expect(other.store.withLaunch("local", ref, (p) => p.save(key(), row))).rejects.toMatchObject(
-			failure,
-		);
+		await expect(
+			other.store.withLaunch("local", ref, (p) => p.save(key(), row)),
+		).rejects.toMatchObject(failure);
 	}
 });
 

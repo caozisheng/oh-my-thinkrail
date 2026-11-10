@@ -5,6 +5,13 @@ export {
 	startProjectClone,
 } from "./clone";
 export {
+	importProjectGroup,
+	PROJECT_GROUP_SCAN_DEPTH,
+	type ProjectGroupScanOptions,
+	projectGroupMembers,
+	scanProjectGroup,
+} from "./groups";
+export {
 	acknowledgeProjectSkills,
 	approveProjectMcpServer,
 	closeProject,
@@ -28,10 +35,3 @@ export {
 	setProjectSkillEnabled,
 	setProjectTrust,
 } from "./projects";
-export {
-	importProjectGroup,
-	PROJECT_GROUP_SCAN_DEPTH,
-	type ProjectGroupScanOptions,
-	projectGroupMembers,
-	scanProjectGroup,
-} from "./groups";

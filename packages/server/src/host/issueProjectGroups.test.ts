@@ -48,7 +48,14 @@ test("an Issue's default selection is the open, trusted other members of its gro
 		member("closed", "closed", { closed: true }),
 		member("untrusted", "untrusted", { trusted: false }),
 		member("root", ""),
-		{ id: "loose", name: "loose", path: join(dataDir, "loose"), slug: "loose", lastOpened: 1, trusted: true },
+		{
+			id: "loose",
+			name: "loose",
+			path: join(dataDir, "loose"),
+			slug: "loose",
+			lastOpened: 1,
+			trusted: true,
+		},
 	]);
 	expect(groupRepositoryDefaults("core")).toEqual(["root", "app"]);
 	expect(groupRepositoryDefaults("loose")).toEqual([]);
@@ -68,8 +75,14 @@ test("a layout needs every participant in the group, at its place, with the root
 	seed([
 		member("app", "app"),
 		member("core", "libs/core"),
-		{ ...member("moved", "moved"), projectGroup: { id: "g1", name: "suite", root: suite, path: "elsewhere" } },
-		{ ...member("other", "other"), projectGroup: { id: "g2", name: "x", root: suite, path: "other" } },
+		{
+			...member("moved", "moved"),
+			projectGroup: { id: "g1", name: "suite", root: suite, path: "elsewhere" },
+		},
+		{
+			...member("other", "other"),
+			projectGroup: { id: "g2", name: "x", root: suite, path: "other" },
+		},
 	]);
 	expect(groupWorkspaceLayout("app", ["app", "core"])?.paths.map((p) => p.path)).toEqual([
 		"app",

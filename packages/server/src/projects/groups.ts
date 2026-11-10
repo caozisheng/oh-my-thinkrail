@@ -182,7 +182,8 @@ export async function importProjectGroup(
 		try {
 			const project = openProject(folder);
 			const actual = toGroupPath(relative(scan.root, await realpath(project.path)));
-			if (actual !== path) throw new Error(`${folder} belongs to the repository at ${project.path}`);
+			if (actual !== path)
+				throw new Error(`${folder} belongs to the repository at ${project.path}`);
 			projects.push(setProjectGroupMembership(project.id, { id, name, root: scan.root, path }));
 		} catch (error) {
 			failed.push({ path, reason: error instanceof Error ? error.message : String(error) });

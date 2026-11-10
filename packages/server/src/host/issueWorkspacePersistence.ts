@@ -122,7 +122,10 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 	}
 	if (Object.hasOwn(value, "layout")) {
 		const layout = value.layout;
-		const ids = [value.projectId, ...(Array.isArray(value.repositoryProjectIds) ? value.repositoryProjectIds : [])];
+		const ids = [
+			value.projectId,
+			...(Array.isArray(value.repositoryProjectIds) ? value.repositoryProjectIds : []),
+		];
 		if (
 			!Object.hasOwn(value, "members") ||
 			!object(layout) ||
@@ -143,7 +146,8 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 				entry.path.length > 1024 ||
 				/[\\\0]/.test(entry.path) ||
 				entry.path.startsWith("/") ||
-				(entry.path !== "" && entry.path.split("/").some((part) => !part || part === "." || part === ".."))
+				(entry.path !== "" &&
+					entry.path.split("/").some((part) => !part || part === "." || part === ".."))
 			)
 				stop();
 		}

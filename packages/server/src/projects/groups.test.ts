@@ -14,7 +14,17 @@ function git(cwd: string, ...args: string[]): void {
 function makeRepo(path: string): void {
 	mkdirSync(path, { recursive: true });
 	git(path, "init", "-b", "main");
-	git(path, "-c", "user.email=t@thinkrail.test", "-c", "user.name=test", "commit", "--allow-empty", "-m", "init");
+	git(
+		path,
+		"-c",
+		"user.email=t@thinkrail.test",
+		"-c",
+		"user.name=test",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"init",
+	);
 }
 
 let dataDir: string;
@@ -73,10 +83,9 @@ test("scan stops at the depth limit and skips dependency, hidden and linked fold
 		symlinkSync(outside, join(work, "parent-link"), "dir");
 		const scan = await scanProjectGroup(work);
 		expect(scan.repositories.map((r) => r.path)).toEqual(["one/two/three/four"]);
-		expect((await scanProjectGroup(work, { maxDepth: 5 })).repositories.map((r) => r.path)).toEqual([
-			"one/two/three/four",
-			"one/two/three/four/five",
-		]);
+		expect((await scanProjectGroup(work, { maxDepth: 5 })).repositories.map((r) => r.path)).toEqual(
+			["one/two/three/four", "one/two/three/four/five"],
+		);
 	} finally {
 		rmSync(outside, { recursive: true, force: true });
 	}
@@ -132,7 +141,12 @@ test("import opens kept repositories as projects that share one persisted group"
 	expect(projectGroupMembers(core?.id ?? "").map((p) => p.id)).toEqual([rootProject?.id]);
 
 	const again = await importProjectGroup({ root, paths: ["app"] });
-	expect(again.projects[0]?.projectGroup).toEqual({ id: groupId ?? "", name: "My suite", root, path: "app" });
+	expect(again.projects[0]?.projectGroup).toEqual({
+		id: groupId ?? "",
+		name: "My suite",
+		root,
+		path: "app",
+	});
 	expect(projectGroupMembers(rootProject?.id ?? "").map((p) => p.projectGroup?.path)).toEqual([
 		"app",
 		"libs/core",
