@@ -108,7 +108,9 @@ questionnaire specs under WebKit. The image lacks WebKit's libraries, so that jo
 Playwright's `install-deps --dry-run webkit` reports missing, minus its font and X-server group
 (`fonts-*`, `xfonts-*`, `ttf-*`, `xvfb`), not `--with-deps`, which always adds that group. Those fonts
 feed no assertion, and the Azure mirror trickled one of them for minutes, past the wait deadline, in two of
-four shard runs; apt also gets a 20 s HTTP timeout with five retries for outright stalls. The browsers
+four shard runs. WebKit setup rewrites the runner's Azure Ubuntu archive URL to the canonical HTTPS
+archive before apt update/install: transfer stalls also affected required codec libraries even without
+fonts. Apt retains a 20 s HTTP timeout with five retries for outright stalls. The browsers
 themselves are not cached: the Playwright CDN download takes seconds, no slower than an Actions-cache
 restore of the same bytes. Linux jobs, here and in the website workflows,
 install dependencies without the Actions cache for the same reason: a cold `bun install --frozen-lockfile` on a hosted runner takes 3–4 s,

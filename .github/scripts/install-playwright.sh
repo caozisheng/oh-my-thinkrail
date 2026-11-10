@@ -2,7 +2,10 @@
 # Install Playwright's Chromium headless shell (plus WebKit and its system libraries, without Playwright's
 # optional font and X-server group, with `start webkit`), retrying the download a bounded number of times.
 webkit() {
-	bunx playwright install webkit && sudo apt-get update -q || return 1
+	bunx playwright install webkit || return 1
+	sudo find /etc/apt/sources.list.d -type f \( -name '*.list' -o -name '*.sources' \) \
+		-exec sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} + || return 1
+	sudo apt-get update -q || return 1
 	local report
 	local -a missing
 	report=$(bunx playwright install-deps --dry-run webkit 2>&1)
