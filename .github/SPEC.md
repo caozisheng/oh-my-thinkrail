@@ -28,23 +28,24 @@ pipeline.
 
 ## CI
 
-### Fork development policy: Windows only
+### Fork development policy: cross-platform verification
 
-During active fork development, `ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI retains
-Windows lint/typecheck, existing Windows-targeted unit checks and native CLI/desktop smoke; the
-`CI passed` aggregate requires all three jobs to succeed (no allowed skipped jobs). Full POSIX
-unit, source/browser, binary-browser and desktop-browser suites are temporarily suspended, not
-claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by CI; only the Linux CLI release (manual, or on `main` pushes when
-explicitly enabled) uses Linux runners, and its binary smoke is release verification, not restored Linux application CI.
+`ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI runs
+Windows lint/typecheck and native CLI/desktop smoke alongside Linux unit, pi-package and source/browser
+checks. Packaging-affecting changes and merge groups also run Linux binary/desktop browser suites.
+The restored `changes` classifier preserves the existing app/artifact path filters; manual dispatch runs
+all coverage. `CI passed` requires classification, lint, unit and Windows jobs to succeed, and every
+classifier-gated job to succeed or be legitimately skipped. No macOS CI runner is scheduled; Linux CLI
+release runners are separate from application CI.
 
 The synchronized upstream cross-platform CI recipe is retained fully commented in
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
-but are not invoked by active workflows. Restoring Linux execution is deferred, not a deletion.
+and are invoked by the active Linux artifact jobs.
 
 Website deploy/preview/cleanup workflows are removed: website deployment belongs to the upstream
 ThinkRail repository, not this fork. The npm publication recipe remains as a `.yml.disabled` file
-and therefore does not run. Restoring npm publication or the broader CI matrix is a deliberate later
-change; the historical cross-platform policy below describes that suspended coverage, not active jobs.
+and therefore does not run. Restoring npm publication remains a separate decision; the historical cross-platform notes below
+retain upstream context where platform assignments differ from this fork's active workflow.
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 

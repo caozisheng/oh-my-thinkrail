@@ -15,6 +15,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Classify changes
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.classify.outputs.app }}
+      artifacts: ${{ steps.classify.outputs.artifacts }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: classify
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_ref }}
+          OUTSIDE_APP: ^(apps/website/|packages/website-analytics/|\.github/workflows/site(-preview|-preview-cleanup)?\.yml$|\.github/(readme-assets/|pr-assets/|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE\.md$|CODEOWNERS$|SPEC\.md$)|(README|CONTRIBUTING|CODE_OF_CONDUCT)\.md$|LICENSE$)
+          ARTIFACT_PATHS: ^(apps/cli/|apps/desktop/|packages/artifact-tests/|packages/shared/(assets/|scripts/generate-icons\.ts$|src/(version|windowsIdentity)\.ts$)|packages/server/src/(buildSupport|agent/extensions)\.ts$|e2e/(run-binary|run-desktop|artifactPlaywright|playwright\.(binary|desktop)\.config)\.ts$|\.github/(workflows|actions|scripts)/|patches/|(package\.json|bun\.lock|turbo\.json)$)
+        run: |
+          if git fetch --no-tags --depth=1 origin "$BASE" && files=$(git diff --name-only --no-renames FETCH_HEAD HEAD); then
+            if grep -qvE "$OUTSIDE_APP" <<< "$files"; then app=true; else app=false; fi
+            if [ "$app" = true ] && { [ "$GITHUB_EVENT_NAME" = merge_group ] || grep -qE "$ARTIFACT_PATHS" <<< "$files"; }; then
+              artifacts=true
+            else
+              artifacts=false
+            fi
+          else
+            echo "::warning::Could not diff against $BASE; running every job"
+            app=true
+            artifacts=true
+          fi
+          { echo "app=$app"; echo "artifacts=$artifacts"; } | tee -a "$GITHUB_OUTPUT"
+
   lint:
     name: Lint & Typecheck (Windows)
     runs-on: windows-latest
@@ -250,12 +279,12 @@ jobs:
   # The one required check in the main ruleset.
   ci-passed:
     name: CI passed
-    needs: [lint, binary-windows, desktop-windows]
+    needs: [changes, lint, test, pi-packages, e2e-shard, binary-shard, desktop-shard, binary-windows, desktop-windows]
     if: ${{ !cancelled() }}
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
-      - name: Require every Windows check
+      - name: Require every applicable check
         shell: pwsh
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -263,7 +292,8 @@ jobs:
           $jobs = $env:NEEDS | ConvertFrom-Json
           foreach ($job in $jobs.PSObject.Properties) {
             Write-Host "$($job.Name): $($job.Value.result)"
-            if ($job.Value.result -ne 'success') {
-              throw "Required Windows check did not pass: $($job.Name)"
+            $conditional = @('pi-packages', 'e2e-shard', 'binary-shard', 'desktop-shard')
+            if ($job.Value.result -ne 'success' -and -not ($job.Name -in $conditional -and $job.Value.result -eq 'skipped')) {
+              throw "Required check did not pass: $($job.Name)"
             }
           }
