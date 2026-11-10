@@ -1,5 +1,5 @@
-import { lstatSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import {
 	type IssueDesignPublicationInput,
 	type IssueImplementationTarget,
@@ -25,10 +25,11 @@ import {
 	createIssueWorkspaceCoordinator,
 	type IssueRepositoryContext,
 	type IssuesService,
+	type IssueWorkspaceLayout,
 	type WorkflowRemote,
 	type WorkspaceHandle,
 } from "../issues";
-import { getProjects } from "../projects";
+import { getProjects, projectGroupMembers } from "../projects";
 import {
 	createWorkspaceAtPathWithBranch,
 	listGitWorktrees,
@@ -129,6 +130,55 @@ export function privateDirectory(path: string): void {
 		mkdirSync(path, { mode: 0o700 });
 	}
 }
+const MAX_LINKED_REPOSITORIES = 32;
+
+/** The trusted, open other members of the project's group: an unsaved Issue selection's default. */
+export function groupRepositoryDefaults(projectId: string): string[] {
+	return projectGroupMembers(projectId)
+		.filter((project) => project.trusted === true)
+		.slice(0, MAX_LINKED_REPOSITORIES)
+		.map((project) => project.id);
+}
+
+/**
+ * A layout only when every participant belongs to the primary's group, still sits at its recorded
+ * place, and the group's root repository (if it has one) participates — otherwise its main working
+ * tree would gain an unexcluded `.worktrees` folder.
+ */
+export function groupWorkspaceLayout(
+	primaryId: string,
+	projectIds: readonly string[],
+): IssueWorkspaceLayout | null {
+	const projects = getProjects();
+	const group = projects.find((project) => project.id === primaryId)?.projectGroup;
+	if (!group) return null;
+	const rootMember = projects.find(
+		(project) => project.projectGroup?.id === group.id && project.projectGroup.path === "",
+	);
+	if (rootMember && !projectIds.includes(rootMember.id)) return null;
+	let root: string;
+	try {
+		root = realpathSync.native(group.root);
+	} catch {
+		return null;
+	}
+	const paths: IssueWorkspaceLayout["paths"] = [];
+	for (const id of projectIds) {
+		const project = projects.find((candidate) => candidate.id === id);
+		const membership = project?.projectGroup;
+		if (!project || membership?.id !== group.id || membership.root !== group.root) return null;
+		let actual: string;
+		try {
+			actual = relative(root, realpathSync.native(project.path)).split(sep).join("/");
+		} catch {
+			return null;
+		}
+		if (actual !== membership.path) return null;
+		paths.push({ projectId: id, path: membership.path });
+	}
+	return { root, paths };
+}
+
 export type IssueActionSessions = {
 	create?: typeof createHostSession;
 	status?: typeof sessionReuseStatus;
@@ -249,10 +299,12 @@ export function createIssuesActions(
 					reference.number,
 				]);
 				const existingOwnership = await checked(() => ports.load(ownershipKey));
+				const defaultIds = groupRepositoryDefaults(projectId);
 				const selectedIds =
 					request.action === "setRepositories"
 						? request.args.projectIds
-						: (existingOwnership?.repositoryProjectIds ?? []);
+						: (existingOwnership?.repositoryProjectIds ??
+							(existingOwnership?.implementation || existingOwnership?.members ? [] : defaultIds));
 				for (const id of selectedIds) {
 					const member = trusted(id);
 					if (member.closed) stop();
@@ -318,8 +370,19 @@ export function createIssuesActions(
 					save: (key, row) => checked(() => ports.save(key, row)),
 					findWorkspace: (query) => checked(() => find(query)),
 					listGitWorktrees: (id) => checked(() => listGitWorktrees(id)),
-					createWorkspaceAtPath: (id, path, branch, name) =>
-						checked(() => createWorkspaceAtPathWithBranch(id, path, branch, undefined, name)),
+					createWorkspaceAtPath: (id, path, branch, name, layoutRoot) =>
+						checked(() =>
+							createWorkspaceAtPathWithBranch(
+								id,
+								path,
+								branch,
+								undefined,
+								name,
+								layoutRoot === undefined ? {} : { layoutRoot },
+							),
+						),
+					defaultRepositoryProjectIds: defaultIds,
+					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
 					boundSession: (stage, workspaceId) =>
 						checked(async () => {
 							if (!agentSessions) stop();

@@ -43,5 +43,10 @@ export type {
 	WorkflowRemote,
 } from "./workflow";
 export { createIssueWorkflow } from "./workflow";
-export type { IssueWorkspaceOptions, IssueWorkspaceRecord, WorkspaceHandle } from "./workspace";
+export type {
+	IssueWorkspaceLayout,
+	IssueWorkspaceOptions,
+	IssueWorkspaceRecord,
+	WorkspaceHandle,
+} from "./workspace";
 export { createIssueWorkspaceCoordinator } from "./workspace";

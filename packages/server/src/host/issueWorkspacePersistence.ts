@@ -77,7 +77,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		!shape(
 			value,
 			["projectId", "reference"],
-			["design", "implementation", "sessionPending", "repositoryProjectIds", "members"],
+			["design", "implementation", "sessionPending", "repositoryProjectIds", "members", "layout"],
 		) ||
 		!id(value.projectId) ||
 		keyFor(value.projectId, reference(value.reference)) !== expected
@@ -118,6 +118,34 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 					keyFor(member.projectId, reference(value.reference)),
 				);
 			}
+		}
+	}
+	if (Object.hasOwn(value, "layout")) {
+		const layout = value.layout;
+		const ids = [value.projectId, ...(Array.isArray(value.repositoryProjectIds) ? value.repositoryProjectIds : [])];
+		if (
+			!Object.hasOwn(value, "members") ||
+			!object(layout) ||
+			!shape(layout, ["root", "paths"]) ||
+			typeof layout.root !== "string" ||
+			!isAbsolute(layout.root) ||
+			layout.root.length > 4096 ||
+			!Array.isArray(layout.paths) ||
+			layout.paths.length !== ids.length
+		)
+			stop();
+		for (const [index, entry] of layout.paths.entries()) {
+			if (
+				!object(entry) ||
+				!shape(entry, ["projectId", "path"]) ||
+				entry.projectId !== ids[index] ||
+				typeof entry.path !== "string" ||
+				entry.path.length > 1024 ||
+				/[\\\0]/.test(entry.path) ||
+				entry.path.startsWith("/") ||
+				(entry.path !== "" && entry.path.split("/").some((part) => !part || part === "." || part === ".."))
+			)
+				stop();
 		}
 	}
 	if (Object.hasOwn(value, "design")) {

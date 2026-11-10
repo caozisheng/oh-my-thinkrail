@@ -48,6 +48,9 @@ import type {
 	PiPackagesCatalog,
 	PrBodySource,
 	Project,
+	ProjectGroupImport,
+	ProjectGroupImportInput,
+	ProjectGroupScan,
 	ProjectPathStatus,
 	ProjectTrustSummary,
 	ProviderStatusReport,
@@ -159,7 +162,9 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 117;
+export const PROTOCOL_VERSION = 118;
+export const PROJECT_GROUPS_PROTOCOL_VERSION = 118;
+export const PROJECT_GROUP_MAX_REPOSITORIES = 64;
 export const SEARCH_PROTOCOL_VERSION = 116;
 export const SPEECH_PROTOCOL_VERSION = 117;
 export const ISSUES_CONTENT_PROTOCOL_VERSION = 113;
@@ -332,6 +337,8 @@ export const WS_METHODS = {
 	projectCloneDestination: "project.cloneDestination",
 	projectClone: "project.clone",
 	projectCancelClone: "project.cancelClone",
+	projectScanGroup: "project.scanGroup",
+	projectImportGroup: "project.importGroup",
 	projectHasSpecs: "project.hasSpecs",
 	projectSetTrust: "project.setTrust",
 	projectAcknowledgeSkills: "project.acknowledgeSkills",
@@ -847,6 +854,8 @@ export interface WsMethodMap {
 		result: Project | null;
 	};
 	"project.cancelClone": { params: { operationId: string }; result: Ack };
+	"project.scanGroup": { params: { path: string }; result: ProjectGroupScan };
+	"project.importGroup": { params: ProjectGroupImportInput; result: ProjectGroupImport };
 	"project.hasSpecs": { params: { projectId: string }; result: { hasSpecs: boolean } };
 	"project.setTrust": {
 		params: { id: string; trusted: boolean; resources?: boolean };
@@ -1460,6 +1469,7 @@ export type WsErrorCode =
 	| "WORKTREE_CHECKOUT_FAILED"
 	| "WORKTREE_CHECKOUT_STALLED"
 	| "WORKSPACE_PATH_TAKEN"
+	| "WORKSPACE_HAS_NESTED_WORKSPACES"
 	| "FILE_TOO_LARGE"
 	| SpeechErrorCode;
 

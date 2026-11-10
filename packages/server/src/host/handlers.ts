@@ -170,12 +170,14 @@ import {
 	cancelProjectClone,
 	closeProject,
 	createProject,
+	importProjectGroup,
 	initProject,
 	inspectCloneDestination,
 	inspectProjectPath,
 	listProjects,
 	openProject,
 	renameProject,
+	scanProjectGroup,
 	setProjectGroupEnabled,
 	setProjectSkillEnabled,
 	setProjectTrust,
@@ -247,6 +249,7 @@ import {
 	listWorkspaceCreations,
 	listWorkspaceRecords,
 	listWorkspaces,
+	nestedWorkspaces,
 	openExistingWorktree,
 	reclaimWorktree,
 	recordWorkspaceActivity,
@@ -776,6 +779,8 @@ const handlers: WsHandlers = {
 		cancelProjectClone(params.operationId, ctx.clientKey);
 		return { ok: true };
 	},
+	"project.scanGroup": (params) => scanProjectGroup(params.path),
+	"project.importGroup": (params) => importProjectGroup(params),
 	"project.list": () =>
 		observeSetupRead(listProjects, (projects) => ({
 			project_present: projects.length > 0 ? "yes" : "no",
@@ -935,6 +940,11 @@ const handlers: WsHandlers = {
 	}),
 	"workspace.remove": (params) => {
 		const id = params.id;
+		if (nestedWorkspaces(id).length > 0)
+			throw new CodedError(
+				"WORKSPACE_HAS_NESTED_WORKSPACES",
+				"Archive the workspaces nested inside this one first.",
+			);
 		const ws = forgetWorkspace(id);
 		if (ws) {
 			evictSpecIndex(ws.id);
