@@ -40,6 +40,8 @@ token. It includes:
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.
   The skill requires confirmed summary publication before handoff; automatic turn-end posting is not enforced.
+  Referenced design documents and implementation plans are included in full as Issue comments; long documents
+  use ordered, individually confirmed parts. Background specs are not attached merely because they were read.
   If publication is uncertain, reuse the original operation ID and exact summary with
   `issue_record_summary`'s `recovery: "reconcile"` to recover a unique matching published comment.
   Both recovery modes require explicit **human confirmation**; selecting the recovery enum represents
