@@ -74,15 +74,19 @@ and Issue closure remain in the tracker. Automated push/MR/CI/merge delivery is 
 
 - **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. You can also attach existing git worktrees or explicitly work in the project folder.
 
-Reads, listing, Issue sessions and summary publication work on both providers with identical issue and
-label presentation. Approval receipts, design/implementation publication and merge stay GitLab-only for
-now and are refused on GitHub; GitHub Enterprise Server and complete cross-machine handoffs remain
-project goals. Existing upstream GitHub pull-request features are separate from Issues integration.
+Issue listing, confirmed stage reports and per-repository Draft PR/MR delivery are available on GitHub
+and GitLab with the same label transitions. Provider-specific approval receipts and merge remain outside
+this confirmation workflow. GitHub Enterprise Server and complete cross-machine handoffs remain project
+goals. Existing upstream GitHub pull-request features are separate from Issues integration.
 
 ## GitHub and GitLab Issues
 
 Both providers support listing Issues, reading their descriptions and comments, starting **Design**
 and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
+After each stage, a separate question card confirms the complete report before it is published. Design
+moves an Issue with no workflow label or `workflow::backlog` to `workflow::in-progress`; implementation
+moves `workflow::in-progress` to `workflow::in-review`, preserving unrelated labels. Delivery is another
+separate confirmation per repository and creates only Draft PRs/MRs after a non-force push.
 With host protocol v114 or newer, the existing eye-button preview shows the complete Issue:
 its description followed by all ordinary comments, authors, timestamps and Markdown attachments.
 The title remains an external link, and the preview keeps its original expand/collapse layout.
@@ -105,9 +109,8 @@ To connect, enter a **Repository address** and a personal access token in the Is
   association before switching trackers in the UI.
 
 The connection token remains in the host OS credential vault, never in agent prompts. GitHub Enterprise
-Server and SSH/SCP repository addresses are not supported by this association flow. Approval and
-publication workflow APIs remain GitLab-only as described above; ordinary Design/Implement startup does
-not require those APIs on either provider.
+Server and SSH/SCP repository addresses are not supported by this association flow. Stage confirmation
+and draft delivery require the current host capability; older hosts do not perform these writes.
 
 ## Inherited IDE capabilities
 

@@ -161,6 +161,8 @@ test("extension registers the issue tools without injecting global issue instruc
 		"issue_context",
 		"issue_record_summary",
 		"issue_join_repository",
+		"issue_prepare_confirmation",
+		"issue_execute_confirmation",
 	]);
 	expect(tools.every((tool) => !tool.promptGuidelines?.length)).toBe(true);
 	expect(hooks).toEqual([]);
@@ -194,6 +196,8 @@ test("the shared resource loader registers issue tools as a named inline extensi
 			"issue_context",
 			"issue_record_summary",
 			"issue_join_repository",
+			"issue_prepare_confirmation",
+			"issue_execute_confirmation",
 		]);
 		setIssueToolHost(fakeHost().host);
 		const tool = extension?.tools.get("issue_context");

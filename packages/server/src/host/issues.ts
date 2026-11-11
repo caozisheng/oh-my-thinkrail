@@ -8,10 +8,16 @@ import {
 	type IssueTarget,
 	isIssueConnectionInput,
 	isIssueTarget,
+	issueProviderForInstanceUrl,
 	type WorkspaceIssueBinding,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
-import { sessionReuseStatus, startInitialSessionPrompt } from "../agent";
+import {
+	getSessionMessages,
+	isTrustedQuestionnaireReceipt,
+	sessionReuseStatus,
+	startInitialSessionPrompt,
+} from "../agent";
 import { gitAsync, originUrls } from "../git";
 import {
 	createIssuesService,
@@ -30,8 +36,15 @@ import {
 	createIssueAgentSessionHost,
 	type IssueAgentSessionHostOptions,
 } from "./issueAgentSessions";
+import { createIssueConfirmationStore } from "./issueConfirmations";
 import { createIssueCredentials } from "./issueCredentials";
+import {
+	createIssueDeliveryActions,
+	type DeliveryRepository,
+	deliveryQuestions,
+} from "./issueDeliveryActions";
 import { createIssueSessionStore, type IssueSessionStore } from "./issueSessions";
+import { createIssueStageActions, stageQuestions } from "./issueStageActions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
@@ -110,14 +123,35 @@ async function originRepositoryUrl(path: string): Promise<string | null> {
 }
 
 /**
- * Credential-free canonical HTTP(S) only, returned as the remote spells it minus terminal
- * slashes: SSH/SCP, userinfo, query and fragment forms all stay null. The web resolver parses
+ * Credential-free canonical HTTP(S) only, normalized for exact destination comparison:
+ * SSH/SCP, userinfo, query and fragment forms all stay null. The web resolver parses
  * the instance/project split; this never echoes git output.
  */
 function safeRepositoryUrl(value: string | null): string | null {
 	if (value === null) return null;
 	const address = value.replace(/\/+$/, "");
-	return canonicalIssueInstanceUrl(address) === null ? null : address;
+	return canonicalIssueInstanceUrl(address);
+}
+
+/** Local-only URL validation; never contacts a remote or echoes config. */
+export async function deliveryPushUrl(path: string, configuredUrl: string): Promise<string | null> {
+	// No scope flag: includes system/global/local config and includes. Refuse every rule,
+	// including pushInsteadOf, which ls-remote --get-url does not apply.
+	const rewrites = await gitAsync(
+		path,
+		["config", "--get-regexp", "--show-origin", "^url\\..*\\.(insteadOf|pushInsteadOf)$"],
+		{ timeoutMs: 5_000 },
+	);
+	// No matches exit 1 silently; diagnostics and execution failures must stay closed.
+	if (rewrites.ok || rewrites.out.trim() !== "" || rewrites.failure || rewrites.err !== "")
+		return null;
+	const resolved = await gitAsync(
+		path,
+		["ls-remote", "--get-url", "--end-of-options", configuredUrl],
+		{ timeoutMs: 5_000 },
+	);
+	if (!resolved.ok) return null;
+	return safeRepositoryUrl(resolved.out);
 }
 
 const storedKeys = ["projectId", "instanceUrl", "remoteProjectId"];
@@ -248,8 +282,191 @@ export function createIssuesHost(
 		project(projectId, trusted);
 	}
 	let store: IssueSessionStore | undefined;
+	const confirmationPath = join(root, "issue-confirmations");
+	const journal = () => {
+		privateDirectory(root);
+		privateDirectory(confirmationPath);
+		return createIssueConfirmationStore(confirmationPath);
+	};
+	async function confirmationBinding(sessionId: string) {
+		const binding = await agentSessionsBinding(sessionId);
+		project(binding.projectId, true);
+		const ws = getWorkspace(binding.workspaceId);
+		if (ws.projectId !== binding.projectId) invalid();
+		return binding;
+	}
+	async function agentSessionsBinding(sessionId: string) {
+		const binding = await store?.get(sessionId);
+		if (!binding) invalid();
+		return binding;
+	}
+	function stages() {
+		return createIssueStageActions({
+			binding: confirmationBinding,
+			journal: journal(),
+			access: async (binding) => {
+				await restore(binding.projectId, true);
+				const issues = await service();
+				const remote = issues.deliveryFor(binding.projectId, binding.reference);
+				return {
+					remote,
+					guard: () => {
+						project(binding.projectId, true);
+						if (issues.deliveryFor(binding.projectId, binding.reference) !== remote) invalid();
+					},
+				};
+			},
+			repositories: (binding) =>
+				actions.implementationContexts({
+					projectId: binding.projectId,
+					reference: binding.reference,
+				}),
+			checkout: async (repository) => {
+				const ws = getWorkspace(repository.workspaceId);
+				if (ws.projectId !== repository.projectId || ws.worktreePath !== repository.path) invalid();
+				project(repository.projectId, true);
+				const [head, branch, status] = await Promise.all([
+					gitAsync(repository.path, ["rev-parse", "HEAD"]),
+					gitAsync(repository.path, ["symbolic-ref", "--short", "HEAD"]),
+					gitAsync(repository.path, ["status", "--porcelain"]),
+				]);
+				if (!head.ok || !branch.ok || !status.ok) invalid();
+				return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
+			},
+			verifyAnswer: async (sessionId, payload, toolCallId) => {
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, stageQuestions(payload)))
+					invalid();
+			},
+		});
+	}
+	function deliveries() {
+		async function checkout(repository: DeliveryRepository) {
+			const ws = getWorkspace(repository.workspaceId);
+			if (ws.projectId !== repository.projectId || ws.worktreePath !== repository.path) invalid();
+			project(repository.projectId, true);
+			const [head, branch, status] = await Promise.all([
+				gitAsync(repository.path, ["rev-parse", "HEAD"]),
+				gitAsync(repository.path, ["symbolic-ref", "--short", "HEAD"]),
+				gitAsync(repository.path, ["status", "--porcelain"]),
+			]);
+			if (!head.ok || !branch.ok || !status.ok) invalid();
+			return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
+		}
+		return createIssueDeliveryActions({
+			binding: confirmationBinding,
+			journal: journal(),
+			checkout,
+			repositories: (binding) =>
+				actions.implementationContexts({
+					projectId: binding.projectId,
+					reference: binding.reference,
+				}),
+			access: async (binding) => {
+				await restore(binding.projectId, true);
+				const issues = await service();
+				const remote = issues.deliveryFor(binding.projectId, binding.reference);
+				return {
+					remote,
+					guard: () => {
+						project(binding.projectId, true);
+						if (issues.deliveryFor(binding.projectId, binding.reference) !== remote) invalid();
+					},
+				};
+			},
+			repositoryRemote: async (repository) => {
+				await restore(repository.projectId, true);
+				const issues = await service();
+				const connection = issues.connection(repository.projectId);
+				if (!connection?.connected) invalid();
+				const provider = issueProviderForInstanceUrl(connection.instanceUrl);
+				if (!provider) invalid();
+				const remote = issues.deliveryFor(repository.projectId, {
+					provider,
+					instanceUrl: connection.instanceUrl,
+					projectId: connection.remoteProjectId,
+					number: 1,
+				});
+				const metadata = await remote.project();
+				const urls = await originUrls(repository.path);
+				const configuredPushUrl = urls.push;
+				const expectedUrl = safeRepositoryUrl(metadata.httpUrlToRepo ?? null);
+				if (
+					!metadata.defaultBranch ||
+					!expectedUrl ||
+					!configuredPushUrl ||
+					safeRepositoryUrl(configuredPushUrl) !== expectedUrl ||
+					(await deliveryPushUrl(repository.path, configuredPushUrl)) !== expectedUrl
+				)
+					invalid();
+				return {
+					remote,
+					repositoryId: String(metadata.id),
+					url: expectedUrl,
+					targetBranch: metadata.defaultBranch,
+				};
+			},
+			push: async (repository, input) => {
+				const current = await checkout(repository);
+				if (current.sha !== input.sha || current.branch !== input.branch || current.dirty)
+					invalid();
+				// Recheck immediately before dispatch: URL config may have changed since review.
+				const urls = await originUrls(repository.path);
+				const effective = urls.push ? await deliveryPushUrl(repository.path, urls.push) : null;
+				if (!effective || effective !== safeRepositoryUrl(input.url)) invalid();
+				const pushed = await gitAsync(repository.path, [
+					"-c",
+					"push.followTags=false",
+					"push",
+					"--",
+					effective,
+					`${input.sha}:refs/heads/${input.branch}`,
+				]);
+				if (!pushed.ok)
+					throw new CodedError("RESOURCE_UNAVAILABLE", "Issue push requires reconciliation.");
+			},
+			verifyAnswer: async (sessionId, payload, toolCallId) => {
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, deliveryQuestions(payload)))
+					invalid();
+			},
+		});
+	}
 	const agentSessions = createIssueAgentSessionHost({
 		service,
+		prepareConfirmation: async (sessionId, input) => {
+			if (input.projectId) {
+				if (!input.title || input.body === undefined || input.report) invalid();
+				return deliveries().prepare(sessionId, {
+					operationId: input.operationId,
+					projectId: input.projectId,
+					title: input.title,
+					body: input.body,
+					...(input.targetBranch ? { targetBranch: input.targetBranch } : {}),
+				});
+			}
+			if (!input.report || input.title || input.body || input.targetBranch) invalid();
+			return stages().prepare(sessionId, { operationId: input.operationId, report: input.report });
+		},
+		executeConfirmation: async (sessionId, operationId, toolCallId) => {
+			const stored = await journal().get(sessionId, operationId);
+			if (!stored) invalid();
+			return (stored.payload as { stage: string }).stage === "delivery"
+				? deliveries().execute(sessionId, operationId, toolCallId)
+				: stages().execute(sessionId, operationId, toolCallId);
+		},
 		store: () => {
 			if (!store) {
 				privateDirectory(root);

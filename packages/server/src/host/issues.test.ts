@@ -18,7 +18,7 @@ import {
 } from "../issues";
 import { saveProjects } from "../persistence";
 import { setProjectTrust } from "../projects";
-import { createIssuesHost } from "./issues";
+import { createIssuesHost, deliveryPushUrl } from "./issues";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
@@ -323,6 +323,23 @@ function registered(projects: Record<string, { path: string; trusted?: boolean }
 		})),
 	);
 }
+
+test("delivery URL validation refuses fetch and push rewrites without contacting a remote", async () => {
+	const url = "https://gitlab.example/group/repo.git";
+	const path = repository("delivery", ["origin", url]);
+	expect(await deliveryPushUrl(path, url)).toBe(url);
+	for (const kind of ["insteadOf", "pushInsteadOf"]) {
+		const key = `url.https://private-secret.example/.${kind}`;
+		git(path, "config", "--local", key, "https://gitlab.example/");
+		expect(await deliveryPushUrl(path, url)).toBeNull();
+		git(path, "config", "--local", "--unset-all", key);
+		expect(await deliveryPushUrl(path, url)).toBe(url);
+	}
+	// Even an unrelated rule is refused: delivery does not guess which rewrite wins.
+	git(path, "config", "--local", "url.https://other.example/.pushInsteadOf", "unrelated:");
+	expect(await deliveryPushUrl(path, url)).toBeNull();
+	expect(await deliveryPushUrl(join(dir, "missing"), url)).toBeNull();
+});
 
 test("only a single credential-free HTTP(S) origin becomes a repository address", async () => {
 	const host = createIssuesHost({ dir, credentials });

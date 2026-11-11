@@ -55,6 +55,22 @@ type SummaryResult = { noteId: number; url?: string };
 
 export interface IssueToolHost {
 	context(sessionId: string): Promise<string>;
+	prepareConfirmation?(
+		sessionId: string,
+		input: {
+			operationId: string;
+			report?: string;
+			projectId?: string;
+			title?: string;
+			body?: string;
+			targetBranch?: string;
+		},
+	): Promise<unknown>;
+	executeConfirmation?(
+		sessionId: string,
+		operationId: string,
+		toolCallId: string,
+	): Promise<unknown>;
 	recordSummary(
 		sessionId: string,
 		operationId: string,
@@ -236,8 +252,70 @@ export function createIssueJoinRepositoryTool(): ToolDefinition<
 	};
 }
 
+const PrepareConfirmationSchema = Type.Object(
+	{
+		operationId: Type.String({
+			minLength: 1,
+			maxLength: 128,
+			pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+		}),
+		report: Type.Optional(Type.String({ minLength: 1, maxLength: 32000 })),
+		projectId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+		title: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+		body: Type.Optional(Type.String({ maxLength: 32000 })),
+		targetBranch: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+	},
+	{ additionalProperties: false },
+);
+const ExecuteConfirmationSchema = Type.Object(
+	{
+		operationId: Type.String({ minLength: 1, maxLength: 128 }),
+		toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+	},
+	{ additionalProperties: false },
+);
+export function createIssuePrepareConfirmationTool(): ToolDefinition<
+	typeof PrepareConfirmationSchema,
+	unknown
+> {
+	return {
+		name: "issue_prepare_confirmation",
+		label: "Prepare Issue Confirmation",
+		parameters: PrepareConfirmationSchema,
+		description:
+			"Prepare a fixed Issue stage report (report) or per-repository delivery (projectId, title, body, optional targetBranch). Returns exact questions to pass unchanged to ask_user_question. Preparation authorizes no writes. Never change the preview. Skip/Discuss/Other does not authorize execution. If unavailable, stop; never bypass through shell.",
+		async execute(_id, params, _signal, _update, ctx) {
+			if (!host.prepareConfirmation) throw unavailable();
+			const result = await host.prepareConfirmation(ctx.sessionManager.getSessionId(), params);
+			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+		},
+	};
+}
+export function createIssueExecuteConfirmationTool(): ToolDefinition<
+	typeof ExecuteConfirmationSchema,
+	unknown
+> {
+	return {
+		name: "issue_execute_confirmation",
+		label: "Execute Issue Confirmation",
+		parameters: ExecuteConfirmationSchema,
+		description:
+			"Execute a prepared Issue operation only after the exact returned question was submitted with Looks right. Supply that ask_user_question toolCallId. Host validates the real answer, fixed version and one-time durable intent. Results may be partial/uncertain: stop and reconcile, never retry under a new operationId or bypass through shell. Stage confirmation does not authorize push or PR/MR creation; those require their own per-repository card.",
+		async execute(_id, params, _signal, _update, ctx) {
+			if (!host.executeConfirmation) throw unavailable();
+			const result = await host.executeConfirmation(
+				ctx.sessionManager.getSessionId(),
+				params.operationId,
+				params.toolCallId,
+			);
+			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+		},
+	};
+}
 export function issueToolsExtension(pi: ExtensionAPI): void {
 	pi.registerTool(createIssueContextTool());
 	pi.registerTool(createIssueRecordSummaryTool());
 	pi.registerTool(createIssueJoinRepositoryTool());
+	pi.registerTool(createIssuePrepareConfirmationTool());
+	pi.registerTool(createIssueExecuteConfirmationTool());
 }

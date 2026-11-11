@@ -171,3 +171,52 @@ test("validates IDs, JSON values, byte bounds and trusted directories", async ()
 	mkdirSync(join(root, "unexpected"));
 	await expect(store.listCompleted()).rejects.toMatchObject(unavailable);
 });
+
+test("opaque Responses tool-call IDs execute once and replay after restart", async () => {
+	for (const toolCallId of [
+		"call_abc123|fc_0123456789abcdef",
+		"\u5de5\u5177|\u8c03\u7528",
+		"x".repeat(512),
+	]) {
+		const { root, store } = setup();
+		const { digest } = await store.prepare("session", "op", {});
+		let calls = 0;
+		const run = async () => ({ noteId: ++calls });
+		expect(await store.execute("session", "op", digest, toolCallId, run)).toEqual({ noteId: 1 });
+		const restarted = createIssueConfirmationStore(root);
+		expect(await restarted.execute("session", "op", digest, toolCallId, run)).toEqual({
+			noteId: 1,
+		});
+		expect(await restarted.listCompleted()).toHaveLength(1);
+		expect(calls).toBe(1);
+	}
+});
+
+test("invalid opaque tool-call IDs are rejected on execution and journal read", async () => {
+	for (const toolCallId of [
+		"",
+		"x".repeat(513),
+		"call id",
+		"call\tid",
+		"call\nid",
+		"call\u0000id",
+		"call\u007fid",
+		"call\u0085id",
+	]) {
+		const { root, store } = setup();
+		const { digest } = await store.prepare("session", "op", {});
+		let calls = 0;
+		const run = async () => ++calls;
+		await expect(store.execute("session", "op", digest, toolCallId, run)).rejects.toMatchObject(
+			unavailable,
+		);
+		expect(calls).toBe(0);
+		await store.execute("session", "op", digest, "call_valid|fc_valid", run);
+		const path = join(root, hash("session"), "1.intent");
+		const intent = JSON.parse(readFileSync(path, "utf8"));
+		writeFileSync(path, JSON.stringify({ ...intent, toolCallId }));
+		await expect(createIssueConfirmationStore(root).get("session", "op")).rejects.toMatchObject(
+			unavailable,
+		);
+	}
+});

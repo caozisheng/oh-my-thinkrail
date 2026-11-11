@@ -188,6 +188,24 @@ describe("provider delivery primitives", () => {
 		await unavailable(() => remote.mergeRequests("issue/7"));
 	});
 
+	test("GitHub delivery rejects unsafe input before mutation and never retries uncertain writes", async () => {
+		for (const sourceBranch of ["../other", "bad\\\\branch", "bad[branch", token]) {
+			const { remote, calls } = fixture(() => Response.json(repository));
+			await expect(remote.createMergeRequest({ ...input, sourceBranch })).rejects.toBeDefined();
+			expect(calls.filter((call) => call.init.method === "POST")).toHaveLength(0);
+		}
+		for (const response of [
+			() => new Response(null, { status: 502 }),
+			() => Response.json({ ...pull, title: token }),
+		]) {
+			const { remote, calls } = fixture((url) =>
+				url.endsWith("/repositories/42") ? Response.json(repository) : response(),
+			);
+			await unavailable(() => remote.createMergeRequest(input));
+			expect(calls.filter((call) => call.init.method === "POST")).toHaveLength(1);
+		}
+	});
+
 	test("GitLab draft creation uses the portable Draft title prefix", async () => {
 		let written: Record<string, unknown> | undefined;
 		const remote = createGitLabClient({

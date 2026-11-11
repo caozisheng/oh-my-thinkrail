@@ -8,6 +8,19 @@ depends-on: [module-contracts]
 tags: [host, public-surface-checked]
 ---
 
+## Confirmed Issue operations
+
+`issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
+sessions. Their fixed previews reuse `ask_user_question`; transcript verification admits only the exact
+submitted `Looks right` response. The private `issue-confirmations` journal snapshots bounded payloads,
+reserves exclusive immutable intents before mutation, and makes completed receipts idempotent. Pending
+intents block re-execution and require reconciliation; no automated replay or invented approval exists.
+Host composition rechecks project trust, workspace ownership, clean checkout SHA/branch and live provider
+identity. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP clone
+URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
+creates drafts only. Existing matching requests are reused without editing. The agent receives no token,
+path override or merge/close capability.
+
 ## Responsibility
 
 The wire and composition root: `Bun.serve` HTTP+WS, static SPA serving, the WS method→handler registry,

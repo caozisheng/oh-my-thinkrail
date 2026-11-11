@@ -125,7 +125,12 @@ function note(value: unknown): IssueNote {
 }
 function identifier(value: unknown): string {
 	const result = text(value);
-	if (!result || result.trim() !== result || [...result].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) invalid();
+	if (
+		!result ||
+		result.trim() !== result ||
+		[...result].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
+	)
+		invalid();
 	return result;
 }
 function branchName(value: unknown): string {

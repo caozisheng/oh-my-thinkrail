@@ -24,6 +24,7 @@ export type {
 	GitLabProject,
 } from "./client";
 export { createGitLabClient } from "./client";
+export type { IssueDeliveryRemote, IssueMergeRequest, IssueRecord } from "./remote";
 export type {
 	IssueBinding,
 	IssueBindingPersistence,

@@ -45,6 +45,15 @@ function validId(value: unknown): value is string {
 function validOperation(value: unknown): value is string {
 	return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 }
+// Provider tool-call IDs are opaque (Responses IDs can contain a pipe).
+function validToolCallId(value: unknown): value is string {
+	return (
+		typeof value === "string" &&
+		value.length >= 1 &&
+		value.length <= 512 &&
+		!/[\p{Cc}\s]/u.test(value)
+	);
+}
 function exact(value: unknown, keys: string[]): value is Record<string, unknown> {
 	return (
 		value !== null &&
@@ -224,7 +233,7 @@ export function createIssueConfirmationStore(root: string) {
 				!exact(raw, ["sessionId", "operationId", "digest", "toolCallId"]) ||
 				raw.sessionId !== sessionId ||
 				!validOperation(raw.operationId) ||
-				!validOperation(raw.toolCallId) ||
+				!validToolCallId(raw.toolCallId) ||
 				typeof raw.digest !== "string"
 			)
 				stop();
@@ -321,7 +330,7 @@ export function createIssueConfirmationStore(root: string) {
 			return guarded(async () => {
 				if (
 					!validOperation(operationId) ||
-					!validOperation(toolCallId) ||
+					!validToolCallId(toolCallId) ||
 					typeof digest !== "string" ||
 					!/^[a-f0-9]{64}$/.test(digest) ||
 					typeof run !== "function"

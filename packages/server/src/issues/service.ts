@@ -185,7 +185,12 @@ export async function createIssuesService({
 	const bindings = new Map<string, IssueStoredBinding>();
 	const clients = new Map<
 		string,
-		{ client: IssueDeliveryRemote; workflow?: IssueWorkflowRemote; path: string; provider: IssueProvider }
+		{
+			client: IssueDeliveryRemote;
+			workflow?: IssueWorkflowRemote;
+			path: string;
+			provider: IssueProvider;
+		}
 	>();
 	type Operation = { cancelled: boolean; done: Promise<unknown> };
 	const pending = new Map<string, Operation>();
@@ -439,7 +444,12 @@ export async function createIssuesService({
 			const binding = bindings.get(projectId);
 			const linked = clients.get(projectId);
 			if (!binding || !linked) return unavailable("Issue project is not connected.");
-			if (reference.provider !== linked.provider || reference.instanceUrl !== binding.instanceUrl || reference.projectId !== binding.remoteProjectId) invalid();
+			if (
+				reference.provider !== linked.provider ||
+				reference.instanceUrl !== binding.instanceUrl ||
+				reference.projectId !== binding.remoteProjectId
+			)
+				invalid();
 			return linked.client;
 		},
 		workflowFor(projectId, reference) {
