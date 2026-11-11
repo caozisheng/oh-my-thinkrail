@@ -86,6 +86,7 @@ import { ChatsSection } from "./ChatsSection";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExistingWorktreeDialog } from "./ExistingWorktreeDialog";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
+import { ProjectGroupStartDialog } from "./ProjectGroupStartDialog";
 import { groupMemberLabel, groupNodeKey, projectRailEntries } from "./projectGroups";
 import { RemoveWorkspaceDialog } from "./RemoveWorkspaceDialog";
 import {
@@ -156,6 +157,7 @@ export function ProjectTree() {
 	const supportsGroupHome = useAppStore(selectSupportsProjectGroupHome);
 	const [dialogProjectId, setDialogProjectId] = useState<string | null>(null);
 	const [existingDialogProjectId, setExistingDialogProjectId] = useState<string | null>(null);
+	const [groupStartId, setGroupStartId] = useState<string | null>(null);
 	const addProjectButtonRef = useRef<HTMLButtonElement>(null);
 	const projectNameButtonsRef = useRef(new Map<string, HTMLButtonElement>());
 	const pendingCloseFocusProjectIdRef = useRef<string | null>(null);
@@ -438,6 +440,7 @@ export function ProjectTree() {
 									anyNeedsAttention(entry.projects)
 								}
 								onToggle={() => useAppStore.getState().toggleRailNode(groupNodeKey(entry.id))}
+								onStart={() => setGroupStartId(entry.id)}
 								{...(supportsGroupHome
 									? { onOpen: () => useAppStore.getState().selectProjectGroup(entry.id) }
 									: {})}
@@ -470,6 +473,24 @@ export function ProjectTree() {
 					}}
 				/>
 			) : null}
+
+			{(() => {
+				if (groupStartId === null) return null;
+				const group = projectRailEntries(projects).find(
+					(entry) => entry.kind === "group" && entry.id === groupStartId,
+				);
+				if (group?.kind !== "group") return null;
+				return (
+					<ProjectGroupStartDialog
+						key={group.id}
+						groupName={group.name}
+						members={group.projects}
+						onOpenChange={(open) => {
+							if (!open) setGroupStartId(null);
+						}}
+					/>
+				);
+			})()}
 
 			{existingDialogProjectId !== null ? (
 				<ExistingWorktreeDialog
@@ -845,6 +866,7 @@ function GroupHeader({
 	needsAttention,
 	onToggle,
 	onOpen,
+	onStart,
 }: {
 	name: string;
 	root: string;
@@ -853,6 +875,8 @@ function GroupHeader({
 	needsAttention: boolean;
 	onToggle: () => void;
 	onOpen?: () => void;
+	/** The row's "+": the project start choices scoped to this group. */
+	onStart: () => void;
 }) {
 	const t = useT();
 	const Chevron = collapsed ? ChevronRight : ChevronDown;
@@ -871,7 +895,7 @@ function GroupHeader({
 			data-testid="project-group-header"
 			data-active={isActive || undefined}
 			className={cn(
-				"flex h-panel-row min-w-0 items-center gap-4 rounded-sm pr-8 pl-4 text-text-muted transition-colors",
+				"flex h-panel-row min-w-0 items-center gap-4 rounded-sm pr-4 pl-4 text-text-muted transition-colors",
 				isActive ? "bg-control-bg-selected" : "hover:bg-control-bg-hovered",
 			)}
 		>
@@ -907,6 +931,15 @@ function GroupHeader({
 				</span>
 			)}
 			{needsAttention ? <AttentionDot /> : null}
+			<IconButton
+				icon={Plus}
+				label={t("panels.projectTree.startInGroup", { name })}
+				variant="ghost"
+				size="s"
+				className="shrink-0"
+				data-testid="project-group-start"
+				onClick={onStart}
+			/>
 		</div>
 	);
 }

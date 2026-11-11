@@ -560,6 +560,20 @@ default expanded) and persisted beside project expansion by `projectExpansion`; 
 keys from earlier builds are ignored. A collapsed header shows the attention dot when any member
 needs attention.
 
+**Group start (`+`).** The group header ends with the same ghost `+` as a repository row; it opens
+`ProjectGroupStartDialog`, the project start screen's three `WelcomeCard`s and copy scoped to the
+group. **Start building** is the highlighted card and the group's main path, *start an Issue*: it
+switches the dialog to a primary-repository picker (group members by relative path, default the root
+repository, else the shallowest member) over an embedded `IssuesTool` for that repository, so the
+Issue list, connection, trust and stage actions are the Issues tool's own and a launched session opens
+through the shared `openIssueSession` (moved to `panels/issueSession`, re-exported by the workbench).
+The Issue worktree starts with the primary repository only; other members join on demand
+(`issues.addRepository`). The host has no create-Issue method, so the step says new Issues are created
+in the tracker, and **Start without an Issue** opens `NewWorkspaceDialog` for the primary repository.
+**Set up project** opens `NewWorkspaceDialog` with the setup request for the group folder's own
+repository and **Work in project folder** enters that repository's default workspace; when the group
+folder is not a repository both stay visible but disabled, with the reason as their subtitle.
+
 **Project group home.** `selectProjectGroup(id)` clears project, workspace and creation selection and
 records `activeProjectGroupId`; `selectActiveProjectGroupId` yields it only while nothing narrower is
 selected and an open project still carries the group, and Shell then renders `ProjectGroupHome` in
