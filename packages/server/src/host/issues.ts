@@ -38,11 +38,7 @@ import {
 } from "./issueAgentSessions";
 import { createIssueConfirmationStore } from "./issueConfirmations";
 import { createIssueCredentials } from "./issueCredentials";
-import {
-	createIssueDeliveryActions,
-	type DeliveryRepository,
-	deliveryQuestions,
-} from "./issueDeliveryActions";
+import { createIssueDeliveryActions, deliveryQuestions } from "./issueDeliveryActions";
 import { createIssueSessionStore, type IssueSessionStore } from "./issueSessions";
 import { createIssueStageActions, stageQuestions } from "./issueStageActions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
@@ -282,6 +278,15 @@ export function createIssuesHost(
 		project(projectId, trusted);
 	}
 	let store: IssueSessionStore | undefined;
+	function issueSessionStore(): IssueSessionStore {
+		if (!store) {
+			privateDirectory(root);
+			const path = join(root, "issue-sessions");
+			privateDirectory(path);
+			store = createIssueSessionStore(path);
+		}
+		return store;
+	}
 	const confirmationPath = join(root, "issue-confirmations");
 	const journal = () => {
 		privateDirectory(root);
@@ -296,9 +301,25 @@ export function createIssuesHost(
 		return binding;
 	}
 	async function agentSessionsBinding(sessionId: string) {
-		const binding = await store?.get(sessionId);
+		const binding = await issueSessionStore().get(sessionId);
 		if (!binding) invalid();
 		return binding;
+	}
+	async function trustedCheckout(repository: {
+		projectId: string;
+		workspaceId: string;
+		path: string;
+	}) {
+		const ws = getWorkspace(repository.workspaceId);
+		if (ws.projectId !== repository.projectId || ws.worktreePath !== repository.path) invalid();
+		project(repository.projectId, true);
+		const [head, branch, status] = await Promise.all([
+			gitAsync(repository.path, ["rev-parse", "HEAD"]),
+			gitAsync(repository.path, ["symbolic-ref", "--short", "HEAD"]),
+			gitAsync(repository.path, ["status", "--porcelain"]),
+		]);
+		if (!head.ok || !branch.ok || !status.ok) invalid();
+		return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
 	}
 	function stages() {
 		return createIssueStageActions({
@@ -321,18 +342,7 @@ export function createIssuesHost(
 					projectId: binding.projectId,
 					reference: binding.reference,
 				}),
-			checkout: async (repository) => {
-				const ws = getWorkspace(repository.workspaceId);
-				if (ws.projectId !== repository.projectId || ws.worktreePath !== repository.path) invalid();
-				project(repository.projectId, true);
-				const [head, branch, status] = await Promise.all([
-					gitAsync(repository.path, ["rev-parse", "HEAD"]),
-					gitAsync(repository.path, ["symbolic-ref", "--short", "HEAD"]),
-					gitAsync(repository.path, ["status", "--porcelain"]),
-				]);
-				if (!head.ok || !branch.ok || !status.ok) invalid();
-				return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
-			},
+			checkout: trustedCheckout,
 			verifyAnswer: async (sessionId, payload, toolCallId) => {
 				const binding = await confirmationBinding(sessionId);
 				const ws = getWorkspace(binding.workspaceId);
@@ -347,22 +357,10 @@ export function createIssuesHost(
 		});
 	}
 	function deliveries() {
-		async function checkout(repository: DeliveryRepository) {
-			const ws = getWorkspace(repository.workspaceId);
-			if (ws.projectId !== repository.projectId || ws.worktreePath !== repository.path) invalid();
-			project(repository.projectId, true);
-			const [head, branch, status] = await Promise.all([
-				gitAsync(repository.path, ["rev-parse", "HEAD"]),
-				gitAsync(repository.path, ["symbolic-ref", "--short", "HEAD"]),
-				gitAsync(repository.path, ["status", "--porcelain"]),
-			]);
-			if (!head.ok || !branch.ok || !status.ok) invalid();
-			return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
-		}
 		return createIssueDeliveryActions({
 			binding: confirmationBinding,
 			journal: journal(),
-			checkout,
+			checkout: trustedCheckout,
 			repositories: (binding) =>
 				actions.implementationContexts({
 					projectId: binding.projectId,
@@ -413,7 +411,7 @@ export function createIssuesHost(
 				};
 			},
 			push: async (repository, input) => {
-				const current = await checkout(repository);
+				const current = await trustedCheckout(repository);
 				if (current.sha !== input.sha || current.branch !== input.branch || current.dirty)
 					invalid();
 				// Recheck immediately before dispatch: URL config may have changed since review.
@@ -467,15 +465,7 @@ export function createIssuesHost(
 				? deliveries().execute(sessionId, operationId, toolCallId)
 				: stages().execute(sessionId, operationId, toolCallId);
 		},
-		store: () => {
-			if (!store) {
-				privateDirectory(root);
-				const path = join(root, "issue-sessions");
-				privateDirectory(path);
-				store = createIssueSessionStore(path);
-			}
-			return store;
-		},
+		store: issueSessionStore,
 		project: (id) => project(id, true),
 		workspace: getWorkspace,
 		status: options.sessions?.status ?? sessionReuseStatus,
