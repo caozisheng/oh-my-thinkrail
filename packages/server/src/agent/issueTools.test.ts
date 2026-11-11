@@ -159,7 +159,7 @@ test("extension registers both tools without injecting global issue instructions
 	expect(tools.map((tool) => tool.name)).toEqual(["issue_context", "issue_record_summary"]);
 	expect(tools.every((tool) => !tool.promptGuidelines?.length)).toBe(true);
 	expect(hooks).toEqual([]);
-	expect(childExtensionFactories()).not.toContain(issueToolsExtension);
+	expect(childExtensionFactories("workspace")).not.toContain(issueToolsExtension);
 });
 
 test("the shared resource loader registers issue tools as a named inline extension", async () => {
@@ -176,6 +176,8 @@ test("the shared resource loader registers issue tools as a named inline extensi
 				acknowledged: [],
 				disabled: [],
 				disabledGroups: [],
+				enabledGroups: [],
+				otherAgentSkills: false,
 				overrides: {},
 			}),
 		);

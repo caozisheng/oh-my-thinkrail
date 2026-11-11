@@ -500,6 +500,7 @@ for (const corruption of [
 	"workspaceBranch",
 	"project",
 	"kind",
+	"chatKind",
 	"recordPath",
 	"recordId",
 	"recordBranch",
@@ -553,6 +554,9 @@ for (const corruption of [
 				break;
 			case "kind":
 				ws.kind = "external";
+				break;
+			case "chatKind":
+				ws.kind = "chat";
 				break;
 			case "recordPath":
 				ownership.worktreePath = f.root;

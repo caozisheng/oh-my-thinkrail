@@ -121,6 +121,13 @@ test("default model is not recorded as recent", async () => {
 	expect(h.calls).toContain("analytics");
 });
 
+test("an agent-picked explicit model is not recorded as a user recent", async () => {
+	const h = harness();
+	await h.run({ workspaceId: "ws", model }, undefined, { pick: false });
+	expect(h.calls).not.toContain("recent");
+	expect(h.calls).toContain("analytics");
+});
+
 test("no usable model omits model input and reports none rather than agent placeholder", async () => {
 	const h = harness();
 	h.noModel();

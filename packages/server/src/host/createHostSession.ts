@@ -20,7 +20,7 @@ export function createHostSessionFactory(dependencies: Dependencies) {
 	return async (
 		input: WsParams<"session.create">,
 		guard?: () => void,
-		options: { title?: string | undefined } = {},
+		options: { title?: string | undefined; pick?: boolean } = {},
 	): Promise<WsResult<"session.create">> => {
 		guard?.();
 		const workspace = dependencies.getWorkspace(input.workspaceId);
@@ -55,7 +55,8 @@ export function createHostSessionFactory(dependencies: Dependencies) {
 				.catch(() => false);
 			guard?.();
 		}
-		if (input.model && created.model) dependencies.noteRecentModel(created.model);
+		if (options.pick !== false && input.model && created.model)
+			dependencies.noteRecentModel(created.model);
 		dependencies.trackChatStarted({
 			sessionId: created.sessionId,
 			model: defaults.model ? created.model : null,

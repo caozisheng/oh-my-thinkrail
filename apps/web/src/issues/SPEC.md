@@ -69,7 +69,7 @@ stage mutations.
 **Associated repositories (v115).** Each issue row carries an icon-only trigger on the title row,
 right after the body-preview eye toggle: `RiLinkUnlink` with no repository linked and `RiLink`
 (soft-primary) once one is, opening a popover multi-select listbox of the open
-projects beside the issue's own project. That project always participates and is never listed as a
+repository projects beside the issue's own project (`selectRepoProjects`, never the synthetic Chats container). That project always participates and is never listed as a
 candidate — exclusion compares **local** project ids, since `reference.projectId` is the remote provider
 id and never matches a project id. The saved selection starts empty, is read on open
 (`issues.repositories`) and written whole per toggle (`issues.setRepositories`); the host owns validation

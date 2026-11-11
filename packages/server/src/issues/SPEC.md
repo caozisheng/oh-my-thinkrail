@@ -324,3 +324,6 @@ pagination, response shapes, sanitized errors, fresh version-bound Developer+ ap
 implementation start gate (backlog transition, in-progress/in-review idempotence, refused labels,
 retained reservations) and version-free session reuse across re-entries. Target CE
 compatibility and full workflow integration remain separate delivery gates.
+
+Workspace handles admit the shared `chat` kind as input, but every ownership/default validation
+rejects it: Issue work always requires a real project checkout. Projectless chats cannot be Issue targets.
