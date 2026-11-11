@@ -499,22 +499,18 @@ dialog open on a failure list with Done; nothing else is retried.
 
 **Grouping in the rail.** `projectRailEntries` folds two or more open members of one
 `Project.projectGroup` into a single entry at the first member's place in the incoming order; a group
-with one open member renders as a plain row. The entry carries `projectGroupTree`, the members laid out
-like the imported folder: the **root repository** (path `""`) is the first row, tagged *root*, because
-it is the folder the header names and every other member sits inside it — nesting the whole tree under
-it would spend an indent level on every row. Below it, a member nests under the member that contains it
-(`infra/terraform` under `infra`), and directories between members that are not members become
-**folder rows** (`project-group-folder`: muted metadata text, folder glyph, own chevron, no menu); a
-chain of single-child folders folds into one row labelled with the joined path (`deep/a/b`,
-`modules/invoice`), while a folder holding exactly one member stays a folder row so repository and
-folder rows never merge. Siblings sort by name. Repository rows inside a group are the ordinary
-`ProjectRow` (chevron, workspaces, `+`, attention/running, context menu) with a repository glyph
-instead of the folder glyph and the full relative path as the name's tooltip; their nested members
-render below their workspaces. The group header has its own chevron and, from
-`PROJECT_GROUP_HOME_PROTOCOL_VERSION`, a name button that opens the group home. Header and folder
-collapse state is store-held (`collapsedRailNodes`, keys from `groupNodeKey` / `folderNodeKey`, default
-expanded) and persisted beside project expansion by `projectExpansion`; a collapsed header or folder
-shows the attention dot when any member under it needs attention.
+with one open member renders as a plain row. Members are a **flat list**: the **root repository**
+(path `""`) is first, tagged *root*, then the others sorted by relative path. Each row is labelled
+with that relative path (`billing/modules/invoice/core`) so the folder layout stays visible without
+nesting; a long path ellipsizes at the start (the trailing segments stay readable) and the full path
+is the name's tooltip. There are no folder rows, no per-folder indent, and no single-child chain
+folding. Repository rows inside a group are the ordinary `ProjectRow` (chevron, workspaces, `+`,
+attention/running, context menu) with a repository glyph instead of the folder glyph. The group
+header has its own chevron and, from `PROJECT_GROUP_HOME_PROTOCOL_VERSION`, a name button that opens
+the group home. Header collapse state is store-held (`collapsedRailNodes`, keys from `groupNodeKey`,
+default expanded) and persisted beside project expansion by `projectExpansion`; leftover `folder:`
+keys from earlier builds are ignored. A collapsed header shows the attention dot when any member
+needs attention.
 
 **Project group home.** `selectProjectGroup(id)` clears project, workspace and creation selection and
 records `activeProjectGroupId`; `selectActiveProjectGroupId` yields it only while nothing narrower is

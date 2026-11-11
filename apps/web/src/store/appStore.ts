@@ -1026,7 +1026,7 @@ interface AppState {
 	activeCreationId: string | null;
 	/** The project group whose home fills Project Home's main pane; see `selectActiveProjectGroupId`. */
 	activeProjectGroupId: string | null;
-	/** Collapsed project-group headers and folder rows in the rail, by `projectGroups` node key. */
+	/** Collapsed project-group headers in the rail, by `groupNodeKey`. */
 	collapsedRailNodes: Record<string, true>;
 	creationChatToOpen: CreationChatHandoff | null;
 	sentCreationPrompts: Record<string, { text: string; attachments: ChatAttachment[] }>;

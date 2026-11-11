@@ -83,12 +83,7 @@ import { AddProjectMenu } from "./AddProjectMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExistingWorktreeDialog } from "./ExistingWorktreeDialog";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
-import {
-	groupNodeKey,
-	type ProjectGroupTreeNode,
-	projectRailEntries,
-	treeProjects,
-} from "./projectGroups";
+import { groupMemberLabel, groupNodeKey, projectRailEntries } from "./projectGroups";
 import { RemoveWorkspaceDialog } from "./RemoveWorkspaceDialog";
 import {
 	announceSettledShelf,
@@ -308,7 +303,7 @@ export function ProjectTree() {
 	const anyNeedsAttention = (list: readonly Project[]) =>
 		list.some((project) => selectProjectNeedsAttention(stateProjection, project.id));
 
-	const renderProject = (project: Project, inGroup?: { path: string; nested?: ReactNode }) => {
+	const renderProject = (project: Project, inGroup?: { path: string }) => {
 		const isExpanded = expandedProjectIds[project.id] === true;
 		const list = workspaces[project.id];
 		return (
@@ -318,6 +313,8 @@ export function ProjectTree() {
 					{...(inGroup
 						? {
 								inGroup: true,
+								label: groupMemberLabel(project),
+								truncateStart: inGroup.path !== "",
 								title:
 									inGroup.path === ""
 										? t("panels.projectTree.groupRootTooltip", { path: project.path })
@@ -393,45 +390,9 @@ export function ProjectTree() {
 						))}
 					</ul>
 				)}
-				{inGroup?.nested}
 			</li>
 		);
 	};
-
-	const renderGroupNodes = (groupId: string, nodes: readonly ProjectGroupTreeNode[]) =>
-		nodes.map((node) => {
-			if (node.kind === "repository") {
-				return renderProject(node.project, {
-					path: node.path,
-					...(node.children.length > 0
-						? {
-								nested: (
-									<ul className="ml-12 flex flex-col border-border-muted border-l">
-										{renderGroupNodes(groupId, node.children)}
-									</ul>
-								),
-							}
-						: {}),
-				});
-			}
-			const collapsed = collapsedRailNodes[node.key] === true;
-			return (
-				<li key={node.key} data-testid="project-group-folder" data-group-path={node.path}>
-					<FolderRow
-						label={node.label}
-						title={node.path}
-						collapsed={collapsed}
-						needsAttention={collapsed && anyNeedsAttention(treeProjects(node.children))}
-						onToggle={() => useAppStore.getState().toggleRailNode(node.key)}
-					/>
-					{collapsed ? null : (
-						<ul className="ml-12 flex flex-col border-border-muted border-l">
-							{renderGroupNodes(groupId, node.children)}
-						</ul>
-					)}
-				</li>
-			);
-		});
 
 	return (
 		<nav data-testid="project-tree" className="flex flex-col gap-4">
@@ -479,10 +440,12 @@ export function ProjectTree() {
 							/>
 							{collapsedRailNodes[groupNodeKey(entry.id)] === true ? null : (
 								<ul
-									className="ml-16 flex flex-col border-border-muted border-l"
+									className="flex flex-col pl-16"
 									aria-label={t("panels.projectTree.group", { name: entry.name })}
 								>
-									{renderGroupNodes(entry.id, entry.tree)}
+									{entry.projects.map((member) =>
+										renderProject(member, { path: member.projectGroup?.path ?? "" }),
+									)}
 								</ul>
 							)}
 						</li>
@@ -626,10 +589,14 @@ function ProjectRow({
 	onRegisterNameButton,
 	onRestoreFocus,
 	inGroup = false,
+	label,
+	truncateStart = false,
 	title,
 	badge,
 }: {
 	inGroup?: boolean;
+	label?: string;
+	truncateStart?: boolean;
 	title?: string;
 	badge?: string;
 	project: Project;
@@ -681,7 +648,7 @@ function ProjectRow({
 	) : (
 		<Folder className={`size-14 shrink-0 ${isSelected ? "text-primary" : "text-text-muted"}`} />
 	);
-	const nameClass = `truncate tr-text-ui ${isSelected ? "text-text-default" : "text-text-muted"}`;
+	const nameClass = `min-w-0 truncate tr-text-ui ${isSelected ? "text-text-default" : "text-text-muted"}`;
 	const openDialogAfterMenu = (openDialog: () => void) => {
 		openingDialogRef.current = true;
 		setMenuOpen(false);
@@ -736,7 +703,16 @@ function ProjectRow({
 					className="flex min-w-0 flex-1 items-center gap-4 text-left"
 				>
 					{folderIcon}
-					<span className={nameClass}>{project.name}</span>
+					<span
+						className={cn(nameClass, truncateStart && "text-left")}
+						{...(truncateStart ? { dir: "rtl" as const } : {})}
+					>
+						{truncateStart ? (
+							<span dir="ltr">{label ?? project.name}</span>
+						) : (
+							(label ?? project.name)
+						)}
+					</span>
 					{badge ? (
 						<span className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight">
 							{badge}
@@ -926,45 +902,6 @@ function GroupHeader({
 					{label}
 				</span>
 			)}
-			{needsAttention ? <AttentionDot /> : null}
-		</div>
-	);
-}
-
-function FolderRow({
-	label,
-	title,
-	collapsed,
-	needsAttention,
-	onToggle,
-}: {
-	label: string;
-	title: string;
-	collapsed: boolean;
-	needsAttention: boolean;
-	onToggle: () => void;
-}) {
-	const t = useT();
-	const Chevron = collapsed ? ChevronRight : ChevronDown;
-	const Icon = collapsed ? RiFolderLine : FolderOpen;
-	return (
-		<div className="flex h-panel-row min-w-0 items-center gap-4 rounded-sm pr-4 pl-4 text-text-subtle hover:bg-control-bg-hovered">
-			<button
-				type="button"
-				data-testid="project-group-folder-toggle"
-				aria-expanded={!collapsed}
-				aria-label={t(
-					collapsed ? "panels.projectTree.expandFolder" : "panels.projectTree.collapseFolder",
-					{ path: title },
-				)}
-				title={title}
-				onClick={onToggle}
-				className="flex min-w-0 flex-1 items-center gap-4 text-left hover:text-text-muted focus-visible:text-text-muted"
-			>
-				<Chevron className="size-16 shrink-0" />
-				<Icon className="size-14 shrink-0" aria-hidden="true" />
-				<span className="truncate tr-text-metadata">{label}</span>
-			</button>
 			{needsAttention ? <AttentionDot /> : null}
 		</div>
 	);

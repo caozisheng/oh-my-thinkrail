@@ -1,12 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Project } from "@thinkrail/contracts";
-import {
-	folderNodeKey,
-	type ProjectGroupTreeNode,
-	projectGroupTree,
-	projectRailEntries,
-	treeProjects,
-} from "./projectGroups";
+import { groupMemberLabel, projectRailEntries } from "./projectGroups";
 
 function project(id: string, group?: { id: string; path: string }): Project {
 	return {
@@ -28,19 +22,21 @@ function project(id: string, group?: { id: string; path: string }): Project {
 	};
 }
 
-test("group members collapse under one entry at the first member's place, shallow-first", () => {
+test("group members collapse under one entry at the first member's place, root then by path", () => {
 	const entries = projectRailEntries([
 		project("solo"),
 		project("core", { id: "g", path: "libs/core" }),
 		project("other"),
 		project("root", { id: "g", path: "" }),
 		project("app", { id: "g", path: "app" }),
+		project("zeta", { id: "g", path: "zeta" }),
+		project("nested", { id: "g", path: "a/nested" }),
 	]);
 	expect(
 		entries.map((e) =>
 			e.kind === "group" ? `group:${e.projects.map((p) => p.id).join(",")}` : e.project.id,
 		),
-	).toEqual(["solo", "group:root,app,core", "other"]);
+	).toEqual(["solo", "group:root,nested,app,core,zeta", "other"]);
 });
 
 test("a group with a single open member stays a plain row", () => {
@@ -48,13 +44,6 @@ test("a group with a single open member stays a plain row", () => {
 		{ kind: "project", project: project("app", { id: "g", path: "app" }) },
 	]);
 });
-
-function outline(nodes: readonly ProjectGroupTreeNode[], indent = ""): string[] {
-	return nodes.flatMap((node) => [
-		`${indent}${node.kind === "folder" ? "[" : ""}${node.label}${node.kind === "folder" ? "]" : ""}`,
-		...outline(node.children, `${indent}  `),
-	]);
-}
 
 const LAYOUT = [
 	"",
@@ -73,63 +62,34 @@ const LAYOUT = [
 	"docs",
 ];
 
-test("the group tree mirrors the folder layout with folder rows and folded single-child chains", () => {
+test("a group lists members flat: root first, then relative paths, no folder rows", () => {
 	const projects = [...LAYOUT].reverse().map((path) => project(path || "root", { id: "g", path }));
-	expect(outline(projectGroupTree("g", projects))).toEqual([
+	const [entry] = projectRailEntries(projects);
+	expect(entry?.kind).toBe("group");
+	if (entry?.kind !== "group") return;
+	expect(entry.projects.map(groupMemberLabel)).toEqual([
 		"root",
-		"[clients]",
-		"  [desktop]",
-		"    linux",
-		"    mac",
-		"  [mobile]",
-		"    ios",
-		"[deep/a/b]",
-		"  c4",
-		"    d5",
+		"clients/desktop/linux",
+		"clients/desktop/mac",
+		"clients/mobile/ios",
+		"deep/a/b/c4",
+		"deep/a/b/c4/d5",
 		"docs",
 		"infra",
-		"  terraform",
-		"[libs]",
-		"  [internal]",
-		"    codec",
-		"  [vendor]",
-		"    zlib",
-		"[services]",
-		"  auth",
-		"  billing",
-		"    [modules/invoice]",
-		"      core",
+		"infra/terraform",
+		"libs/internal/codec",
+		"libs/vendor/zlib",
+		"services/auth",
+		"services/billing",
+		"services/billing/modules/invoice/core",
 	]);
 });
 
-test("tree rows carry full relative paths, member ids and per-group folder keys", () => {
-	const projects = LAYOUT.map((path) => project(path || "root", { id: "g", path }));
-	const tree = projectGroupTree("g", projects);
-	const services = tree.find((node) => node.label === "services");
-	expect(services).toMatchObject({
-		kind: "folder",
-		path: "services",
-		key: folderNodeKey("g", "services"),
-	});
-	const billing = services?.children[1];
-	expect(billing).toMatchObject({
-		kind: "repository",
-		key: "services/billing",
-		path: "services/billing",
-	});
-	expect(billing?.children[0]).toMatchObject({
-		kind: "folder",
-		label: "modules/invoice",
-		path: "services/billing/modules/invoice",
-	});
-	expect(tree.find((node) => node.label === "deep/a/b")?.path).toBe("deep/a/b");
-	expect(treeProjects(tree).map((p) => p.projectGroup?.path)).toHaveLength(LAYOUT.length);
-	expect(treeProjects(tree)[0]?.id).toBe("root");
-});
-
-test("a group without a root member starts at its top folders, and the rail entry carries the tree", () => {
-	const projects = [project("a", { id: "g", path: "x/a" }), project("b", { id: "g", path: "x/b" })];
-	expect(outline(projectGroupTree("g", projects))).toEqual(["[x]", "  a", "  b"]);
+test("a group without a root member is still a flat list sorted by path", () => {
+	const projects = [project("b", { id: "g", path: "x/b" }), project("a", { id: "g", path: "x/a" })];
 	const [entry] = projectRailEntries(projects);
-	expect(entry?.kind === "group" ? outline(entry.tree) : []).toEqual(["[x]", "  a", "  b"]);
+	expect(entry?.kind === "group" ? entry.projects.map(groupMemberLabel) : []).toEqual([
+		"x/a",
+		"x/b",
+	]);
 });

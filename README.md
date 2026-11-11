@@ -39,8 +39,8 @@ token. It includes:
 - **Project groups**: "Import folder as project group…" scans a folder (the folder itself may be a
   repository or not) for nested Git repositories up to six levels deep, skipping hidden, dependency
   and build folders and never following symlinks, lets you untick any, and opens the rest as projects.
-  The project rail shows them as a tree that mirrors the folder (nested repositories under the one that
-  holds them, plain folders in between, single-child folder chains folded into one row). Clicking the
+  The project rail lists them flat under the group header: the root repository first (tagged root),
+  then each other member labelled with its relative path. Clicking the
   group name opens the group home: the group's Issues as a collapsed-by-default list (each row shows
   how many repositories the Issue touches, how many changed, its commits and uncommitted files; expand
   it for every repository's Issue branch, commits since its start, commits behind the default branch

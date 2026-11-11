@@ -5099,11 +5099,11 @@ test("a project group home is shown only while nothing narrower is selected and 
 	expect(useAppStore.getState().activeProjectGroupId).toBeNull();
 });
 
-test("rail group and folder collapse toggles and hydrates by node key", () => {
+test("rail group collapse toggles and hydrates by node key", () => {
 	const store = useAppStore.getState();
 	store.hydrateCollapsedRailNodes(["group:g"]);
 	expect(useAppStore.getState().collapsedRailNodes).toEqual({ "group:g": true });
-	store.toggleRailNode("folder:g:services");
+	store.toggleRailNode("group:h");
 	store.toggleRailNode("group:g");
-	expect(useAppStore.getState().collapsedRailNodes).toEqual({ "folder:g:services": true });
+	expect(useAppStore.getState().collapsedRailNodes).toEqual({ "group:h": true });
 });
