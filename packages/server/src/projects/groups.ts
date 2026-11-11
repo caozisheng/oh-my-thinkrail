@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { lstat, open, readdir, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import {
 	PROJECT_GROUP_MAX_REPOSITORIES,
@@ -12,7 +12,7 @@ import {
 	type ProjectGroupScan,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
-import { canonicalPath } from "../git";
+import { canonicalPath, gitAsync } from "../git";
 import {
 	closeProject,
 	getProjects,
@@ -21,10 +21,15 @@ import {
 	setProjectGroupMembership,
 } from "./projects";
 
-export const PROJECT_GROUP_SCAN_DEPTH = 6;
-const SCAN_MAX_DIRECTORIES = 10_000;
-const SCAN_BUDGET_MS = 5_000;
+export const PROJECT_GROUP_SCAN_DEPTH = 10;
+const SCAN_MAX_DIRECTORIES = 50_000;
+const SCAN_BUDGET_MS = 20_000;
+/** Directories read (or repositories enumerated) at once. */
+const SCAN_CONCURRENCY = 16;
+/** A scan an import can reuse instead of walking the folder again. */
+const SCAN_REUSE_MS = 10 * 60_000;
 const GITFILE_MAX_BYTES = 4096;
+const PROJECT_LIST_MAX_BYTES = 1024 * 1024;
 const GROUP_NAME_MAX_LENGTH = 100;
 
 /** Dependency, build and cache folders that never hold a repository worth importing. */
@@ -63,38 +68,109 @@ function shallowFirst(a: string, b: string): number {
 	return depthOf(a) - depthOf(b) || a.localeCompare(b);
 }
 
-async function readHead(path: string): Promise<string> {
+function childPath(parent: string, name: string): string {
+	return parent ? `${parent}/${name}` : name;
+}
+
+function walkable(name: string): boolean {
+	return name !== "" && !name.startsWith(".") && !SKIPPED_DIRECTORIES.has(name);
+}
+
+async function readHead(path: string, maxBytes = GITFILE_MAX_BYTES): Promise<string> {
 	const handle = await open(path, "r");
 	try {
-		const buffer = Buffer.alloc(GITFILE_MAX_BYTES);
-		const { bytesRead } = await handle.read(buffer, 0, GITFILE_MAX_BYTES, 0);
+		const buffer = Buffer.alloc(maxBytes);
+		const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
 		return buffer.subarray(0, bytesRead).toString("utf8");
 	} finally {
 		await handle.close();
 	}
 }
 
+async function isGitDirectory(path: string): Promise<boolean> {
+	const target = await stat(path).catch(() => null);
+	if (!target?.isDirectory()) return false;
+	return Boolean(await stat(join(path, "HEAD")).catch(() => null));
+}
+
 /**
- * A real `.git` directory, or a gitfile that is neither a submodule (`…/modules/…`) nor a linked
- * worktree (`…/worktrees/…`). A symlinked `.git` is never followed.
+ * A real `.git` directory; a `.git` symlink to a git directory (the `repo` tool links each project's
+ * `.git` into `.repo/projects/…`); or a gitfile that is neither a submodule (`…/modules/…`) nor a
+ * linked worktree (`…/worktrees/…`) — except that gitfiles into a `.repo/` store (`repo init
+ * --worktree`) always count, since those worktrees are the projects themselves.
  */
 async function isRepositoryRoot(dir: string): Promise<boolean> {
 	const marker = join(dir, ".git");
 	const entry = await lstat(marker).catch(() => null);
 	if (!entry) return false;
 	if (entry.isDirectory()) return true;
+	if (entry.isSymbolicLink()) return isGitDirectory(marker);
 	if (!entry.isFile()) return false;
 	const text = await readHead(marker).catch(() => "");
-	const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1];
+	const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1]?.replace(/\\/g, "/");
 	if (!gitdir) return false;
-	return !/(^|\/)(modules|worktrees)\//.test(`${gitdir.replace(/\\/g, "/")}/`);
+	if (/(^|\/)\.repo\//.test(gitdir)) return true;
+	return !/(^|\/)(modules|worktrees)\//.test(`${gitdir}/`);
+}
+
+/** Any `.git` entry at all: enough for a folder the `repo` manifest itself names as a project. */
+async function hasGitMarker(dir: string): Promise<boolean> {
+	return Boolean(await lstat(join(dir, ".git")).catch(() => null));
 }
 
 /**
- * Breadth-first walk below `inputPath` for nested repositories. Hidden folders (including `.git`
- * and `.worktrees`), dependency/build folders and symlinks are never entered; the walk is bounded
- * by depth, directories read, repositories found and wall time, and reports `truncated` when one
- * of the last three stopped it.
+ * The project paths a `repo` tool checkout lists in `.repo/project.list` (one root-relative path
+ * per line), kept only when safe (relative, no `..`/hidden segments) and holding a `.git`.
+ */
+async function repoToolProjects(root: string, maxDepth: number): Promise<string[]> {
+	const text = await readHead(join(root, ".repo", "project.list"), PROJECT_LIST_MAX_BYTES).catch(
+		() => "",
+	);
+	const paths = new Set<string>();
+	for (const line of text.split(/\r?\n/)) {
+		const path = line.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+		if (!path || path.startsWith("/") || /^[A-Za-z]:/.test(path)) continue;
+		const segments = path.split("/");
+		if (segments.some((segment) => segment === "" || segment.startsWith("."))) continue;
+		if (segments.length > maxDepth) continue;
+		paths.add(path);
+	}
+	const checked = await Promise.all(
+		[...paths].map(async (path) => ((await hasGitMarker(fromGroupPath(root, path))) ? path : null)),
+	);
+	return checked.filter((path): path is string => path !== null);
+}
+
+/**
+ * The folders inside repository `dir` that its index does not track (untracked or ignored, nested
+ * repositories included), as repository-relative paths; git collapses a wholly untracked folder
+ * into one entry, so the tracked working tree is never walked here. Null when git cannot answer.
+ */
+async function untrackedFolders(dir: string, timeoutMs: number): Promise<string[] | null> {
+	const result = await gitAsync(
+		dir,
+		["-c", "core.fsmonitor=false", "ls-files", "-z", "--others", "--directory"],
+		{ raw: true, timeoutMs: Math.max(1_000, timeoutMs) },
+	);
+	if (!result.ok) return null;
+	return result.out
+		.split("\0")
+		.filter((entry) => entry.endsWith("/"))
+		.map((entry) => entry.slice(0, -1));
+}
+
+type ScanTask = { path: string; kind: "folder" | "repository" | "tracked" };
+
+/**
+ * Walk below `inputPath` for nested repositories. A `repo` tool checkout's `.repo/project.list`
+ * seeds the result. Plain folders are read breadth-first; a repository is not walked through its
+ * tracked tree — git names the folders its index does not track, and only those are walked
+ * further — and that enumeration waits until every plain folder is done, so one huge repository
+ * cannot starve its siblings. (When git cannot answer, the repository's folders are read like plain
+ * ones, still after everything else.) Hidden folders (including `.git`, `.repo` and `.worktrees`),
+ * dependency/build folders and symlinks are never entered; the walk is bounded by depth,
+ * directories read, repositories found and wall time, and reports `truncated` when one of the last
+ * three stopped it.
  */
 export async function scanProjectGroup(
 	inputPath: string,
@@ -109,36 +185,93 @@ export async function scanProjectGroup(
 	const root = await realpath(resolved);
 	if (!(await lstat(root)).isDirectory()) throw new Error(`Not a folder: ${resolved}`);
 
-	const found: string[] = [];
-	const queue: string[] = [""];
+	const found = new Set<string>();
+	const manifest = new Set(await repoToolProjects(root, maxDepth));
+	for (const path of manifest) found.add(path);
+	const seen = new Set<string>([""]);
+	const folders: ScanTask[] = [{ path: "", kind: "folder" }];
+	const deferred: ScanTask[] = [];
 	let read = 0;
 	let truncated = false;
-	while (queue.length > 0) {
-		if (found.length >= maxRepositories || read >= maxDirectories || Date.now() > deadline) {
+
+	const enqueue = (path: string, kind: ScanTask["kind"]) => {
+		if (seen.has(path)) return;
+		seen.add(path);
+		(kind === "folder" ? folders : deferred).push({ path, kind });
+	};
+	const readChildren = async (task: ScanTask) => {
+		const dir = fromGroupPath(root, task.path);
+		const children = await readdir(dir, { withFileTypes: true }).catch(() => []);
+		for (const child of children.sort((a, b) => a.name.localeCompare(b.name))) {
+			if (!child.isDirectory() || child.isSymbolicLink() || !walkable(child.name)) continue;
+			const path = childPath(task.path, child.name);
+			if (manifest.has(path)) enqueue(path, "repository");
+			else enqueue(path, task.kind === "tracked" ? "tracked" : "folder");
+		}
+	};
+	const visit = async (task: ScanTask) => {
+		const dir = fromGroupPath(root, task.path);
+		if (task.kind === "repository") {
+			const untracked = await untrackedFolders(dir, deadline - Date.now());
+			if (untracked === null) {
+				await readChildren({ path: task.path, kind: "tracked" });
+				return;
+			}
+			for (const entry of untracked) {
+				const path = childPath(task.path, entry);
+				if (depthOf(path) > maxDepth || !path.split("/").every(walkable)) continue;
+				enqueue(path, manifest.has(path) ? "repository" : "folder");
+			}
+			return;
+		}
+		if (manifest.has(task.path) || (await isRepositoryRoot(dir))) {
+			found.add(task.path);
+			if (depthOf(task.path) < maxDepth) {
+				// Re-queue the repository itself for the deferred, untracked-only enumeration.
+				deferred.push({ path: task.path, kind: "repository" });
+			}
+			return;
+		}
+		if (depthOf(task.path) >= maxDepth) return;
+		await readChildren(task);
+	};
+
+	while (folders.length > 0 || deferred.length > 0) {
+		if (found.size >= maxRepositories || read >= maxDirectories || Date.now() > deadline) {
 			truncated = true;
 			break;
 		}
-		const path = queue.shift() ?? "";
-		const dir = fromGroupPath(root, path);
-		if (await isRepositoryRoot(dir)) found.push(path);
-		if (depthOf(path) >= maxDepth) continue;
-		read += 1;
-		const children = await readdir(dir, { withFileTypes: true }).catch(() => []);
-		for (const child of children.sort((a, b) => a.name.localeCompare(b.name))) {
-			if (!child.isDirectory() || child.isSymbolicLink()) continue;
-			if (child.name.startsWith(".") || SKIPPED_DIRECTORIES.has(child.name)) continue;
-			queue.push(path ? `${path}/${child.name}` : child.name);
-		}
+		const queue = folders.length > 0 ? folders : deferred;
+		const batch = queue.splice(0, Math.min(SCAN_CONCURRENCY, maxDirectories - read));
+		read += batch.length;
+		await Promise.all(batch.map(visit));
 	}
 	const folderName = basename(root) || root;
-	return {
+	const repositories = [...found].sort(shallowFirst).slice(0, maxRepositories);
+	if (found.size > maxRepositories) truncated = true;
+	const scan: ProjectGroupScan = {
 		root,
 		// Re-scanning an imported root offers its current group name, so confirming keeps it.
 		name: existingGroup(root)?.name ?? folderName,
-		repositories: found
-			.sort(shallowFirst)
-			.map((path) => ({ path, name: path ? basename(path) : folderName })),
+		repositories: repositories.map((path) => ({ path, name: path ? basename(path) : folderName })),
 		truncated,
+	};
+	recentScans.set(root, { at: Date.now(), paths: new Set(repositories) });
+	return scan;
+}
+
+/** The last scan of each root, so confirming a slow scan does not repeat it. */
+const recentScans = new Map<string, { at: number; paths: Set<string> }>();
+
+async function scannedPaths(root: string): Promise<{ root: string; paths: Set<string> }> {
+	const key = await realpath(resolveProjectPath(root)).catch(() => null);
+	const recent = key ? recentScans.get(key) : undefined;
+	if (key && recent && Date.now() - recent.at < SCAN_REUSE_MS)
+		return { root: key, paths: recent.paths };
+	const scan = await scanProjectGroup(root);
+	return {
+		root: scan.root,
+		paths: new Set(scan.repositories.map((repository) => repository.path)),
 	};
 }
 
@@ -177,12 +310,16 @@ export async function importProjectGroup(
 		(input.name !== undefined && typeof input.name !== "string")
 	)
 		invalidImport();
-	const scan = await scanProjectGroup(input.root);
-	const known = new Set(scan.repositories.map((repository) => repository.path));
-	if (input.paths.some((path) => !known.has(path))) invalidImport();
+	let scan = await scannedPaths(input.root);
+	// A path the reused scan lacks gets one fresh scan before the import is refused.
+	if (input.paths.some((path) => !scan.paths.has(path))) {
+		recentScans.delete(scan.root);
+		scan = await scannedPaths(input.root);
+	}
+	if (input.paths.some((path) => !scan.paths.has(path))) invalidImport();
 	const existing = existingGroup(scan.root);
 	const id = existing?.id ?? randomUUID();
-	const name = groupName(input.name, existing?.name ?? scan.name);
+	const name = groupName(input.name, existing?.name ?? (basename(scan.root) || scan.root));
 	const projects: Project[] = [];
 	const failed: ProjectGroupImport["failed"] = [];
 	for (const path of [...input.paths].sort(shallowFirst)) {

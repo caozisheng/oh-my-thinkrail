@@ -88,7 +88,7 @@ test("scan stops at the depth limit and skips dependency, hidden and linked fold
 		makeRepo(join(outside, "linked"));
 		symlinkSync(join(outside, "linked"), join(work, "linked"), "dir");
 		symlinkSync(outside, join(work, "parent-link"), "dir");
-		const scan = await scanProjectGroup(work);
+		const scan = await scanProjectGroup(work, { maxDepth: 6 });
 		expect(scan.repositories.map((r) => r.path)).toEqual([
 			"libs/vendor/zlib",
 			"one/two/three/four/five/six",
@@ -109,6 +109,95 @@ test("scan skips submodule and linked-worktree gitfiles but keeps a separate git
 	mkdirSync(join(work, "separate"));
 	writeFileSync(join(work, "separate", ".git"), "gitdir: /repos/separate.git\n");
 	expect((await scanProjectGroup(work)).repositories.map((r) => r.path)).toEqual(["separate"]);
+});
+
+test("a large repository working tree does not starve sibling repositories", async () => {
+	const big = join(work, "big");
+	makeRepo(big);
+	// A deep tracked tree inside the repository and a wide untracked artifact tree outside any.
+	for (let i = 0; i < 40; i++) {
+		const deep = join(big, "src", `m${i}`, "a", "b", "c");
+		mkdirSync(deep, { recursive: true });
+		writeFileSync(join(deep, "f.txt"), "x");
+	}
+	git(big, "add", "-A");
+	git(big, "-c", "user.email=t@thinkrail.test", "-c", "user.name=test", "commit", "-m", "tree");
+	for (let i = 0; i < 300; i++)
+		mkdirSync(join(work, "artifacts", `run-${i}`, "x"), { recursive: true });
+	makeRepo(join(work, "artifacts", "run-7", "helmet"));
+	for (const name of ["zz-a", "zz-b", "zz-c"]) makeRepo(join(work, "workbench", name));
+	// Budget enough for the plain folders, not for walking the tracked tree as well.
+	const scan = await scanProjectGroup(work, { maxDirectories: 700 });
+	expect(scan.truncated).toBe(false);
+	expect(scan.repositories.map((r) => r.path)).toEqual([
+		"big",
+		"workbench/zz-a",
+		"workbench/zz-b",
+		"workbench/zz-c",
+		"artifacts/run-7/helmet",
+	]);
+});
+
+test("scan finds repositories nested in a repository's untracked or ignored folders", async () => {
+	const parent = join(work, "parent");
+	makeRepo(parent);
+	writeFileSync(join(parent, ".gitignore"), "vendor/\n");
+	mkdirSync(join(parent, "src", "lib"), { recursive: true });
+	writeFileSync(join(parent, "src", "lib", "a.c"), "");
+	git(parent, "add", "-A");
+	git(parent, "-c", "user.email=t@thinkrail.test", "-c", "user.name=test", "commit", "-m", "src");
+	makeRepo(join(parent, "vendor", "x", "y"));
+	makeRepo(join(parent, "src", "lib", "plugin"));
+	makeRepo(join(parent, "tools"));
+	expect((await scanProjectGroup(work)).repositories.map((r) => r.path)).toEqual([
+		"parent",
+		"parent/tools",
+		"parent/src/lib/plugin",
+		"parent/vendor/x/y",
+	]);
+});
+
+test("scan finds well over 64 repositories", async () => {
+	for (let i = 0; i < 120; i++) makeRepo(join(work, `group-${Math.floor(i / 10)}`, `repo-${i}`));
+	const scan = await scanProjectGroup(work);
+	expect(scan.truncated).toBe(false);
+	expect(scan.repositories).toHaveLength(120);
+});
+
+test("a repo tool checkout is read from .repo/project.list, symlinked .git included", async () => {
+	const root = join(work, "aosp");
+	const store = join(root, ".repo", "projects");
+	const projects = ["build_system", "device/acme/board", "hardware/camera", "external/zlib"];
+	for (const path of projects) {
+		const gitdir = join(store, `${path}.git`);
+		mkdirSync(join(gitdir, ".."), { recursive: true });
+		git(join(gitdir, ".."), "init", "--bare", "-q", gitdir);
+		mkdirSync(join(root, path), { recursive: true });
+		symlinkSync(gitdir, join(root, path, ".git"), "dir");
+	}
+	// `repo init --worktree` style: a gitfile into the .repo store's worktrees.
+	mkdirSync(join(root, "common"), { recursive: true });
+	writeFileSync(
+		join(root, "common", ".git"),
+		`gitdir: ${join(root, ".repo", "worktrees", "common.git", "worktrees", "common")}\n`,
+	);
+	// Listed but gone, and an unsafe entry: both dropped.
+	writeFileSync(
+		join(root, ".repo", "project.list"),
+		`${[...projects, "common", "missing/project", "../escape", ".hidden/x"].join("\n")}\n`,
+	);
+	// An ad-hoc clone outside the manifest is still found by the walk.
+	makeRepo(join(root, "workbench", "bringup", "tool"));
+	const scan = await scanProjectGroup(root);
+	expect(scan.truncated).toBe(false);
+	expect(scan.repositories.map((r) => r.path)).toEqual([
+		"build_system",
+		"common",
+		"external/zlib",
+		"hardware/camera",
+		"device/acme/board",
+		"workbench/bringup/tool",
+	]);
 });
 
 test("scan reports truncation when a budget stops it", async () => {
