@@ -119,7 +119,10 @@ export function createAskUserQuestionExtension(
 				const outcome = await ask({ toolCallId, args, signal, ctx });
 				const result = outcomeResult(outcome, args);
 				if (outcome.kind === "answered")
-					result.content.push({ type: "text", text: `\ntoolCallId: ${JSON.stringify(toolCallId)}` });
+					result.content.push({
+						type: "text",
+						text: `\ntoolCallId: ${JSON.stringify(toolCallId)}`,
+					});
 				return result;
 			},
 			renderCall: renderAskCall,

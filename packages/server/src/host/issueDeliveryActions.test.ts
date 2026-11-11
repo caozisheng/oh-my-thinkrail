@@ -159,13 +159,7 @@ test("delivery needs no prior implementation receipt and pushes the reviewed cur
 		{ label: "Looks right", description: expect.any(String) },
 	]);
 	const preview = card.questions.questions[0]?.preview;
-	for (const text of [
-		"Exact draft body",
-		f.state.sha,
-		f.host.url,
-		"develop",
-		"Non-force push",
-	])
+	for (const text of ["Exact draft body", f.state.sha, f.host.url, "develop", "Non-force push"])
 		expect(preview).toContain(text);
 	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
 	expect(f.effects).toEqual([]);
@@ -190,6 +184,29 @@ test("delivery needs no prior implementation receipt and pushes the reviewed cur
 	]);
 	await f.actions.execute("session", "deliver", "answer");
 	expect(f.effects).toHaveLength(2);
+});
+
+test("historical implementation commits do not block review of the current checkout", async () => {
+	const f = await fixture();
+	const old = await f.journal.prepare("old-session", "old-implementation", {
+		stage: "implementation",
+		report: "Earlier implementation",
+		commits: [{ ...f.repository, sha: "b".repeat(40), branch: "old-branch" }],
+	});
+	await f.journal.execute(
+		"old-session",
+		"old-implementation",
+		old.digest,
+		"old-answer",
+		async () => ({
+			stage: "implementation",
+			noteId: 7,
+		}),
+	);
+	const card = await f.prepare();
+	expect(card.questions.questions[0]?.preview).toContain(f.state.sha);
+	expect(card.questions.questions[0]?.preview).toContain(f.state.branch);
+	expect(f.effects).toEqual([]);
 });
 
 test("one exact existing PR is reused without push or modification", async () => {
