@@ -14,7 +14,10 @@ import { useState } from "react";
 import { issueKey } from "./model";
 
 /** `loading`/`error` describe the read of this issue's selection, never an empty saved list. */
-export type IssueRepositoriesView = IssueRepositories | "loading" | "error";
+export type IssueRepositoriesView =
+	| (IssueRepositories & { pending?: boolean; failed?: boolean })
+	| "loading"
+	| "error";
 
 /** A join/cleanup outcome the popover reports inline; `detail` is the host's refusal text. */
 export type IssueRepositoriesNotice =
@@ -83,7 +86,7 @@ export function IssueRepositoriesControl({
 			<PopoverContent className="flex w-320 flex-col gap-8 p-12" align="end">
 				<IssueRepositoriesPanel
 					candidates={candidates}
-					view={view}
+					view={selection?.pending ? "loading" : selection?.failed ? "error" : view}
 					onToggle={onToggle}
 					onJoin={onJoin}
 					onCleanup={onCleanup}

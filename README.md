@@ -32,8 +32,9 @@ token. It includes:
 - **Linked repositories**: an issue can name other open projects it also touches. Design reads their
   own checkouts; implementation then prepares a worktree in each of those repositories under its own
   `.worktrees/`, starts a single session only when every one is ready, and tags each worktree in the
-  project rail with the issue number (`#23`, and `#23(master)` for the issue's primary worktree once
-  it has linked repositories). Changes, review and commits stay attributed per repository; commits
+  project rail with the issue number (`#23`, and `#23(master)` for the issue's primary worktree).
+  Single-repository workspaces show no issue tag. The Issues list reads linked-repository indicators
+  automatically on initial load and refresh. Changes, review and commits stay attributed per repository; commits
   across repositories are not atomic, so a failure keeps the successful ones and is reported. Build
   and integration paths between the worktrees are the agent's normal reviewed work, not automatic.
 - **Project groups**: "Import folder as project group…" scans a folder (the folder itself may be a

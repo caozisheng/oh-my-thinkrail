@@ -4,7 +4,11 @@ import type { IssueRepositories, IssueSummary, Project } from "@thinkrail/contra
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { renderToStaticMarkup } from "react-dom/server";
 import { selectRepoProjects } from "../store/selectors";
-import { IssueRepositoriesControl, IssueRepositoriesPanel } from "./IssueRepositoriesControl";
+import {
+	IssueRepositoriesControl,
+	IssueRepositoriesPanel,
+	type IssueRepositoriesView,
+} from "./IssueRepositoriesControl";
 
 /** `reference.projectId` is the remote id; the local primary project is identified separately. */
 const issue: IssueSummary = {
@@ -26,7 +30,7 @@ const projects = [
 	{ id: "api-local", name: "backend" },
 ];
 
-function render(view: IssueRepositories | "loading" | "error" | undefined, disabled = false) {
+function render(view: IssueRepositoriesView | undefined, disabled = false) {
 	return renderToStaticMarkup(
 		<TooltipProvider>
 			<IssueRepositoriesControl
@@ -121,4 +125,12 @@ test("Issue repository choices use the repository selector and exclude the Chats
 	const source = readFileSync(new URL("./IssuesTool.tsx", import.meta.url), "utf8");
 	expect(source).toContain("useAppStore(useShallow(selectRepoProjects))");
 	expect(source).toContain("repositoryProjects={projects}");
+});
+
+test("pending and failed refreshes keep the last confirmed linked indicator", () => {
+	for (const flags of [{ pending: true }, { failed: true }]) {
+		expect(render({ projectIds: ["api-local"], locked: false, ...flags })).toContain(
+			'data-variant="soft-primary"',
+		);
+	}
 });
