@@ -1224,8 +1224,9 @@ rechecks availability/trust around every awaited port.
 Default workspace id and main project path. `groupWorkspaceLayout` answers the `layout` port only when
 every listed participant is in the primary's group and still sits at its recorded relative place under
 the real group root, and then also places every other open member found at its place; it returns null
-(ordinary per-repository paths) in every other case. The group's root repository no longer has to
-participate: `workspaces` excludes `/.worktrees/` in a layout root that is a repository.
+(ordinary per-repository paths) in every other case. The group folder is a plain folder in the usual
+(`repo`/`west`-style) layout and is never required to be a repository; when it happens to be one, it is an
+ordinary member, and `workspaces` excludes `/.worktrees/` in that repository either way.
 
 **Project group home (v127).** `project.groupStatus`, `project.fetchGroup` and `project.removeGroup`
 sit behind `PROJECT_GROUP_HOME_PROTOCOL_VERSION`. `projectGroupHome.ts` composes them over

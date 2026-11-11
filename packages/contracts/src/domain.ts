@@ -136,7 +136,7 @@ export interface ProjectGroupTarget {
 /** One open member's checkout as `project.groupStatus` read it; absent fields were not measurable. */
 export interface ProjectGroupRepositoryStatus {
 	projectId: string;
-	/** Relative to the group root, `""` for the root repository. */
+	/** Relative to the group root, `""` when the group folder is itself a repository. */
 	path: string;
 	/** Branch name, or null on a detached HEAD or when git could not be read. */
 	branch: string | null;
@@ -156,7 +156,7 @@ export interface ProjectGroupIssueRepository {
 	workspaceId?: string;
 	/** Commits or changes beyond the start commit; absent when no start could be established. */
 	changed?: boolean;
-	/** Relative to the group root (`""` for the root repository); absent outside the group. */
+	/** Relative to the group root (`""` when the group folder is itself a repository); absent outside the group. */
 	path?: string;
 	/** The Issue worktree's branch. */
 	branch?: string;

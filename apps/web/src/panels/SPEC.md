@@ -539,7 +539,7 @@ newer open-project selection.
 **Importing a project group.** From `PROJECT_GROUPS_PROTOCOL_VERSION` both add-project menus offer
 "Import folder as project group…": `useOpenProject` picks a folder (falling back to the host-path entry
 when the native picker fails), asks `project.scanGroup`, and opens `ImportProjectGroupDialog` with every
-found repository kept (root shown as "(folder root)"), an editable group name defaulting to the folder
+found repository kept (the folder itself, when it is a repository, shown as "This folder itself (.)"), an editable group name defaulting to the folder
 name, and the scan's truncation notice. Import sends only the kept relative paths to
 `project.importGroup`; every returned project is applied to the store and the first one is adopted through
 the same last-intent fence as opening a project. Per-repository failures (e.g. `ALREADY_OPEN`) keep the
@@ -547,8 +547,10 @@ dialog open on a failure list with Done; nothing else is retried.
 
 **Grouping in the rail.** `projectRailEntries` folds two or more open members of one
 `Project.projectGroup` into a single entry at the first member's place in the incoming order; a group
-with one open member renders as a plain row. Members are a **flat list**: the **root repository**
-(path `""`) is first, tagged *root*, then the others sorted by relative path. Each row is labelled
+with one open member renders as a plain row. Members are a **flat list sorted by relative path**
+(`compareGroupMembers`); no member is special. A project group is a folder plus its member repositories —
+the folder is usually a plain non-Git folder (`repo`/`west` style) — and a folder that happens to be a
+repository is an ordinary member labelled `.` (sorting first only lexically). Each row is labelled
 with that relative path (`billing/modules/invoice/core`) so the folder layout stays visible without
 nesting; a long path ellipsizes at the start (the trailing segments stay readable) and the full path
 is the name's tooltip. There are no folder rows, no per-folder indent, and no single-child chain
@@ -563,16 +565,22 @@ needs attention.
 **Group start (`+`).** The group header ends with the same ghost `+` as a repository row; it opens
 `ProjectGroupStartDialog`, the project start screen's three `WelcomeCard`s and copy scoped to the
 group. **Start building** is the highlighted card and the group's main path, *start an Issue*: it
-switches the dialog to a primary-repository picker (group members by relative path, default the root
-repository, else the shallowest member) over an embedded `IssuesTool` for that repository, so the
+switches the dialog to a primary-repository picker (group members by relative path; default the first
+member whose Issue tracker is connected, read with `issues.connection` per member when the dialog opens;
+none connected → no preselection and a prompt to choose) over an embedded `IssuesTool` for that repository, so the
 Issue list, connection, trust and stage actions are the Issues tool's own and a launched session opens
 through the shared `openIssueSession` (moved to `panels/issueSession`, re-exported by the workbench).
 The Issue worktree starts with the primary repository only; other members join on demand
 (`issues.addRepository`). The host has no create-Issue method, so the step says new Issues are created
 in the tracker, and **Start without an Issue** opens `NewWorkspaceDialog` for the primary repository.
-**Set up project** opens `NewWorkspaceDialog` with the setup request for the group folder's own
-repository and **Work in project folder** enters that repository's default workspace; when the group
-folder is not a repository both stay visible but disabled, with the reason as their subtitle.
+**Set up project** asks for the member repository that holds the group's specs (default the
+tracker-connected member, else none — specs are read from Git, and the plain group folder has none) and
+opens `NewWorkspaceDialog` there with the setup skill plus a line naming the group folder and every
+member. **Work in project folder** asks for the repository the chat is listed under (default the
+tracker-connected member, else the first), enters its Default workspace and starts a chat whose draft
+names the group folder and every member to edit in place — an unisolated session; a session's cwd stays a
+workspace's folder, so it is never the plain group folder itself, and each repository shows its own
+changes. No card is disabled because the group folder is not a repository.
 
 **Project group home.** `selectProjectGroup(id)` clears project, workspace and creation selection and
 records `activeProjectGroupId`; `selectActiveProjectGroupId` yields it only while nothing narrower is
@@ -586,7 +594,7 @@ the primary's path, aggregate badges (commits ahead of start summed over the Iss
 repositories with uncommitted files) and "N repositories · M changed". Expanding a row (persisted per
 Issue in `localStorage` under `group-home-expanded-issues`, keyed by group, instance, number and
 primary — `groupHomeModel`) lists the primary and every joined repository with its relative path,
-primary/root chips, Issue branch, ↑ commits since its start (tooltip names how the start was
+the primary chip, Issue branch, ↑ commits since its start (tooltip names how the start was
 established), ↓ commits on the default branch it lacks, the pushed-upstream glyph when it has one, and
 a state chip: *N uncommitted files*, *committed*, or *unchanged* (no commits since the start and a
 clean worktree); a row opens that repository's Issue worktree, a repository without one says so.

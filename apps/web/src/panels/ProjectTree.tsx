@@ -320,11 +320,7 @@ export function ProjectTree() {
 								inGroup: true,
 								label: groupMemberLabel(project),
 								truncateStart: inGroup.path !== "",
-								title:
-									inGroup.path === ""
-										? t("panels.projectTree.groupRootTooltip", { path: project.path })
-										: inGroup.path,
-								...(inGroup.path === "" ? { badge: t("panels.projectTree.groupRootBadge") } : {}),
+								title: inGroup.path === "" ? project.path : inGroup.path,
 							}
 						: {})}
 					isSelected={selectedProjectId === project.id}
@@ -617,13 +613,11 @@ function ProjectRow({
 	label,
 	truncateStart = false,
 	title,
-	badge,
 }: {
 	inGroup?: boolean;
 	label?: string;
 	truncateStart?: boolean;
 	title?: string;
-	badge?: string;
 	project: Project;
 	isSelected: boolean;
 	isExpanded: boolean;
@@ -738,11 +732,6 @@ function ProjectRow({
 							(label ?? project.name)
 						)}
 					</span>
-					{badge ? (
-						<span className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight">
-							{badge}
-						</span>
-					) : null}
 				</button>
 			)}
 			{needsAttention ? <AttentionDot /> : null}

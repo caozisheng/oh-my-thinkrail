@@ -249,9 +249,11 @@ record as `layout`, its places are never moved, and a join only appends the plac
 after the freeze. A project outside the layout (a non-group project, or a member whose place drifted)
 joins with an ordinary per-repository path. A record without a layout and without selection keeps the
 exact single-repository shape (no `members`). With a layout every checkout, primary included, lives at
-`<root>/.worktrees/<slot>/<place>`, where `<slot>` is `issue-<IID>` when the primary is the group root
-(so its path equals the ordinary primary path) and `issue-<IID>-<binding digest>` otherwise, so
-repositories keep their relative layout. Creation runs shallow-first, so an outer checkout exists before a
+`<root>/.worktrees/<slot>/<place>`, so repositories keep their relative layout. The slot name is
+uniform — `issue-<IID>-<binding digest>` whichever member is primary (no member is special for sitting at
+the group folder; the folder is usually a plain non-Git folder) — and is frozen into `layout.slot` with the
+layout. A record frozen before `slot` existed keeps its original name (`issue-<IID>` when its primary sat at
+the group folder itself, else the same digest form). Creation runs shallow-first, so an outer checkout exists before a
 nested one is placed inside it, and the `layoutRoot` is passed to `createWorkspaceAtPath`. Lookups
 (`ownedImplementation`, `contexts`) derive paths from the frozen layout. The session cwd stays the
 primary's own worktree — never a group folder no workspace owns — so one cwd keeps one identity. Host wiring
@@ -260,8 +262,8 @@ must supply project-aware lookup ports before exposing this coordinator capabili
 **On-demand joins.** `addRepository(reference, id)` before preparation appends to the saved selection;
 after it, the add-only join reserves the member (same pending/completed ownership, appended to both
 `members` and `repositoryProjectIds`) and creates its worktree at once in the frozen slot. A member whose
-place would contain an already joined checkout (an ancestor joined after its descendant, or the group
-root) is refused with `ISSUE_REPOSITORY_REFUSED` — Git cannot add a worktree over a non-empty folder —
+place would contain an already joined checkout (an ancestor joined after its descendant — including a
+repository at the group folder itself, which is a member only when that folder is a repository) is refused with `ISSUE_REPOSITORY_REFUSED` — Git cannot add a worktree over a non-empty folder —
 as is one whose place a joined checkout already tracks, and a 33rd member; an empty folder left at the
 place is cleared first. A refusal passes the coordinator's and the launch fence's catch-alls unchanged
 (and the fence is released), so it never leaves the Issue needing reconciliation. Every new **member**

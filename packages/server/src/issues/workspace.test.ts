@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IssueReference } from "@thinkrail/contracts";
@@ -233,11 +233,13 @@ async function groupFixture(primaryPath: string) {
 	return { ...f, group, layoutRoots };
 }
 
-test("a group Issue mirrors the repositories' layout with the root repository first", async () => {
+test("a group Issue mirrors the repositories' layout; a repository at the group folder is ordinary", async () => {
 	const f = await groupFixture("");
 	await f.coordinator().setRepositories(ref, ["api"]);
 	const launch = await f.coordinator().implementation(ref);
-	const slot = join(f.group, ".worktrees", "issue-42");
+	const row = required([...f.records.values()][0]);
+	expect(row.layout?.slot).toMatch(/^issue-42-[a-f0-9]{16}$/);
+	const slot = join(f.group, ".worktrees", required(row.layout?.slot));
 	expect(f.workspaces.map((ws) => [ws.projectId, ws.worktreePath])).toEqual([
 		["local", slot],
 		["api", join(slot, "libs", "api")],
@@ -252,7 +254,7 @@ test("a group Issue mirrors the repositories' layout with the root repository fi
 	expect(f.workspaces).toHaveLength(2);
 });
 
-test("a nested primary shares a digest-named group slot so it cannot collide with the root's Issue", async () => {
+test("every primary gets the same uniform digest-named slot, frozen with the layout", async () => {
 	const f = await groupFixture("app");
 	await f.coordinator().setRepositories(ref, ["api"]);
 	await f.coordinator().implementation(ref);
@@ -262,8 +264,37 @@ test("a nested primary shares a digest-named group slot so it cannot collide wit
 	expect(api?.worktreePath).toBe(join(required(local).worktreePath, "..", "libs", "api"));
 	const row = required([...f.records.values()][0]);
 	expect(row.layout?.root).toBe(f.group);
+	expect(local?.worktreePath).toBe(join(f.group, ".worktrees", required(row.layout?.slot), "app"));
 	f.options.layout = () => null;
 	expect((await f.coordinator().ownedImplementation(ref)).id).toBe(required(local).id);
+});
+
+test("a layout frozen before slots were stored keeps its original slot name", async () => {
+	const f = await groupFixture("");
+	await f.coordinator().setRepositories(ref, ["api"]);
+	await f.coordinator().implementation(ref);
+	const [key, row] = required([...f.records.entries()][0]);
+	const legacy = join(f.group, ".worktrees", "issue-42");
+	// Rewrite the record (and the fake checkouts) as an older build froze them: no slot, `issue-<n>`.
+	const current = join(f.group, ".worktrees", required(row.layout?.slot));
+	const move = (path: string) => path.replace(current, legacy);
+	await rename(current, legacy);
+	for (const ws of f.workspaces) ws.worktreePath = move(ws.worktreePath);
+	for (const tree of f.trees) tree.path = move(tree.path);
+	const { slot: _slot, ...layout } = required(row.layout);
+	const implementation = required(row.implementation);
+	f.records.set(key, {
+		...row,
+		layout,
+		implementation: { ...implementation, worktreePath: move(implementation.worktreePath) },
+		members: (row.members ?? []).map((member) => ({
+			...member,
+			...(member.ownership
+				? { ownership: { ...member.ownership, worktreePath: move(member.ownership.worktreePath) } }
+				: {}),
+		})),
+	});
+	expect((await f.coordinator().ownedImplementation(ref)).worktreePath).toBe(legacy);
 });
 
 test("preparation membership cannot be appended to legacy implementation ownership", async () => {
@@ -742,8 +773,7 @@ async function joinFixture() {
 		await rm(ws.worktreePath, { recursive: true, force: true });
 		return true;
 	};
-	const slot = join(group, ".worktrees", "issue-42");
-	return { ...f, group, slot, bases, changed, removed };
+	return { ...f, group, bases, changed, removed };
 }
 
 const roles = async (f: Awaited<ReturnType<typeof joinFixture>>) =>
@@ -767,10 +797,13 @@ test("an Issue starts with only its primary worktree and joins members mid-way i
 		projectIds: ["api", "core"],
 		locked: true,
 	});
+	const frozen = required([...f.records.values()][0]).layout?.slot;
+	expect(frozen).toMatch(/^issue-42-[a-f0-9]{16}$/);
+	const slot = join(f.group, ".worktrees", required(frozen));
 	expect(f.workspaces.map((ws) => [ws.projectId, ws.worktreePath])).toEqual([
-		["local", f.slot],
-		["api", join(f.slot, "libs", "api")],
-		["core", join(f.slot, "libs", "api", "core")],
+		["local", slot],
+		["api", join(slot, "libs", "api")],
+		["core", join(slot, "libs", "api", "core")],
 	]);
 	// Group members (primary too) branch from the freshly fetched default; no remote keeps HEAD.
 	expect(f.bases).toEqual(["local:origin/main", "api:origin/main", "core:origin/main"]);

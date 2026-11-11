@@ -299,11 +299,12 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 function repositoryLabel(
 	repository: { projectId: string; path?: string },
 	projectById: ReadonlyMap<string, Project>,
-): { label: string; root: boolean } {
+): string {
 	const project = projectById.get(repository.projectId);
 	const path = repository.path ?? project?.projectGroup?.path;
-	if (path) return { label: path, root: false };
-	return { label: project?.name ?? repository.projectId, root: path === "" };
+	if (path) return path;
+	// The group folder itself, when it is a repository, is an ordinary member labelled like the rail.
+	return path === "" ? "." : (project?.name ?? repository.projectId);
 }
 
 /** One line per kind of trouble in members' main checkouts (Default workspaces); nothing when fine. */
@@ -319,9 +320,7 @@ export function MainCheckoutNotice({
 	const { dirty, behind } = mainCheckoutWarnings(repositories);
 	if (dirty.length === 0 && behind.length === 0) return null;
 	const names = (rows: readonly ProjectGroupRepositoryStatus[]) =>
-		rows
-			.map((row) => repositoryLabel(row, projectById).label)
-			.join(t("panels.groupHome.listSeparator"));
+		rows.map((row) => repositoryLabel(row, projectById)).join(t("panels.groupHome.listSeparator"));
 	const Chevron = open ? RiArrowDownSLine : RiArrowRightSLine;
 	return (
 		<section
@@ -374,7 +373,7 @@ export function MainCheckoutNotice({
 											aria-hidden="true"
 										/>
 										<span className="min-w-0 truncate tr-code-text text-text-default">
-											{repositoryLabel(row, projectById).label}
+											{repositoryLabel(row, projectById)}
 										</span>
 										<span className="flex-1" />
 										{row.dirty ? (
@@ -475,11 +474,11 @@ function IssueRow({
 					{t("panels.groupHome.issueNumber", { number: issue.number })}
 				</span>
 				<span className="min-w-0 truncate tr-text-ui text-text-default">
-					{issue.title ?? repositoryLabel(primary ?? issue, projectById).label}
+					{issue.title ?? repositoryLabel(primary ?? issue, projectById)}
 				</span>
 				{issue.title && primary ? (
 					<span className="hidden min-w-0 shrink truncate tr-code-text-small text-text-subtle sm:inline">
-						{repositoryLabel(primary, projectById).label}
+						{repositoryLabel(primary, projectById)}
 					</span>
 				) : null}
 				<span className="flex-1" />
@@ -560,7 +559,7 @@ function IssueRepositoryRow({
 	onOpen: (projectId: string, workspaceId: string) => void;
 }) {
 	const t = useT();
-	const { label, root } = repositoryLabel(repository, projectById);
+	const label = repositoryLabel(repository, projectById);
 	const state = repositoryState(repository);
 	const workspaceId = repository.workspaceId;
 	const baseText =
@@ -585,13 +584,6 @@ function IssueRepositoryRow({
 			>
 				<RiGitRepositoryLine className="size-14 shrink-0 text-text-muted" aria-hidden="true" />
 				<span className="min-w-0 truncate tr-code-text text-text-default">{label}</span>
-				{root ? (
-					<span
-						className={cn(CHIP_CLASS, "border-border-default text-text-subtle tr-text-caption")}
-					>
-						{t("panels.projectTree.groupRootBadge")}
-					</span>
-				) : null}
 				{repository.role === "primary" ? (
 					<span
 						className={cn(CHIP_CLASS, "border-border-default text-text-subtle tr-text-caption")}

@@ -117,5 +117,5 @@ test("the main-checkout notice appears only when a main directory needs attentio
 			projectById={projectById}
 		/>,
 	);
-	expect(html).toContain("main directories have uncommitted changes: suite, services/auth");
+	expect(html).toContain("main directories have uncommitted changes: ., services/auth");
 });

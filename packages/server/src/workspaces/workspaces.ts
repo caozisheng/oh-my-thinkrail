@@ -468,7 +468,8 @@ function excludeLocalWorktrees(project: Pick<Project, "path">): void {
 }
 
 /**
- * A layout root that is itself a repository's top level (a group's root repository, joined or not)
+ * A layout root that is itself a repository's top level (a group folder that happens to be a
+ * repository, joined or not; usually it is a plain folder and this does nothing)
  * would otherwise show the shared `.worktrees` folder as untracked in its main working tree.
  */
 function excludeLayoutRootWorktrees(layoutRoot: string): void {

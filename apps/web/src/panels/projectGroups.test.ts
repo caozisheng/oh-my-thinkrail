@@ -22,12 +22,12 @@ function project(id: string, group?: { id: string; path: string }): Project {
 	};
 }
 
-test("group members collapse under one entry at the first member's place, root then by path", () => {
+test("group members collapse under one entry at the first member's place, sorted by path", () => {
 	const entries = projectRailEntries([
 		project("solo"),
 		project("core", { id: "g", path: "libs/core" }),
 		project("other"),
-		project("root", { id: "g", path: "" }),
+		project("folder", { id: "g", path: "" }),
 		project("app", { id: "g", path: "app" }),
 		project("zeta", { id: "g", path: "zeta" }),
 		project("nested", { id: "g", path: "a/nested" }),
@@ -36,7 +36,7 @@ test("group members collapse under one entry at the first member's place, root t
 		entries.map((e) =>
 			e.kind === "group" ? `group:${e.projects.map((p) => p.id).join(",")}` : e.project.id,
 		),
-	).toEqual(["solo", "group:root,nested,app,core,zeta", "other"]);
+	).toEqual(["solo", "group:folder,nested,app,core,zeta", "other"]);
 });
 
 test("a group with a single open member stays a plain row", () => {
@@ -62,13 +62,15 @@ const LAYOUT = [
 	"docs",
 ];
 
-test("a group lists members flat: root first, then relative paths, no folder rows", () => {
-	const projects = [...LAYOUT].reverse().map((path) => project(path || "root", { id: "g", path }));
+test("a group lists members flat by relative path; a repository at the group folder is just `.`", () => {
+	const projects = [...LAYOUT]
+		.reverse()
+		.map((path) => project(path || "folder", { id: "g", path }));
 	const [entry] = projectRailEntries(projects);
 	expect(entry?.kind).toBe("group");
 	if (entry?.kind !== "group") return;
 	expect(entry.projects.map(groupMemberLabel)).toEqual([
-		"root",
+		".",
 		"clients/desktop/linux",
 		"clients/desktop/mac",
 		"clients/mobile/ios",
@@ -85,7 +87,7 @@ test("a group lists members flat: root first, then relative paths, no folder row
 	]);
 });
 
-test("a group without a root member is still a flat list sorted by path", () => {
+test("a plain (non-Git) group folder is the usual case: members sorted by path", () => {
 	const projects = [project("b", { id: "g", path: "x/b" }), project("a", { id: "g", path: "x/a" })];
 	const [entry] = projectRailEntries(projects);
 	expect(entry?.kind === "group" ? entry.projects.map(groupMemberLabel) : []).toEqual([

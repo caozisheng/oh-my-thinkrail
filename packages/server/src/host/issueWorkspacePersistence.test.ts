@@ -95,6 +95,7 @@ test("a frozen group layout round trips and rejects drift, escapes and a layout 
 				{ projectId: "local", path: "" },
 				{ projectId: "api", path: "libs/api" },
 			],
+			slot: "issue-1-0123456789abcdef",
 		},
 	};
 	await f.store.withLaunch("local", ref, (p) => p.save(key(), selected));
@@ -105,6 +106,10 @@ test("a frozen group layout round trips and rejects drift, escapes and a layout 
 	for (const bad of [
 		{ ...selected, members: undefined, repositoryProjectIds: undefined },
 		{ ...selected, layout: { ...layout, root: "relative" } },
+		...["issue-1", "../x", "issue-1-XYZ", 7].map((slot) => ({
+			...selected,
+			layout: { ...layout, slot },
+		})),
 		{ ...selected, layout: { ...layout, paths: [...layout.paths].reverse() } },
 		{ ...selected, layout: { ...layout, paths: layout.paths.slice(1) } },
 		{ ...selected, layout: { ...layout, paths: [...layout.paths, layout.paths[1]] } },

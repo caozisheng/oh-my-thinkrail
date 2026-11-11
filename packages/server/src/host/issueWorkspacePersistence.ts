@@ -131,7 +131,9 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		if (
 			!Object.hasOwn(value, "members") ||
 			!object(layout) ||
-			!shape(layout, ["root", "paths"]) ||
+			!shape(layout, ["root", "paths"], ["slot"]) ||
+			(Object.hasOwn(layout, "slot") &&
+				(typeof layout.slot !== "string" || !/^issue-\d+-[a-f0-9]{16}$/.test(layout.slot))) ||
 			typeof layout.root !== "string" ||
 			!isAbsolute(layout.root) ||
 			layout.root.length > 4096 ||

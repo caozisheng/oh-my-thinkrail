@@ -68,7 +68,7 @@ export function ImportProjectGroupDialog({
 		else setFailed(result.failed);
 	};
 
-	const label = (path: string) => path || t("panels.importGroup.root");
+	const label = (path: string) => path || t("panels.importGroup.folderItself");
 
 	return (
 		<Dialog

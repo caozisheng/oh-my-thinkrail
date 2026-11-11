@@ -20,25 +20,21 @@ export function groupNodeKey(groupId: string): string {
 }
 
 /**
- * The label a group's rail row shows: the member's relative path, or the project name for the
- * root repository (path `""`).
+ * The label a group's rail row shows: the member's relative path. A group folder that is itself a
+ * repository (path `""`, e.g. a submodule superproject) is an ordinary member labelled `.`.
  */
 export function groupMemberLabel(project: Project): string {
-	return memberPath(project) || project.name;
+	return memberPath(project) || ".";
 }
 
-function compareMembers(a: Project, b: Project): number {
-	const left = memberPath(a);
-	const right = memberPath(b);
-	if (left === right) return 0;
-	if (left === "") return -1;
-	if (right === "") return 1;
-	return left.localeCompare(right);
+/** Members sort by relative path only; no member is special. */
+export function compareGroupMembers(a: Project, b: Project): number {
+	return groupMemberLabel(a).localeCompare(groupMemberLabel(b));
 }
 
 /**
  * The rail's top-level entries: a group of two or more open members sits where its first member
- * appears in the incoming order, as a flat list (root first, then the others by relative path);
+ * appears in the incoming order, as a flat list sorted by relative path;
  * everything else stays a plain row.
  */
 export function projectRailEntries(projects: readonly Project[]): ProjectRailEntry[] {
@@ -63,7 +59,7 @@ export function projectRailEntries(projects: readonly Project[]): ProjectRailEnt
 			id: group.id,
 			name: group.name,
 			root: group.root,
-			projects: [...list].sort(compareMembers),
+			projects: [...list].sort(compareGroupMembers),
 		});
 	}
 	return entries;

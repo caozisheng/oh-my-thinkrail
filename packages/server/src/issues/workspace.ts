@@ -35,6 +35,12 @@ interface CompletedWorkspace extends Omit<PendingWorkspace, "state"> {
 export interface IssueWorkspaceLayout {
 	root: string;
 	paths: { projectId: string; path: string }[];
+	/**
+	 * The `<root>/.worktrees/<slot>` folder name, frozen with the layout: `issue-<n>-<digest16>` for
+	 * every Issue, whichever member is primary. Absent only on records frozen before it existed, which
+	 * keep their original name (`issue-<n>` when the primary sat at the group folder itself).
+	 */
+	slot?: string;
 }
 /** One repository joined to an Issue's implementation besides the primary. */
 export interface IssueWorkspaceMember {
@@ -243,14 +249,19 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			.slice(0, 16);
 	}
 
+	/** The uniform slot name of a newly frozen layout: no member (not even the group folder) is special. */
+	function slotName(record: IssueWorkspaceRecord): string {
+		return `issue-${record.reference.number}-${digest(record)}`;
+	}
+
 	/** The group slot `<root>/.worktrees/<slot>` every layout-placed checkout of this Issue lives in. */
 	async function slotFor(record: IssueWorkspaceRecord): Promise<string> {
 		const primary = placeOf(record, projectId);
 		const root = record.layout?.root;
 		if (primary === undefined || root === undefined || !isAbsolute(root)) stop();
-		const number = record.reference.number;
-		const slot = primary === "" ? `issue-${number}` : `issue-${number}-${digest(record)}`;
-		return join(await realpath(root), ".worktrees", slot);
+		// A record frozen before slots were stored keeps the name it was created with.
+		const legacy = primary === "" ? `issue-${record.reference.number}` : slotName(record);
+		return join(await realpath(root), ".worktrees", record.layout?.slot ?? legacy);
 	}
 
 	/** Where the Issue's checkout of `id` lives: the group layout when frozen, else per repository. */
@@ -414,7 +425,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				...record,
 				repositoryProjectIds: selected,
 				members: selected.map((projectId) => ({ projectId })),
-				...(layout ? { layout } : {}),
+				...(layout ? { layout: { ...layout, slot: slotName(record) } } : {}),
 			};
 			await options.save(key, record);
 		}

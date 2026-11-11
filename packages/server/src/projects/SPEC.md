@@ -110,7 +110,7 @@ every other project mutation, so `project.updated` carries it.
 - **`scanProjectGroup(path, options?)`** resolves the input like every other door (`~` expansion, absolute
   only), realpaths it and walks it breadth-first with async fs reads. A folder is a candidate when it holds
   a real `.git` directory or a gitfile that is neither a submodule (`…/modules/…`) nor a linked worktree
-  (`…/worktrees/…`); the root itself is included when it qualifies. The walk never follows symlinks (a
+  (`…/worktrees/…`); the root itself is included when it qualifies — usually it does not: a group folder is typically a plain folder (`repo`/`west` style), which is first-class, and neither scan nor import ever writes to it. The walk never follows symlinks (a
   symlinked `.git` is not a repository), never enters hidden folders (so `.git` and `.worktrees` too) or
   `node_modules`, `bower_components`, `dist`, `build`, `out`, `target`, `coverage`, `venv`,
   `__pycache__`, and still descends into a repository to find nested ones. `vendor/` is walked: a

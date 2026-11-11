@@ -409,7 +409,8 @@ registered under the chats root is neither offered by `listExistingWorktrees` no
   component from `L/.worktrees` down to the target's parent must be a real directory (no symlinks or
   canonical escapes); missing ones are created and re-checked as before. A member nested this way may
   sit inside another member's worktree, which `nestedWorkspaces` exposes for the remove guard below.
-  When `L` is itself a repository's top level (a group's root repository, whether or not it participates),
+  When `L` happens to be a repository's top level (a group folder that is itself a repository, whether or not
+  it participates — usually `L` is a plain folder and nothing is written there but `.worktrees`),
   the same idempotent `/.worktrees/` rule is also seeded in `L`'s local exclude, so the shared slot never
   shows as untracked in that repository's main working tree. Reject existing entries (including files, empty directories and dangling
   symlinks), Git registrations (including prunable ones), persisted workspace paths and in-flight creation paths. Never suffix
