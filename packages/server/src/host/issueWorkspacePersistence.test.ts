@@ -30,6 +30,10 @@ function setup() {
 afterEach(() => {
 	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error("Missing fixture value");
+	return value;
+}
 const failure = {
 	code: "RESOURCE_UNAVAILABLE",
 	message: "Issue workspace requires reconciliation.",
@@ -77,6 +81,72 @@ test("auxiliary ownership round trips and rejects member identity drift", async 
 			p.save(key(), { ...selected, repositoryProjectIds: ["web"] }),
 		),
 	).rejects.toMatchObject(failure);
+});
+
+test("a frozen group layout round trips and rejects drift, escapes and a layout without members", async () => {
+	const f = setup();
+	const selected: IssueWorkspaceRecord = {
+		...record,
+		repositoryProjectIds: ["api"],
+		members: [{ projectId: "api" }],
+		layout: {
+			root: join(f.dir, "suite"),
+			paths: [
+				{ projectId: "local", path: "" },
+				{ projectId: "api", path: "libs/api" },
+			],
+			slot: "issue-1-0123456789abcdef",
+		},
+	};
+	await f.store.withLaunch("local", ref, (p) => p.save(key(), selected));
+	expect(
+		await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(selected);
+	const layout = required(selected.layout);
+	for (const bad of [
+		{ ...selected, members: undefined, repositoryProjectIds: undefined },
+		{ ...selected, layout: { ...layout, root: "relative" } },
+		...["issue-1", "../x", "issue-1-XYZ", 7].map((slot) => ({
+			...selected,
+			layout: { ...layout, slot },
+		})),
+		{ ...selected, layout: { ...layout, paths: [...layout.paths].reverse() } },
+		{ ...selected, layout: { ...layout, paths: layout.paths.slice(1) } },
+		{ ...selected, layout: { ...layout, paths: [...layout.paths, layout.paths[1]] } },
+		{ ...selected, members: [{ projectId: "api", base: "not-a-sha" }] },
+		{ ...selected, members: [{ projectId: "api", removing: true }] },
+		...["../api", "/abs", "libs//api", "libs\\api", "./api"].map((path) => ({
+			...selected,
+			layout: { ...layout, paths: [layout.paths[0], { projectId: "api", path }] },
+		})),
+	]) {
+		const other = setup();
+		const row = JSON.parse(JSON.stringify(bad));
+		await expect(
+			other.store.withLaunch("local", ref, (p) => p.save(key(), row)),
+		).rejects.toMatchObject(failure);
+	}
+});
+
+test("a layout may place group members that have not joined, and members keep base and removal intent", async () => {
+	const f = setup();
+	const row: IssueWorkspaceRecord = {
+		...record,
+		repositoryProjectIds: ["api"],
+		members: [{ projectId: "api", base: "a".repeat(40), removing: true }],
+		layout: {
+			root: join(f.dir, "suite"),
+			paths: [
+				{ projectId: "local", path: "app" },
+				{ projectId: "web", path: "web" },
+				{ projectId: "root", path: "" },
+			],
+		},
+	};
+	await f.store.withLaunch("local", ref, (p) => p.save(key(), row));
+	expect(
+		await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(row);
 });
 
 test("successful callbacks persist snapshots, release fences and disable retained ports", async () => {

@@ -96,6 +96,7 @@ export {
 	isIssueReference,
 	isIssueRepositories,
 	isIssueRepositoriesInput,
+	isIssueRepositoryJoinInput,
 	isIssueSessionLaunch,
 	isIssueSessionStartupTarget,
 	isIssueTarget,

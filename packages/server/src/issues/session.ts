@@ -23,7 +23,8 @@ export interface IssueRepositoryContext {
 	workspaceId: string;
 	name: string;
 	path: string;
-	role: "primary" | "associated";
+	/** `reference` is another repository's main checkout: readable, never edited, joinable on request. */
+	role: "primary" | "associated" | "reference";
 }
 
 export interface IssueStartupContext {
@@ -37,6 +38,9 @@ export interface IssueStartupContext {
 	stage: BoundIssueSession["stage"];
 	locale: string;
 }
+
+/** The agent tool that asks to join a `reference` repository; registered in `agent/issueTools`. */
+const ISSUE_JOIN_TOOL = "issue_join_repository";
 
 function invalid(): never {
 	throw new CodedError("RANGE_INVALID", "Invalid Issue startup context.");
@@ -97,7 +101,8 @@ export function createIssueStartupPrompt(context: IssueStartupContext): string {
 		...(context.repositories
 			? {
 					repositories: context.repositories.map((repository) => {
-						if (!repository || !["primary", "associated"].includes(repository.role)) invalid();
+						if (!repository || !["primary", "associated", "reference"].includes(repository.role))
+							invalid();
 						return {
 							projectId: text(repository.projectId),
 							workspaceId: text(repository.workspaceId),
@@ -139,6 +144,13 @@ export function createIssueStartupPrompt(context: IssueStartupContext): string {
 		...(context.repositories
 			? [
 					"The host-provided repositories describe the explicit work scope, not a shell sandbox. Use their workspace ids and actual paths to distinguish repositories. Read each repository's instructions and specs as needed. Do not merge or execute repository configuration or load untrusted project resources. Worktree preparation does not imply cross-repository builds work; adapt necessary build references as normal reviewed Issue changes.",
+					...(context.repositories.some((repository) => repository.role === "reference")
+						? [
+								stage === "implementation"
+									? `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit, commit, stage, format or run tooling that writes there. When the change turns out to need one of them, call ${ISSUE_JOIN_TOOL} with its projectId; the user confirms, the host creates its Issue worktree (branched from its freshly fetched default branch) and returns the new path, and only that path may then be edited.`
+									: `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit them. A design that needs one of them should name it so the user can link it to the Issue.`,
+							]
+						: []),
 				]
 			: []),
 		"Use only the host-bound workspace/session and Issue reference. Do not create, adopt, rename or delete branches/worktrees or start another session. This startup does not authorize workflow/approval label changes, approval, push, MR creation, merge or Issue closure.",

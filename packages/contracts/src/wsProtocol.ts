@@ -48,6 +48,14 @@ import type {
 	PiPackagesCatalog,
 	PrBodySource,
 	Project,
+	ProjectGroupFetch,
+	ProjectGroupImport,
+	ProjectGroupImportInput,
+	ProjectGroupRemove,
+	ProjectGroupRemoveInput,
+	ProjectGroupScan,
+	ProjectGroupStatus,
+	ProjectGroupTarget,
 	ProjectPathStatus,
 	ProjectTrustSummary,
 	ProviderStatusReport,
@@ -100,8 +108,10 @@ import type {
 	IssueList,
 	IssuePublication,
 	IssueRepositories,
+	IssueRepositoriesCleanup,
 	IssueRepositoriesInput,
 	IssueRepositoryAddress,
+	IssueRepositoryJoinInput,
 	IssueSessionLaunch,
 	IssueSessionStartupTarget,
 	IssueTarget,
@@ -159,7 +169,11 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 124;
+export const PROTOCOL_VERSION = 127;
+export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
+export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
+export const PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127;
+export const PROJECT_GROUP_MAX_REPOSITORIES = 64;
 export const SEARCH_PROTOCOL_VERSION = 116;
 export const SPEECH_PROTOCOL_VERSION = 117;
 export const ISSUES_CONTENT_PROTOCOL_VERSION = 113;
@@ -429,6 +443,8 @@ export const WS_METHODS = {
 	issuesRepositoryAddress: "issues.repositoryAddress",
 	issuesRepositories: "issues.repositories",
 	issuesSetRepositories: "issues.setRepositories",
+	issuesAddRepository: "issues.addRepository",
+	issuesCleanupRepositories: "issues.cleanupRepositories",
 	issuesStartImplementation: "issues.startImplementation",
 	issuesValidateDesign: "issues.validateDesign",
 	issuesValidateImplementation: "issues.validateImplementation",
@@ -443,6 +459,11 @@ export const WS_METHODS = {
 	projectCloneDestination: "project.cloneDestination",
 	projectClone: "project.clone",
 	projectCancelClone: "project.cancelClone",
+	projectScanGroup: "project.scanGroup",
+	projectImportGroup: "project.importGroup",
+	projectGroupStatus: "project.groupStatus",
+	projectFetchGroup: "project.fetchGroup",
+	projectRemoveGroup: "project.removeGroup",
 	projectHasSpecs: "project.hasSpecs",
 	projectSetTrust: "project.setTrust",
 	projectAcknowledgeSkills: "project.acknowledgeSkills",
@@ -952,6 +973,8 @@ export interface WsMethodMap {
 	"issues.validateImplementation": { params: IssueTarget; result: IssueApprovalResult };
 	"issues.repositories": { params: IssueTarget; result: IssueRepositories };
 	"issues.setRepositories": { params: IssueRepositoriesInput; result: IssueRepositories };
+	"issues.addRepository": { params: IssueRepositoryJoinInput; result: IssueRepositories };
+	"issues.cleanupRepositories": { params: IssueTarget; result: IssueRepositoriesCleanup };
 
 	"issues.connection": { params: { projectId: string }; result: IssueConnection | null };
 	"issues.connect": {
@@ -982,6 +1005,11 @@ export interface WsMethodMap {
 		result: Project | null;
 	};
 	"project.cancelClone": { params: { operationId: string }; result: Ack };
+	"project.scanGroup": { params: { path: string }; result: ProjectGroupScan };
+	"project.importGroup": { params: ProjectGroupImportInput; result: ProjectGroupImport };
+	"project.groupStatus": { params: ProjectGroupTarget; result: ProjectGroupStatus };
+	"project.fetchGroup": { params: ProjectGroupTarget; result: ProjectGroupFetch };
+	"project.removeGroup": { params: ProjectGroupRemoveInput; result: ProjectGroupRemove };
 	"project.hasSpecs": { params: { projectId: string }; result: { hasSpecs: boolean } };
 	"project.setTrust": {
 		params: { id: string; trusted: boolean; resources?: boolean };
@@ -1619,6 +1647,8 @@ export type WsErrorCode =
 	| "WORKTREE_CHECKOUT_FAILED"
 	| "WORKTREE_CHECKOUT_STALLED"
 	| "WORKSPACE_PATH_TAKEN"
+	| "WORKSPACE_HAS_NESTED_WORKSPACES"
+	| "ISSUE_REPOSITORY_REFUSED"
 	| "FILE_TOO_LARGE"
 	| "CHATS_CONTAINER"
 	| "CHAT_WORKSPACE"

@@ -238,8 +238,53 @@ ordered auxiliary project ids at preparation start and stores each pending/compl
 separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
 number and a stable digest of the full primary binding; reserved branches remain unpredictable.
 Every auxiliary member is verified before a primary session may be created or reused. Missing completed
-members stop instead of being recreated; partial preparation retains successful worktrees. Host wiring
+members stop instead of being recreated; partial preparation retains successful worktrees.
+
+**Project groups.** Nothing is selected by default: an Issue starts with only its primary worktree, and
+the other repositories it may touch are offered as read-only references (below) that join on demand.
+Optional `layout(projectIds)` may return `{ root, paths }` — a shared folder and the `/`-relative place
+of every participant **plus every other open group member found where it belongs** — when preparation
+freezes the members (even with an empty selection, so later joins share the slot); it is stored on the
+record as `layout`, its places are never moved, and a join only appends the place of a member imported
+after the freeze. A project outside the layout (a non-group project, or a member whose place drifted)
+joins with an ordinary per-repository path. A record without a layout and without selection keeps the
+exact single-repository shape (no `members`). With a layout every checkout, primary included, lives at
+`<root>/.worktrees/<slot>/<place>`, so repositories keep their relative layout. The slot name is
+uniform — `issue-<IID>-<binding digest>` whichever member is primary (no member is special for sitting at
+the group folder; the folder is usually a plain non-Git folder) — and is frozen into `layout.slot` with the
+layout. A record frozen before `slot` existed keeps its original name (`issue-<IID>` when its primary sat at
+the group folder itself, else the same digest form). Creation runs shallow-first, so an outer checkout exists before a
+nested one is placed inside it, and the `layoutRoot` is passed to `createWorkspaceAtPath`. Lookups
+(`ownedImplementation`, `contexts`) derive paths from the frozen layout. The session cwd stays the
+primary's own worktree — never a group folder no workspace owns — so one cwd keeps one identity. Host wiring
 must supply project-aware lookup ports before exposing this coordinator capability to clients.
+
+**On-demand joins.** `addRepository(reference, id)` before preparation appends to the saved selection;
+after it, the add-only join reserves the member (same pending/completed ownership, appended to both
+`members` and `repositoryProjectIds`) and creates its worktree at once in the frozen slot. A member whose
+place would contain an already joined checkout (an ancestor joined after its descendant — including a
+repository at the group folder itself, which is a member only when that folder is a repository) is refused with `ISSUE_REPOSITORY_REFUSED` — Git cannot add a worktree over a non-empty folder —
+as is one whose place a joined checkout already tracks, and a 33rd member; an empty folder left at the
+place is cleared first. A refusal passes the coordinator's and the launch fence's catch-alls unchanged
+(and the fence is released), so it never leaves the Issue needing reconciliation. Every new **member**
+worktree — initial or joined — branches from the optional `baseRef(id)` port (a freshly fetched remote
+default branch, or undefined for local HEAD); the primary uses it only when the record has a layout, so a
+non-group single repository keeps branching from its local HEAD. The optional `headCommit` port records
+the started commit as the member's `base`.
+
+**References.** The optional `references()` port lists the other repositories' main checkouts;
+`contexts` appends every one that is not joined (nor mid-removal) with `role: "reference"`, after the
+primary and joined entries, in both stages. References are readable context only: they are not
+editable session members, and the startup prompt names `issue_join_repository` as the way to ask.
+
+**Cleanup.** `cleanupRepositories(reference)` walks joined members deepest first and removes one only
+when it has a recorded `base`, no other joined checkout inside it, a verified worktree, and the
+`memberUnchanged` port says it has no commit beyond `base` and no tracked or untracked change. It first
+persists `removing: true`, then calls `removeMember` (which re-checks, archives and deletes the
+unchanged reserved branch), then drops the member and the empty folders it left inside the slot.
+`implementation`, `addRepository` and `cleanupRepositories` first settle any recorded removal —
+finishing it, or clearing the mark when the member changed meanwhile — so a crash mid-removal is
+recoverable. The primary is never removed. A removed member reads as a reference again and can rejoin.
 
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second
 store or runtime. It reserves a provider-qualified ownership record before creating exactly
@@ -278,7 +323,7 @@ factory and association/context types are exported through the Issues barrel for
 `BoundIssueSession` records `sessionId`, `workspaceId`, local `projectId`, provider-qualified
 `reference`, explicit `stage: "design" | "implementation"`, and effective `locale`. It contains no
 client, binding, credential or approval state. `IssueStartupContext` optionally includes host-projected repository entries with local project/workspace
-ids, display name, actual path and primary/associated role. They are data, not executable configuration;
+ids, display name, actual path and primary/associated/reference role. They are data, not executable configuration;
 the prompt requires per-repository instruction lookup, forbids combining project configuration, and
 states that membership is not a shell sandbox or proof that cross-repository builds work.
 `contexts(reference, stage)` verifies source Default directories for design and every recorded completed

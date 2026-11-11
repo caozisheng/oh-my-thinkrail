@@ -9,6 +9,7 @@ import {
 	SETTLE_IDLE_DAYS,
 	SUBAGENT_MAX_CONCURRENT,
 } from "./domain";
+import { isIssueRepositoryJoinInput } from "./issues";
 import {
 	AGENT_REVIEW_SETTING_PROTOCOL_VERSION,
 	ANALYTICS_CONSENT_PROTOCOL_VERSION,
@@ -43,6 +44,7 @@ import {
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	isBackgroundCommandCompletionMessage,
 	isCacheWarmingMode,
@@ -60,6 +62,8 @@ import {
 	PI_PACKAGES_PROTOCOL_VERSION,
 	PLAN_REVIEW_SUBAGENT_PROTOCOL_VERSION,
 	PLAN_SUMMARY_GENERATION_PROTOCOL_VERSION,
+	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
+	PROJECT_GROUPS_PROTOCOL_VERSION,
 	PROJECT_RENAME_PROTOCOL_VERSION,
 	PROJECT_TEMPLATE_PREVIEW_PROTOCOL_VERSION,
 	PROJECT_TRUST_PROTOCOL_VERSION,
@@ -270,6 +274,134 @@ test("tool responses replace the ask-only answer method at v93", () => {
 test("new upstream capabilities do not collide with existing fork feature floors", () => {
 	expect(SEARCH_PROTOCOL_VERSION).toBeGreaterThan(ISSUES_REPOSITORIES_PROTOCOL_VERSION);
 	expect(SPEECH_PROTOCOL_VERSION).toBeGreaterThan(SEARCH_PROTOCOL_VERSION);
+	expect(PROJECT_GROUPS_PROTOCOL_VERSION).toBeGreaterThan(QUESTION_PANEL_PROTOCOL_VERSION);
+	expect(ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION).toBeGreaterThan(PROJECT_GROUPS_PROTOCOL_VERSION);
+	expect(PROJECT_GROUP_HOME_PROTOCOL_VERSION).toBeGreaterThan(
+		ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
+	);
+	expect(PROTOCOL_VERSION).toBe(PROJECT_GROUP_HOME_PROTOCOL_VERSION);
+});
+
+test("the project group home is pinned to v127", () => {
+	expect(PROJECT_GROUP_HOME_PROTOCOL_VERSION).toBe(127);
+	expect(WS_METHODS.projectGroupStatus).toBe("project.groupStatus");
+	expect(WS_METHODS.projectFetchGroup).toBe("project.fetchGroup");
+	expect(WS_METHODS.projectRemoveGroup).toBe("project.removeGroup");
+	const status: WsMethodMap["project.groupStatus"] = {
+		params: { groupId: "g" },
+		result: {
+			id: "g",
+			name: "suite",
+			root: "/work/suite",
+			repositories: [
+				{
+					projectId: "root",
+					path: "",
+					branch: "main",
+					dirty: false,
+					upstream: "origin/main",
+					ahead: 0,
+					behind: 2,
+				},
+				{ projectId: "core", path: "libs/core", branch: null, dirty: null },
+			],
+			issues: [
+				{
+					provider: "gitlab",
+					instanceUrl: "https://gitlab.example",
+					number: 7,
+					title: "Split invoices",
+					projectId: "root",
+					repositories: [
+						{ projectId: "root", role: "primary", workspaceId: "w1" },
+						{
+							projectId: "core",
+							role: "associated",
+							workspaceId: "w2",
+							changed: true,
+							path: "libs/core",
+							branch: "issue-7-x",
+							baseSource: "recorded",
+							ahead: 2,
+							behind: 0,
+							defaultBranch: "origin/main",
+							changedFiles: 1,
+							upstream: "origin/issue-7-x",
+							upstreamAhead: 0,
+							upstreamBehind: 0,
+						},
+					],
+				},
+			],
+		},
+	};
+	expect(status.result.repositories).toHaveLength(2);
+	const fetched: WsMethodMap["project.fetchGroup"] = {
+		params: { groupId: "g" },
+		result: {
+			results: [
+				{ projectId: "root", path: "", outcome: "fetched" },
+				{ projectId: "core", path: "libs/core", outcome: "failed", error: "timed out" },
+			],
+		},
+	};
+	expect(fetched.result.results.map((r) => r.outcome)).toEqual(["fetched", "failed"]);
+	const removed: WsMethodMap["project.removeGroup"] = {
+		params: { groupId: "g", close: false },
+		result: { projects: [] },
+	};
+	expect(removed.params.close).toBe(false);
+});
+
+test("on-demand Issue repository joins are pinned to v126", () => {
+	expect(ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION).toBe(126);
+	expect(ISSUES_REPOSITORIES_PROTOCOL_VERSION).toBe(115);
+	expect(WS_METHODS.issuesAddRepository).toBe("issues.addRepository");
+	expect(WS_METHODS.issuesCleanupRepositories).toBe("issues.cleanupRepositories");
+	const reference = {
+		provider: "gitlab" as const,
+		instanceUrl: "https://gitlab.example",
+		projectId: "7",
+		number: 42,
+	};
+	const join: WsMethodMap["issues.addRepository"] = {
+		params: { projectId: "app", reference, repositoryProjectId: "core" },
+		result: { projectIds: ["core"], locked: true },
+	};
+	expect(isIssueRepositoryJoinInput(join.params)).toBe(true);
+	expect(isIssueRepositoryJoinInput({ ...join.params, repositoryProjectId: "app" })).toBe(false);
+	expect(isIssueRepositoryJoinInput({ ...join.params, repositoryProjectId: "../core" })).toBe(
+		false,
+	);
+	expect(isIssueRepositoryJoinInput({ ...join.params, extra: true })).toBe(false);
+	const cleanup: WsMethodMap["issues.cleanupRepositories"] = {
+		params: { projectId: "app", reference },
+		result: { projectIds: [], locked: true, removed: ["core"] },
+	};
+	expect(cleanup.result.removed).toEqual(["core"]);
+});
+
+test("project groups are pinned to v125", () => {
+	expect(PROJECT_GROUPS_PROTOCOL_VERSION).toBe(125);
+	expect(WS_METHODS.projectScanGroup).toBe("project.scanGroup");
+	expect(WS_METHODS.projectImportGroup).toBe("project.importGroup");
+	const scan: WsMethodMap["project.scanGroup"] = {
+		params: { path: "/work/suite" },
+		result: {
+			root: "/work/suite",
+			name: "suite",
+			repositories: [
+				{ path: "", name: "suite" },
+				{ path: "libs/core", name: "core" },
+			],
+			truncated: false,
+		},
+	};
+	const imported: WsMethodMap["project.importGroup"] = {
+		params: { root: scan.result.root, paths: ["", "libs/core"] },
+		result: { projects: [], failed: [{ path: "libs/core", reason: "already open" }] },
+	};
+	expect(imported.result.failed).toHaveLength(1);
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(SPEECH_PROTOCOL_VERSION);
 });
 
@@ -354,7 +486,7 @@ test("find in files is pinned to v122", () => {
 });
 
 test("the question panel height setting is pinned to v124", () => {
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(QUESTION_PANEL_PROTOCOL_VERSION).toBe(124);
 	expect(DEFAULT_CONFIG.questionPanelHeight).toBe(60);
 });
@@ -690,7 +822,7 @@ test("issues read RPCs are registered at v103", () => {
 
 test("complete Issue detail is pinned to v114", () => {
 	expect(ISSUES_DETAIL_PROTOCOL_VERSION).toBe(114);
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(WS_METHODS.issuesDetail).toBe("issues.detail");
 	const detail: WsMethodMap["issues.detail"]["result"] = {
 		reference: {
@@ -743,7 +875,7 @@ test("the repository-address hint is registered at the v105 Issues auth floor", 
 });
 
 test("six closed Issue actions are registered at v104", () => {
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
 	expect(WS_METHODS.issuesLaunchDesign).toBe("issues.launchDesign");
@@ -756,7 +888,7 @@ test("six closed Issue actions are registered at v104", () => {
 
 test("app-originated Issue approvals are registered at v106", () => {
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
@@ -781,7 +913,7 @@ test("app-originated Issue approvals are registered at v106", () => {
 
 test("the approved-design read is registered at v107", () => {
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
@@ -806,7 +938,7 @@ test("the approved-design read is registered at v107", () => {
 
 test("the implementation start is registered at v108", () => {
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
@@ -854,7 +986,7 @@ test("GitHub Issues changes the wire contract at v110", () => {
 
 test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
 	expect(WS_METHODS.issuesBeginDesign).toBe("issues.beginDesign");
@@ -903,7 +1035,7 @@ test("associated repository selection is pinned to v115", () => {
 
 test("extension settings are pinned to v112", () => {
 	expect(EXTENSION_SETTINGS_PROTOCOL_VERSION).toBe(112);
-	expect(PROTOCOL_VERSION).toBe(124);
+	expect(PROTOCOL_VERSION).toBe(127);
 	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
 });
 

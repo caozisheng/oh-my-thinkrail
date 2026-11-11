@@ -945,7 +945,11 @@ re-opened transcripts provider-valid.
     composes `agent` + `workspaces`.
     The bound Issue tools (`issueTools.ts`) are always registered for top-level sessions by the named
     `issue-tools` inline extension in `sharedFactories`, shared by source/dev and bundled CLI/desktop
-    loaders, never by the curated child extension set. `issue_context` accepts exactly `{}`;
+    loaders, never by the curated child extension set. `issue_join_repository` accepts exactly
+    `{ projectId }` (a local project id): it asks the host's optional `joinCandidate`, then the user through
+    `ctx.ui.confirm` (refusing without a UI), and only on confirmation calls `joinRepository`; a decline
+    returns `{ joined: false }` with an instruction not to change that repository, and a host
+    `ISSUE_REPOSITORY_REFUSED` passes through with its reason. `issue_context` accepts exactly `{}`;
     `issue_record_summary` accepts `{ operationId, summary, recovery? }`. Both schemas forbid additional
     properties and execute-time validation enforces the same keys. Operation IDs are 1–128 ASCII
     characters, starting with an alphanumeric and otherwise allowing alphanumerics, `.`, `_`, `:`, `-`;

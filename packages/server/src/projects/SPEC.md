@@ -100,6 +100,41 @@ bootstrap it into one so it can be opened.
   leaving it untouched otherwise; `trusted: false` revokes both. A trust change persists and publishes the
   record, so every client shows the persisted trust even when the host request that made it then fails
   (an open chat could not reload).
+## Project groups
+
+A **project group** is several repositories imported together from one folder; it is membership data on
+ordinary project records, not a second registry. `Project.projectGroup` (`{ id, name, root, path }`) is
+written by `setProjectGroupMembership(id, membership | null)`, which persists and publishes the record like
+every other project mutation, so `project.updated` carries it.
+
+- **`scanProjectGroup(path, options?)`** resolves the input like every other door (`~` expansion, absolute
+  only), realpaths it and walks it breadth-first with async fs reads. A folder is a candidate when it holds
+  a real `.git` directory or a gitfile that is neither a submodule (`…/modules/…`) nor a linked worktree
+  (`…/worktrees/…`); the root itself is included when it qualifies — usually it does not: a group folder is typically a plain folder (`repo`/`west` style), which is first-class, and neither scan nor import ever writes to it. The walk never follows symlinks (a
+  symlinked `.git` is not a repository), never enters hidden folders (so `.git` and `.worktrees` too) or
+  `node_modules`, `bower_components`, `dist`, `build`, `out`, `target`, `coverage`, `venv`,
+  `__pycache__`, and still descends into a repository to find nested ones. `vendor/` is walked: a
+  repository kept there is usually a deliberate member, and the confirm step can drop one that is not.
+  It stops at depth `PROJECT_GROUP_SCAN_DEPTH` (6) silently and at 10 000 directories,
+  `PROJECT_GROUP_MAX_REPOSITORIES` or 5 s with `truncated: true`. Results are `/`-separated root-relative paths, shallow-first.
+- **`importProjectGroup({ root, paths, name? })`** re-scans and refuses (`RANGE_INVALID`) a path the fresh
+  scan does not find, so a client cannot name an arbitrary folder. Each kept path is opened through
+  `openProject` (path guard and `ALREADY_OPEN` unchanged), must resolve to that exact repository root, and
+  gets the membership; a per-path failure lands in `failed` and does not undo the others. Re-importing the
+  same root reuses its group id and adds members; a given name renames the whole group, so every member
+  (including ones this import did not touch) carries the same name. A re-scan of an imported root offers
+  the group's current name. A project belongs to at most one group (the latest import wins). Import grants
+  no trust.
+- **`projectGroupMembers(id)`** lists the other open members, shallow-first — the host's default Issue
+  repository selection reads it. **`projectGroupProjects(groupId)`** lists a group's open members,
+  shallow-first — the group home's reads and fetch walk it.
+- **`removeProjectGroup({ groupId, close })`** dissolves a group: every member record, open or closed,
+  loses its membership (`setProjectGroupMembership(id, null)`), and with `close` each open member is also
+  closed through `closeProject`. It changes project records only — never a folder, repository,
+  worktree or workspace record — and an unknown group (no record carries it) throws.
+
+Submodules (gitlinks) are out of scope.
+
 ## The reserved Chats root
 
 Chats without a project keep their folders under `<dataDir>/chats` ([[submodule-server-workspaces]]),
@@ -141,7 +176,9 @@ and truncating first can separate a secret suffix from the URL prefix needed to 
   `getProjects`, `setProjectPublisher`, `setProjectPathGuard`, `inspectProjectPath`, `initProject`, `createProject`, `setProjectTrust`,
   `setProjectSkillEnabled`, `setProjectGroupEnabled`, `acknowledgeProjectSkills`,
   `approveProjectMcpServer`, `setProjectMcpOverride`, `grantProjectMcpTool`, `revokeProjectMcpTool`,
-  `setPiTrustSeed`.
+  `setPiTrustSeed`, `setProjectGroupMembership`, `scanProjectGroup`, `importProjectGroup`,
+  `projectGroupMembers`, `projectGroupProjects`, `removeProjectGroup`, `PROJECT_GROUP_SCAN_DEPTH`,
+  `ProjectGroupScanOptions`.
 - **Allowed deps:** `persistence`; the `git` sub-module (shared `git()` runner, which now owns the
   environment its children spawn under — this module passes none); `contracts` (`Project`, `ProjectPathStatus`);
   `shared/codedError` (the two named open failures); Node/Bun.

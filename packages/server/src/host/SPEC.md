@@ -550,7 +550,10 @@ channel fan-out, and the process-boot wrapper both launchers share.
   - The **workspace-archive teardown** — the other composition of `agent` + `terminal` + `workspaces` only
     the host may make. `workspace.remove` **rejects a `kind: "default"` workspace loudly, before any
     side-effect** (the record's `worktreePath` is the project folder — the reclaim's `rm -rf` fallback
-    must never see it; the UI hides Remove, this guard is for buggy/rogue clients). Otherwise it
+    must never see it; the UI hides Remove, this guard is for buggy/rogue clients). It equally rejects,
+    with `WORKSPACE_HAS_NESTED_WORKSPACES`, a managed workspace that still holds another workspace's
+    folder (`nestedWorkspaces` — a project group's layout nests members inside an ancestor member's
+    worktree, and the forced reclaim would delete them). Otherwise it
     reaps *everything* rooted in the worktree (for a user-owned `kind: "external"` one, everything except
     the checkout itself) but is **non-blocking**:
     it does the fast part synchronously — `forgetWorkspace` (drop the record → gone from `workspace.list`
@@ -1213,6 +1216,54 @@ callback; failures retain uncertainty for explicit reconciliation, never automat
 Server-only `repositories` / `setRepositories` actions use the same full-identity launch fence and
 strict selection DTOs. Saving requires open trusted member projects. Launch pins their source paths and
 rechecks availability/trust around every awaited port.
+
+**Project groups.** `project.scanGroup` / `project.importGroup` delegate to `projects`
+(`scanProjectGroup` / `importProjectGroup`). For Issue actions the host supplies the coordinator's
+`references` port from `groupReferenceCandidates` — the primary's open, **trusted** other group members
+(untrusted members are never offered, since joining never grants trust), at most 64 — each as its
+Default workspace id and main project path. `groupWorkspaceLayout` answers the `layout` port only when
+every listed participant is in the primary's group and still sits at its recorded relative place under
+the real group root, and then also places every other open member found at its place; it returns null
+(ordinary per-repository paths) in every other case. The group folder is a plain folder in the usual
+(`repo`/`west`-style) layout and is never required to be a repository; when it happens to be one, it is an
+ordinary member, and `workspaces` excludes `/.worktrees/` in that repository either way.
+
+**Project group home (v127).** `project.groupStatus`, `project.fetchGroup` and `project.removeGroup`
+sit behind `PROJECT_GROUP_HOME_PROTOCOL_VERSION`. `projectGroupHome.ts` composes them over
+`projects.projectGroupProjects`: status runs one `git --no-optional-locks status --porcelain=v2
+--branch` per open member (10 s budget, at most six at once; local refs only, so ahead/behind are as of
+the last fetch, and an untracked folder that is or holds another member is the group layout, not a
+change); Issues come from `issuesHost.groupIssueRecords` (implementations whose primary is a member,
+read-only like the rail bindings, any reconciliation failure yields none, each carrying the title the
+host last saw in an `issues.list`/`issues.detail` answer — an in-memory, bounded cache, so a title
+appears once the Issues tool has listed since host start). Each Issue repository with a worktree is
+measured there with local refs only: one `status --porcelain=v2 --branch --untracked-files=all`
+(changed paths, minus folders that are this Issue's nested worktrees; the branch's own upstream), the
+start commit — a joined member's recorded `base`, else for the primary (which records none) the oldest
+reflog entry of its Issue branch (the `worktree add -b` creation, kept only while still an ancestor of
+HEAD), else the merge-base with the default branch — and `rev-list --count` for `ahead` (start..HEAD)
+and `behind` (HEAD..default branch: `origin/HEAD`, else `origin/main`/`origin/master`, else the main
+checkout's branch). `changed` is `ahead > 0` or any changed path. Fetch runs `git fetch --all
+--no-tags --quiet` under the default non-interactive env (no ssh rewrite, per the `git` SPEC) with a
+30 s budget per repository, skips a repository without remotes, and reports each outcome with git's
+redacted stderr. Remove delegates to `projects.removeProjectGroup` and never touches disk.
+
+**On-demand joins (v126).** `issues.addRepository` (`IssueRepositoryJoinInput`) and
+`issues.cleanupRepositories` (`IssueTarget` → `IssueRepositoriesCleanup`) run under the same launch
+fence with the `release-on-settle` policy, behind `ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION`. The joining
+project must be open and trusted like a saved selection, and is pinned with it. `baseRef` is
+`freshBaseRef`: with an `origin` remote it fetches that remote's default branch (non-interactive env,
+`BatchMode` SSH unless the user set `GIT_SSH_COMMAND`, 30 s deadline, failure ignored) and returns
+`origin/<default>` when that ref exists, else undefined (local HEAD). `memberUnchanged` is
+`worktreeUnchanged` (`rev-list <base>..HEAD` empty and `status --porcelain --untracked-files=all`
+empty; ignored build output does not count and is discarded). `removeMember` re-checks that and the
+`nestedWorkspaces` guard, awaits the full workspace-archive teardown (`setIssueWorkspaceArchiver`, which
+`handlers` registers with the same teardown `workspace.remove` uses), then deletes the reserved branch
+only while its tip is contained in `base`. A successful join re-announces the new workspace so the rail
+tag converges. The bound `issue_join_repository` tool reaches the same join through
+`IssueAgentSessionHost.joinCandidate` / `joinRepository`: only an implementation-stage binding may ask,
+only for a repository its current contexts list as `reference`, and the tool obtains the user's
+confirmation through the session's UI `confirm` dialog before the host joins anything.
 
 They are registered as `issues.repositories` (read) and `issues.setRepositories` (write whole selection)
 behind `ISSUES_REPOSITORIES_PROTOCOL_VERSION` = v115, with the same static credential-free gate wording

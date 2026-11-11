@@ -6,6 +6,7 @@ import {
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	type WsParams,
 	type WsResult,
 } from "@thinkrail/contracts";
@@ -514,5 +515,45 @@ test("v115 associated repositories gate older protocols before delegation", asyn
 	} finally {
 		readSpy.mockRestore();
 		writeSpy.mockRestore();
+	}
+});
+
+test("v126 repository joins and cleanup gate older protocols before delegation", async () => {
+	expect(ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION).toBe(126);
+	const join = { ...actionTarget, repositoryProjectId: "api" };
+	for (const [method, params] of [
+		["issues.addRepository", join],
+		["issues.cleanupRepositories", actionTarget],
+	] as const) {
+		const error = await handleRequest(method, params as never, {
+			clientKey: "issues-join-test",
+			protocolVersion: ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION - 1,
+		}).catch((error: unknown) => error);
+		expect((error as CodedError).code).toBe("RESOURCE_UNAVAILABLE");
+		expect((error as Error).message).toBe(
+			"Joining Issue repositories is unavailable for this protocol version.",
+		);
+	}
+	const joined = { projectIds: ["api"], locked: true };
+	const addSpy = spyOn(issues, "issuesAddRepository").mockResolvedValue(joined);
+	const cleanSpy = spyOn(issues, "issuesCleanupRepositories").mockResolvedValue({
+		...joined,
+		removed: [],
+	});
+	try {
+		const context = {
+			clientKey: "issues-join-test",
+			protocolVersion: ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
+		};
+		expect(await handleRequest("issues.addRepository", join, context)).toEqual(joined);
+		expect(await handleRequest("issues.cleanupRepositories", actionTarget, context)).toEqual({
+			...joined,
+			removed: [],
+		});
+		expect(addSpy).toHaveBeenLastCalledWith(join);
+		expect(cleanSpy).toHaveBeenLastCalledWith(actionTarget);
+	} finally {
+		addSpy.mockRestore();
+		cleanSpy.mockRestore();
 	}
 });

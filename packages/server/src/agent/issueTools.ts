@@ -4,6 +4,7 @@ import { type Static, Type } from "typebox";
 
 export const ISSUE_CONTEXT_TOOL_NAME = "issue_context";
 export const ISSUE_RECORD_SUMMARY_TOOL_NAME = "issue_record_summary";
+export const ISSUE_JOIN_REPOSITORY_TOOL_NAME = "issue_join_repository";
 
 export type IssueSummaryRecovery = "reconcile" | "retry-confirmed-unpublished";
 
@@ -28,7 +29,27 @@ const RecordSummarySchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+const JoinRepositorySchema = Type.Object(
+	{
+		projectId: Type.String({
+			minLength: 1,
+			maxLength: 256,
+			pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$",
+			description: 'The projectId of a repository issue_context lists with role "reference".',
+		}),
+	},
+	{ additionalProperties: false },
+);
+
 type EmptyParams = Static<typeof EmptyParamsSchema>;
+type JoinRepositoryParams = Static<typeof JoinRepositorySchema>;
+/** A repository the bound Issue may join, or the worktree it joined as. */
+export type IssueJoinedRepository = {
+	projectId: string;
+	name: string;
+	path: string;
+	workspaceId?: string;
+};
 type RecordSummaryParams = Static<typeof RecordSummarySchema>;
 type SummaryResult = { noteId: number; url?: string };
 
@@ -40,6 +61,10 @@ export interface IssueToolHost {
 		summary: string,
 		recovery?: IssueSummaryRecovery,
 	): Promise<SummaryResult>;
+	/** A `reference` repository of this implementation session's Issue; refuses anything else. */
+	joinCandidate?(sessionId: string, projectId: string): Promise<IssueJoinedRepository>;
+	/** Join it (after the user confirmed) and return its new Issue worktree. */
+	joinRepository?(sessionId: string, projectId: string): Promise<IssueJoinedRepository>;
 }
 
 const UNAVAILABLE_MESSAGE = "Issue tools are unavailable for this session.";
@@ -147,7 +172,72 @@ export function createIssueRecordSummaryTool(): ToolDefinition<
 	};
 }
 
+function validJoinParams(value: unknown): value is JoinRepositoryParams {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+	const keys = Reflect.ownKeys(value);
+	const projectId = (value as Record<string, unknown>).projectId;
+	return (
+		keys.length === 1 &&
+		keys[0] === "projectId" &&
+		typeof projectId === "string" &&
+		/^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$/.test(projectId)
+	);
+}
+
+type JoinResult = { joined: boolean; repository?: IssueJoinedRepository };
+
+/** Ask the user to join one `reference` repository to the running Issue implementation. */
+export function createIssueJoinRepositoryTool(): ToolDefinition<
+	typeof JoinRepositorySchema,
+	JoinResult
+> {
+	return {
+		name: ISSUE_JOIN_REPOSITORY_TOOL_NAME,
+		label: "Join Issue Repository",
+		description:
+			'During Issue implementation, request that a repository listed with role "reference" (read-only) join this Issue so it can be changed. The user must confirm; on success the host creates its Issue worktree and returns its path, which is the only place to edit that repository. A declined request means: do not change that repository.',
+		parameters: JoinRepositorySchema,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!validJoinParams(params)) throw invalid();
+			const sessionId = ctx.sessionManager.getSessionId();
+			let candidate: IssueJoinedRepository;
+			try {
+				if (!host.joinCandidate) throw unavailable();
+				candidate = await host.joinCandidate(sessionId, params.projectId);
+			} catch {
+				throw unavailable();
+			}
+			if (!ctx.hasUI)
+				throw new CodedError(
+					"RESOURCE_UNAVAILABLE",
+					"Joining a repository needs the user's confirmation, which this session cannot ask for.",
+				);
+			const confirmed = await ctx.ui.confirm(
+				`Join ${candidate.name} to this Issue?`,
+				`The agent asks to change ${candidate.name} (${candidate.path}). ThinkRail will create an Issue worktree for it, branched from its freshly fetched default branch, next to the Issue's other worktrees.`,
+			);
+			if (!confirmed) {
+				const text = `The user declined joining ${candidate.name}. Do not change that repository; continue without it or ask the user.`;
+				return { content: [{ type: "text", text }], details: { joined: false } };
+			}
+			let joined: IssueJoinedRepository;
+			try {
+				if (!host.joinRepository) throw unavailable();
+				joined = await host.joinRepository(sessionId, params.projectId);
+			} catch (error) {
+				if (error instanceof CodedError && error.code === "ISSUE_REPOSITORY_REFUSED") throw error;
+				throw unavailable();
+			}
+			return {
+				content: [{ type: "text", text: JSON.stringify({ joined: true, repository: joined }) }],
+				details: { joined: true, repository: joined },
+			};
+		},
+	};
+}
+
 export function issueToolsExtension(pi: ExtensionAPI): void {
 	pi.registerTool(createIssueContextTool());
 	pi.registerTool(createIssueRecordSummaryTool());
+	pi.registerTool(createIssueJoinRepositoryTool());
 }

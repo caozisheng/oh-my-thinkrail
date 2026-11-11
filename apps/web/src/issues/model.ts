@@ -7,6 +7,7 @@ import {
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	type IssueConnection,
 	type IssueConnectionInput,
@@ -53,6 +54,11 @@ export function supportsIssueImplementation(version: number | null): boolean {
 /** Associated-repository selection is additive at v113; older hosts hide the control. */
 export function supportsIssueRepositories(version: number | null): boolean {
 	return version !== null && version >= ISSUES_REPOSITORIES_PROTOCOL_VERSION;
+}
+
+/** On-demand joins after implementation starts, and cleanup of unchanged joined repositories. */
+export function supportsIssueRepositoryJoin(version: number | null): boolean {
+	return version !== null && version >= ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION;
 }
 
 /** GitHub Issues as a provider; an older host only understands GitLab references. */

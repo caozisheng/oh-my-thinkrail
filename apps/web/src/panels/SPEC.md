@@ -536,6 +536,80 @@ requests cancellation. A reconnect replays the pending operation. Success adopts
 same last-intent fence as opening a local project, without starting a chat. A late result cannot steal a
 newer open-project selection.
 
+**Importing a project group.** From `PROJECT_GROUPS_PROTOCOL_VERSION` both add-project menus offer
+"Import folder as project group…": `useOpenProject` picks a folder (falling back to the host-path entry
+when the native picker fails), asks `project.scanGroup`, and opens `ImportProjectGroupDialog` with every
+found repository kept (the folder itself, when it is a repository, shown as "This folder itself (.)"), an editable group name defaulting to the folder
+name, and the scan's truncation notice. Import sends only the kept relative paths to
+`project.importGroup`; every returned project is applied to the store and the first one is adopted through
+the same last-intent fence as opening a project. Per-repository failures (e.g. `ALREADY_OPEN`) keep the
+dialog open on a failure list with Done; nothing else is retried.
+
+**Grouping in the rail.** `projectRailEntries` folds two or more open members of one
+`Project.projectGroup` into a single entry at the first member's place in the incoming order; a group
+with one open member renders as a plain row. Members are a **flat list sorted by relative path**
+(`compareGroupMembers`); no member is special. A project group is a folder plus its member repositories —
+the folder is usually a plain non-Git folder (`repo`/`west` style) — and a folder that happens to be a
+repository is an ordinary member labelled `.` (sorting first only lexically). Each row is labelled
+with that relative path (`billing/modules/invoice/core`) so the folder layout stays visible without
+nesting; a long path ellipsizes at the start (the trailing segments stay readable) and the full path
+is the name's tooltip. There are no folder rows, no per-folder indent, and no single-child chain
+folding. Repository rows inside a group are the ordinary `ProjectRow` (chevron, workspaces, `+`,
+attention/running, context menu) with a repository glyph instead of the folder glyph. The group
+header has its own chevron and, from `PROJECT_GROUP_HOME_PROTOCOL_VERSION`, a name button that opens
+the group home. Header collapse state is store-held (`collapsedRailNodes`, keys from `groupNodeKey`,
+default expanded) and persisted beside project expansion by `projectExpansion`; leftover `folder:`
+keys from earlier builds are ignored. A collapsed header shows the attention dot when any member
+needs attention.
+
+**Group start (`+`).** The group header ends with the same ghost `+` as a repository row; it opens
+`ProjectGroupStartDialog`, the project start screen's three `WelcomeCard`s and copy scoped to the
+group. **Start building** is the highlighted card and the group's main path, *start an Issue*: it
+switches the dialog to a primary-repository picker (group members by relative path; default the first
+member whose Issue tracker is connected, read with `issues.connection` per member when the dialog opens;
+none connected → no preselection and a prompt to choose) over an embedded `IssuesTool` for that repository, so the
+Issue list, connection, trust and stage actions are the Issues tool's own and a launched session opens
+through the shared `openIssueSession` (moved to `panels/issueSession`, re-exported by the workbench).
+The Issue worktree starts with the primary repository only; other members join on demand
+(`issues.addRepository`). The host has no create-Issue method, so the step says new Issues are created
+in the tracker, and **Start without an Issue** opens `NewWorkspaceDialog` for the primary repository.
+**Set up project** asks for the member repository that holds the group's specs (default the
+tracker-connected member, else none — specs are read from Git, and the plain group folder has none) and
+opens `NewWorkspaceDialog` there with the setup skill plus a line naming the group folder and every
+member. **Work in project folder** asks for the repository the chat is listed under (default the
+tracker-connected member, else the first), enters its Default workspace and starts a chat whose draft
+names the group folder and every member to edit in place — an unisolated session; a session's cwd stays a
+workspace's folder, so it is never the plain group folder itself, and each repository shows its own
+changes. No card is disabled because the group folder is not a repository.
+
+**Project group home.** `selectProjectGroup(id)` clears project, workspace and creation selection and
+records `activeProjectGroupId`; `selectActiveProjectGroupId` yields it only while nothing narrower is
+selected and an open project still carries the group, and Shell then renders `ProjectGroupHome` in
+Project Home's `main` slot. Every other selection (`selectProject`, `selectMain`, `selectCreation`,
+workspace activation) wins. The location stays the main route, so a reload lands on Welcome. The home
+does not repeat the member tree (the rail browses repositories). It shows the group name, root and
+counts, then the members' started Issues from `project.groupStatus` as one list, **every row collapsed
+by default**: chevron, `#number`, the tracker title when the host has one (else the primary's path),
+the primary's path, aggregate badges (commits ahead of start summed over the Issue's repositories;
+repositories with uncommitted files) and "N repositories · M changed". Expanding a row (persisted per
+Issue in `localStorage` under `group-home-expanded-issues`, keyed by group, instance, number and
+primary — `groupHomeModel`) lists the primary and every joined repository with its relative path,
+the primary chip, Issue branch, ↑ commits since its start (tooltip names how the start was
+established), ↓ commits on the default branch it lacks, the pushed-upstream glyph when it has one, and
+a state chip: *N uncommitted files*, *committed*, or *unchanged* (no commits since the start and a
+clean worktree); a row opens that repository's Issue worktree, a repository without one says so.
+"Changed" on this page always means the Issue worktree. Main checkouts appear only as an exception:
+when a member's main directory (Default workspace) has uncommitted changes or is at least
+`MAIN_BEHIND_WARNING` (10) commits behind its upstream, one warning line per kind names them
+("2 repositories' main directories have uncommitted changes: app, server"); it expands to the list
+(each opens that Project Home) and a line saying this is the original folder, not an Issue. Nothing
+shows when every main checkout is fine. The actions are
+**Rescan** (`useOpenProject.rescanGroup`: the import dialog over a fresh
+`project.scanGroup` of the root, without navigating away), **Fetch all** (`project.fetchGroup`, then a
+per-repository result list and a status refresh), **Refresh**, and **Remove group** — a danger-styled
+dialog offering *Ungroup* or *Ungroup and close* (`project.removeGroup`), stating that nothing on disk
+changes.
+
 **Cold-start onboarding wizard.** `OnboardingWizard` replaces the Welcome cards only on a true cold start:
 the host supports `ONBOARDING_PROTOCOL_VERSION`, `AppConfig.onboardingDismissed` is false, there are no
 open or recent projects, and the provider status snapshot reports none. The decision is **latched in the store gate** (it survives remounts) so

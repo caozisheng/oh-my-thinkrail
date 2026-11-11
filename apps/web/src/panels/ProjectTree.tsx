@@ -18,7 +18,11 @@ import {
 	RiFolderLine,
 	RiFolderOpenFill,
 	RiGitBranchFill,
+	RiGitRepositoryFill,
+	RiGitRepositoryLine,
 	RiHome2Fill,
+	RiStackFill,
+	RiStackLine,
 	RiDeleteBin6Line as Trash2,
 	RiCloseLine as X,
 } from "@remixicon/react";
@@ -56,12 +60,14 @@ import {
 	SETTLED_SHELF_MORE,
 	SETTLED_SHELF_PAGE,
 	type SettledReason,
+	selectActiveProjectGroupId,
 	selectActiveWorkspaceProjectId,
 	selectAutoSettledCounts,
 	selectProjectIsRunning,
 	selectProjectNeedsAttention,
 	selectRepoProjects,
 	selectSupportsOnboarding,
+	selectSupportsProjectGroupHome,
 	selectWorkspaceIsRunning,
 	selectWorkspaceNeedsAttention,
 	selectWorkspacePartition,
@@ -80,6 +86,8 @@ import { ChatsSection } from "./ChatsSection";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExistingWorktreeDialog } from "./ExistingWorktreeDialog";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
+import { ProjectGroupStartDialog } from "./ProjectGroupStartDialog";
+import { groupMemberLabel, groupNodeKey, projectRailEntries } from "./projectGroups";
 import { RemoveWorkspaceDialog } from "./RemoveWorkspaceDialog";
 import {
 	announceSettledShelf,
@@ -144,8 +152,12 @@ export function ProjectTree() {
 	const editors = useEditors();
 
 	const expandedProjectIds = useAppStore((s) => s.expandedProjectIds);
+	const collapsedRailNodes = useAppStore((s) => s.collapsedRailNodes);
+	const activeGroupId = useAppStore(selectActiveProjectGroupId);
+	const supportsGroupHome = useAppStore(selectSupportsProjectGroupHome);
 	const [dialogProjectId, setDialogProjectId] = useState<string | null>(null);
 	const [existingDialogProjectId, setExistingDialogProjectId] = useState<string | null>(null);
+	const [groupStartId, setGroupStartId] = useState<string | null>(null);
 	const addProjectButtonRef = useRef<HTMLButtonElement>(null);
 	const projectNameButtonsRef = useRef(new Map<string, HTMLButtonElement>());
 	const pendingCloseFocusProjectIdRef = useRef<string | null>(null);
@@ -244,11 +256,18 @@ export function ProjectTree() {
 		if (willExpand) void loadWorkspaces(projectId);
 	};
 
-	const { openProject, pickAndOpen, enterHostPath, startNewProject, cloneRepository, dialogs } =
-		useOpenProject(async (project, { setup }) => {
-			await selectProject(project.id).catch(() => {});
-			if (setup) await startProjectSetupChat(project.id);
-		});
+	const {
+		openProject,
+		pickAndOpen,
+		enterHostPath,
+		startNewProject,
+		cloneRepository,
+		importGroup,
+		dialogs,
+	} = useOpenProject(async (project, { setup }) => {
+		await selectProject(project.id).catch(() => {});
+		if (setup) await startProjectSetupChat(project.id);
+	});
 
 	const onExistingWorktreeOpened = async (workspace: Workspace) => {
 		const rows = await getTransport().request("workspace.list", {
@@ -285,6 +304,97 @@ export function ProjectTree() {
 		setExistingDialogProjectId(projectId);
 	};
 
+	const stateProjection = { sessionStateByWorkspace };
+	const anyNeedsAttention = (list: readonly Project[]) =>
+		list.some((project) => selectProjectNeedsAttention(stateProjection, project.id));
+
+	const renderProject = (project: Project, inGroup?: { path: string }) => {
+		const isExpanded = expandedProjectIds[project.id] === true;
+		const list = workspaces[project.id];
+		return (
+			<li key={project.id} data-group-path={inGroup?.path}>
+				<ProjectRow
+					project={project}
+					{...(inGroup
+						? {
+								inGroup: true,
+								label: groupMemberLabel(project),
+								truncateStart: inGroup.path !== "",
+								title: inGroup.path === "" ? project.path : inGroup.path,
+							}
+						: {})}
+					isSelected={selectedProjectId === project.id}
+					isExpanded={isExpanded}
+					needsAttention={!isExpanded && selectProjectNeedsAttention(stateProjection, project.id)}
+					isRunning={!isExpanded && selectProjectIsRunning(stateProjection, project.id)}
+					workspaceCount={(list ?? []).filter((w) => !isDefaultWorkspace(w)).length}
+					onToggle={() => toggleExpand(project.id)}
+					onSelect={() => void selectProject(project.id)}
+					canRename={canRenameProject(protocolVersion)}
+					onRename={(name) => renameProject(project, name)}
+					onClose={() => closeProject(project)}
+					onAddWorkspace={() => openWorkspaceDialog(project.id, false)}
+					onAddWorkspaceFromMenu={() => openWorkspaceDialog(project.id, true)}
+					onOpenExistingWorktree={() => openExistingWorktreeDialog(project.id)}
+					onRegisterNameButton={(element) => registerProjectNameButton(project.id, element)}
+					onRestoreFocus={() => focusProjectNameOrAdd(project.id)}
+				/>
+				{isExpanded && list === undefined && <LoadingRegion rows={2} className="py-4 pr-8 pl-16" />}
+				{isExpanded && list !== undefined && (
+					<SettledPartition
+						enabled={supportsSettling}
+						projectId={project.id}
+						partition={selectWorkspacePartition(partitionState, project.id, now)}
+						shelfExpanded={settledShelfExpanded[project.id] === true}
+						shelfShown={settledShelfShown[project.id] ?? SETTLED_SHELF_PAGE}
+						renderRow={(ws, settled) =>
+							workspaceCreations[ws.id] ? null : (
+								<WorkspaceRow
+									key={ws.id}
+									workspace={ws}
+									settled={settled}
+									now={now}
+									isActive={activeWorkspaceId === ws.id}
+									needsAttention={selectWorkspaceNeedsAttention(stateProjection, ws.id)}
+									isRunning={selectWorkspaceIsRunning(stateProjection, ws.id)}
+									canRename={canRenameWorkspace(protocolVersion, ws)}
+									canSettle={canSettleWorkspace(protocolVersion, ws)}
+									readAction={
+										supportsWorkspaceReadState(protocolVersion)
+											? selectWorkspaceReadAction(stateProjection, ws.id)
+											: null
+									}
+									editors={editors}
+									onSelect={() => selectWorkspace(ws)}
+									onOpenIn={(editor) => openWorkspaceIn(ws, editor)}
+									onCopyPath={() => void copyText(ws.worktreePath)}
+									onReveal={() => revealWorkspace(ws)}
+									onRename={(name) => renameWorkspace(ws, name)}
+									onSettle={() => settleWorkspace(ws.id)}
+									onKeepActive={() => unsettleWorkspace(ws.id)}
+									onMarkRead={() => markWorkspaceRead(ws.id)}
+									onMarkUnread={() => markWorkspaceUnread(ws.id)}
+								/>
+							)
+						}
+					/>
+				)}
+				{isExpanded && (creationsByProject[project.id]?.length ?? 0) > 0 && (
+					<ul aria-label={t("panels.workspaceCreation.listLabel")}>
+						{creationsByProject[project.id]?.map((creation) => (
+							<WorkspaceCreationRow
+								key={creation.id}
+								creation={creation}
+								isActive={activeCreationId === creation.id}
+								onSelect={() => useAppStore.getState().selectCreation(creation.id)}
+							/>
+						))}
+					</ul>
+				)}
+			</li>
+		);
+	};
+
 	return (
 		<nav data-testid="project-tree" className="flex flex-col gap-4">
 			<ChatsSection />
@@ -295,6 +405,7 @@ export function ProjectTree() {
 					onOpen={() => void pickAndOpen()}
 					onEnterHostPath={enterHostPath}
 					onClone={cloneRepository}
+					onImportGroup={importGroup}
 					onOpenRecent={(p) => void openProject(p)}
 					{...(supportsCreate ? { onStartNew: startNewProject } : {})}
 				>
@@ -310,89 +421,39 @@ export function ProjectTree() {
 			</header>
 
 			<ul className="flex flex-col">
-				{projects.map((project) => {
-					const isExpanded = expandedProjectIds[project.id] === true;
-					const list = workspaces[project.id];
-					const stateProjection = { sessionStateByWorkspace };
-					return (
-						<li key={project.id}>
-							<ProjectRow
-								project={project}
-								isSelected={selectedProjectId === project.id}
-								isExpanded={isExpanded}
+				{projectRailEntries(projects).map((entry) =>
+					entry.kind === "project" ? (
+						renderProject(entry.project)
+					) : (
+						<li key={`group:${entry.id}`} data-testid="project-group" data-group={entry.id}>
+							<GroupHeader
+								name={entry.name}
+								root={entry.root}
+								collapsed={collapsedRailNodes[groupNodeKey(entry.id)] === true}
+								isActive={activeGroupId === entry.id}
 								needsAttention={
-									!isExpanded && selectProjectNeedsAttention(stateProjection, project.id)
+									collapsedRailNodes[groupNodeKey(entry.id)] === true &&
+									anyNeedsAttention(entry.projects)
 								}
-								isRunning={!isExpanded && selectProjectIsRunning(stateProjection, project.id)}
-								workspaceCount={(list ?? []).filter((w) => !isDefaultWorkspace(w)).length}
-								onToggle={() => toggleExpand(project.id)}
-								onSelect={() => void selectProject(project.id)}
-								canRename={canRenameProject(protocolVersion)}
-								onRename={(name) => renameProject(project, name)}
-								onClose={() => closeProject(project)}
-								onAddWorkspace={() => openWorkspaceDialog(project.id, false)}
-								onAddWorkspaceFromMenu={() => openWorkspaceDialog(project.id, true)}
-								onOpenExistingWorktree={() => openExistingWorktreeDialog(project.id)}
-								onRegisterNameButton={(element) => registerProjectNameButton(project.id, element)}
-								onRestoreFocus={() => focusProjectNameOrAdd(project.id)}
+								onToggle={() => useAppStore.getState().toggleRailNode(groupNodeKey(entry.id))}
+								onStart={() => setGroupStartId(entry.id)}
+								{...(supportsGroupHome
+									? { onOpen: () => useAppStore.getState().selectProjectGroup(entry.id) }
+									: {})}
 							/>
-							{isExpanded && list === undefined && (
-								<LoadingRegion rows={2} className="py-4 pr-8 pl-16" />
-							)}
-							{isExpanded && list !== undefined && (
-								<SettledPartition
-									enabled={supportsSettling}
-									projectId={project.id}
-									partition={selectWorkspacePartition(partitionState, project.id, now)}
-									shelfExpanded={settledShelfExpanded[project.id] === true}
-									shelfShown={settledShelfShown[project.id] ?? SETTLED_SHELF_PAGE}
-									renderRow={(ws, settled) =>
-										workspaceCreations[ws.id] ? null : (
-											<WorkspaceRow
-												key={ws.id}
-												workspace={ws}
-												settled={settled}
-												now={now}
-												isActive={activeWorkspaceId === ws.id}
-												needsAttention={selectWorkspaceNeedsAttention(stateProjection, ws.id)}
-												isRunning={selectWorkspaceIsRunning(stateProjection, ws.id)}
-												canRename={canRenameWorkspace(protocolVersion, ws)}
-												canSettle={canSettleWorkspace(protocolVersion, ws)}
-												readAction={
-													supportsWorkspaceReadState(protocolVersion)
-														? selectWorkspaceReadAction(stateProjection, ws.id)
-														: null
-												}
-												editors={editors}
-												onSelect={() => selectWorkspace(ws)}
-												onOpenIn={(editor) => openWorkspaceIn(ws, editor)}
-												onCopyPath={() => void copyText(ws.worktreePath)}
-												onReveal={() => revealWorkspace(ws)}
-												onRename={(name) => renameWorkspace(ws, name)}
-												onSettle={() => settleWorkspace(ws.id)}
-												onKeepActive={() => unsettleWorkspace(ws.id)}
-												onMarkRead={() => markWorkspaceRead(ws.id)}
-												onMarkUnread={() => markWorkspaceUnread(ws.id)}
-											/>
-										)
-									}
-								/>
-							)}
-							{isExpanded && (creationsByProject[project.id]?.length ?? 0) > 0 && (
-								<ul aria-label={t("panels.workspaceCreation.listLabel")}>
-									{creationsByProject[project.id]?.map((creation) => (
-										<WorkspaceCreationRow
-											key={creation.id}
-											creation={creation}
-											isActive={activeCreationId === creation.id}
-											onSelect={() => useAppStore.getState().selectCreation(creation.id)}
-										/>
-									))}
+							{collapsedRailNodes[groupNodeKey(entry.id)] === true ? null : (
+								<ul
+									className="flex flex-col pl-16"
+									aria-label={t("panels.projectTree.group", { name: entry.name })}
+								>
+									{entry.projects.map((member) =>
+										renderProject(member, { path: member.projectGroup?.path ?? "" }),
+									)}
 								</ul>
 							)}
 						</li>
-					);
-				})}
+					),
+				)}
 			</ul>
 
 			{dialogProjectId !== null ? (
@@ -408,6 +469,24 @@ export function ProjectTree() {
 					}}
 				/>
 			) : null}
+
+			{(() => {
+				if (groupStartId === null) return null;
+				const group = projectRailEntries(projects).find(
+					(entry) => entry.kind === "group" && entry.id === groupStartId,
+				);
+				if (group?.kind !== "group") return null;
+				return (
+					<ProjectGroupStartDialog
+						key={group.id}
+						groupName={group.name}
+						members={group.projects}
+						onOpenChange={(open) => {
+							if (!open) setGroupStartId(null);
+						}}
+					/>
+				);
+			})()}
 
 			{existingDialogProjectId !== null ? (
 				<ExistingWorktreeDialog
@@ -530,7 +609,15 @@ function ProjectRow({
 	onOpenExistingWorktree,
 	onRegisterNameButton,
 	onRestoreFocus,
+	inGroup = false,
+	label,
+	truncateStart = false,
+	title,
 }: {
+	inGroup?: boolean;
+	label?: string;
+	truncateStart?: boolean;
+	title?: string;
 	project: Project;
 	isSelected: boolean;
 	isExpanded: boolean;
@@ -554,7 +641,13 @@ function ProjectRow({
 		altShortcut: platformShortcutLabel("N", { alt: true }),
 	});
 	const Chevron = isExpanded ? ChevronDown : ChevronRight;
-	const Folder = isSelected ? RiFolderFill : RiFolderLine;
+	const Folder = inGroup
+		? isSelected
+			? RiGitRepositoryFill
+			: RiGitRepositoryLine
+		: isSelected
+			? RiFolderFill
+			: RiFolderLine;
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const openingDialogRef = useRef(false);
@@ -574,7 +667,7 @@ function ProjectRow({
 	) : (
 		<Folder className={`size-14 shrink-0 ${isSelected ? "text-primary" : "text-text-muted"}`} />
 	);
-	const nameClass = `truncate tr-text-ui ${isSelected ? "text-text-default" : "text-text-muted"}`;
+	const nameClass = `min-w-0 truncate tr-text-ui ${isSelected ? "text-text-default" : "text-text-muted"}`;
 	const openDialogAfterMenu = (openDialog: () => void) => {
 		openingDialogRef.current = true;
 		setMenuOpen(false);
@@ -625,10 +718,20 @@ function ProjectRow({
 					type="button"
 					data-testid="project-name"
 					onClick={onSelect}
+					title={title}
 					className="flex min-w-0 flex-1 items-center gap-4 text-left"
 				>
 					{folderIcon}
-					<span className={nameClass}>{project.name}</span>
+					<span
+						className={cn(nameClass, truncateStart && "text-left")}
+						{...(truncateStart ? { dir: "rtl" as const } : {})}
+					>
+						{truncateStart ? (
+							<span dir="ltr">{label ?? project.name}</span>
+						) : (
+							(label ?? project.name)
+						)}
+					</span>
 				</button>
 			)}
 			{needsAttention ? <AttentionDot /> : null}
@@ -741,6 +844,92 @@ function ProjectRow({
 				}}
 			/>
 		</>
+	);
+}
+
+function GroupHeader({
+	name,
+	root,
+	collapsed,
+	isActive,
+	needsAttention,
+	onToggle,
+	onOpen,
+	onStart,
+}: {
+	name: string;
+	root: string;
+	collapsed: boolean;
+	isActive: boolean;
+	needsAttention: boolean;
+	onToggle: () => void;
+	onOpen?: () => void;
+	/** The row's "+": the project start choices scoped to this group. */
+	onStart: () => void;
+}) {
+	const t = useT();
+	const Chevron = collapsed ? ChevronRight : ChevronDown;
+	const Icon = isActive ? RiStackFill : RiStackLine;
+	const label = (
+		<>
+			<Icon
+				className={cn("size-14 shrink-0", isActive ? "text-primary" : "text-text-muted")}
+				aria-hidden="true"
+			/>
+			<span className="truncate tr-text-eyebrow">{name}</span>
+		</>
+	);
+	return (
+		<div
+			data-testid="project-group-header"
+			data-active={isActive || undefined}
+			className={cn(
+				"flex h-panel-row min-w-0 items-center gap-4 rounded-sm pr-4 pl-4 text-text-muted transition-colors",
+				isActive ? "bg-control-bg-selected" : "hover:bg-control-bg-hovered",
+			)}
+		>
+			<button
+				type="button"
+				data-testid="project-group-toggle"
+				aria-expanded={!collapsed}
+				aria-label={t(
+					collapsed ? "panels.projectTree.expandGroup" : "panels.projectTree.collapseGroup",
+					{ name },
+				)}
+				onClick={onToggle}
+				className="flex size-16 shrink-0 items-center justify-center rounded-sm transition-colors hover:text-text-default focus-visible:text-text-default"
+			>
+				<Chevron className="size-16" />
+			</button>
+			{onOpen ? (
+				<button
+					type="button"
+					data-testid="project-group-open"
+					title={t("panels.projectTree.openGroupHome", { root })}
+					onClick={onOpen}
+					className={cn(
+						"flex min-w-0 flex-1 items-center gap-4 text-left hover:text-text-default",
+						isActive && "text-text-default",
+					)}
+				>
+					{label}
+				</button>
+			) : (
+				<span className="flex min-w-0 flex-1 items-center gap-4" title={root}>
+					{label}
+				</span>
+			)}
+			{needsAttention ? <AttentionDot /> : null}
+			<IconButton
+				icon={Plus}
+				label={t("panels.projectTree.startInGroup", { name })}
+				variant="ghost"
+				size="s"
+				className="shrink-0"
+				data-testid="project-group-start"
+				onClick={onStart}
+			/>
+		</div>
 	);
 }
 

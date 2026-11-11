@@ -79,6 +79,14 @@ list read shows one localized failure instead of rendering an empty selection as
 rejected write leaves the last confirmed selection in place. Selection grants no trust, push or delivery
 right.
 
+**On-demand joins (v126).** With `supportsIssueRepositoryJoin`, a locked list stays interactive: joined
+repositories render selected and disabled (`data-joined`), every other candidate joins on click through
+`issues.addRepository` (which creates its Issue worktree, so the request allows 120 s), and a "remove
+unchanged repositories" button calls `issues.cleanupRepositories` once something is joined. The
+popover body is `IssueRepositoriesPanel`; it owns the in-flight and result notice, shows the host's
+reason beside the localized failure only for `ISSUE_REPOSITORY_REFUSED`, and reports the removed count.
+Joining is add-only; nothing in the UI removes a changed repository.
+
 **Dual entry.** A project can be associated from the Issues tool (the panel form) or from the prompt the
 A project holds at most one Issue association. `shouldOfferAssociation(gesture, associated)` gates the
 post-open prompt: a create gesture never prompts, and an already-associated project never prompts again,

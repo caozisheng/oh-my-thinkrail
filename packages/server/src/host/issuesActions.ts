@@ -1,23 +1,35 @@
-import { lstatSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import {
 	type IssueDesignPublicationInput,
 	type IssueImplementationTarget,
 	type IssueReference,
 	type IssueRepositories,
+	type IssueRepositoriesCleanup,
 	type IssueRepositoriesInput,
+	type IssueRepositoryJoinInput,
 	type IssueSessionLaunch,
 	type IssueSessionStartupTarget,
 	type IssueTarget,
 	isIssueDesignPublicationInput,
 	isIssueImplementationTarget,
 	isIssueRepositoriesInput,
+	isIssueRepositoryJoinInput,
 	isIssueSessionStartupTarget,
 	isIssueTarget,
+	PROJECT_GROUP_MAX_REPOSITORIES,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { sessionReuseStatus } from "../agent";
-import { resolveCommitOid } from "../git";
+import {
+	gitAsync,
+	listRemotes,
+	nonInteractiveGitEnv,
+	remoteNameOf,
+	remoteRefOid,
+	resolveCommitOid,
+	resolveDefaultBranch,
+} from "../git";
 import {
 	type ApprovalPublication,
 	type ApprovalResult,
@@ -25,15 +37,19 @@ import {
 	createIssueWorkspaceCoordinator,
 	type IssueRepositoryContext,
 	type IssuesService,
+	type IssueWorkspaceLayout,
 	type WorkflowRemote,
 	type WorkspaceHandle,
 } from "../issues";
-import { getProjects } from "../projects";
+import { getProjects, projectGroupMembers } from "../projects";
 import {
 	createWorkspaceAtPathWithBranch,
+	defaultWorkspaceOf,
 	listGitWorktrees,
 	listWorkspaceRecords,
 	listWorkspaces,
+	nestedWorkspaces,
+	removeWorkspace,
 	republishWorkspace,
 } from "../workspaces";
 import { createHostSession } from "./createHostSession";
@@ -42,6 +58,8 @@ import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 type Action =
+	| "addRepository"
+	| "cleanupRepositories"
 	| "designContexts"
 	| "implementationContexts"
 	| "repositories"
@@ -68,9 +86,11 @@ function invalid(): never {
 }
 type ParsedAction =
 	| { action: "setRepositories"; args: IssueRepositoriesInput }
+	| { action: "addRepository"; args: IssueRepositoryJoinInput }
 	| { action: "beginDesign" | "beginImplementation"; args: IssueSessionStartupTarget }
 	| {
 			action:
+				| "cleanupRepositories"
 				| "designContexts"
 				| "implementationContexts"
 				| "repositories"
@@ -96,6 +116,9 @@ function parse(value: unknown, action: Action): ParsedAction {
 		case "setRepositories":
 			if (!isIssueRepositoriesInput(value)) invalid();
 			return { action, args: { ...snapshot(value), projectIds: [...value.projectIds] } };
+		case "addRepository":
+			if (!isIssueRepositoryJoinInput(value)) invalid();
+			return { action, args: snapshot(value) };
 		case "beginDesign":
 		case "beginImplementation":
 			if (!isIssueSessionStartupTarget(value)) invalid();
@@ -129,6 +152,101 @@ export function privateDirectory(path: string): void {
 		mkdirSync(path, { mode: 0o700 });
 	}
 }
+/**
+ * The trusted, open other members of the project's group: the repositories an Issue reads as
+ * `reference` and may join on demand. Untrusted members are never offered (joining never grants trust).
+ */
+export function groupReferenceCandidates(projectId: string): string[] {
+	return projectGroupMembers(projectId)
+		.filter((project) => project.trusted === true)
+		.slice(0, PROJECT_GROUP_MAX_REPOSITORIES)
+		.map((project) => project.id);
+}
+
+/**
+ * A layout only when every listed participant belongs to the primary's group and still sits at its
+ * recorded place; it also places every other open member found where it belongs, so a later join can
+ * use the same frozen slot. Null (ordinary per-repository paths) in every other case.
+ */
+export function groupWorkspaceLayout(
+	primaryId: string,
+	projectIds: readonly string[],
+): IssueWorkspaceLayout | null {
+	const projects = getProjects();
+	const group = projects.find((project) => project.id === primaryId)?.projectGroup;
+	if (!group) return null;
+	let root: string;
+	try {
+		root = realpathSync.native(group.root);
+	} catch {
+		return null;
+	}
+	const place = (id: string): string | null => {
+		const project = projects.find((candidate) => candidate.id === id);
+		const membership = project?.projectGroup;
+		if (!project || membership?.id !== group.id || membership.root !== group.root) return null;
+		try {
+			const actual = relative(root, realpathSync.native(project.path)).split(sep).join("/");
+			return actual === membership.path ? actual : null;
+		} catch {
+			return null;
+		}
+	};
+	const paths: IssueWorkspaceLayout["paths"] = [];
+	for (const id of projectIds) {
+		const path = place(id);
+		if (path === null) return null;
+		paths.push({ projectId: id, path });
+	}
+	for (const project of projects) {
+		if (paths.length > PROJECT_GROUP_MAX_REPOSITORIES) break;
+		if (project.closed || project.projectGroup?.id !== group.id || projectIds.includes(project.id))
+			continue;
+		const path = place(project.id);
+		if (path !== null) paths.push({ projectId: project.id, path });
+	}
+	return { root, paths };
+}
+
+const FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Best-effort refresh of `origin`'s default branch, then that remote ref (e.g. `origin/main`) when it
+ * exists; undefined (branch from local HEAD) without an origin, offline, or on any failure.
+ */
+export async function freshBaseRef(path: string): Promise<string | undefined> {
+	const remotes = listRemotes(path);
+	if (!remotes.includes("origin")) return undefined;
+	const preferred = resolveDefaultBranch(path);
+	const ref = remoteNameOf(preferred, remotes) ? preferred : `origin/${preferred}`;
+	const branch = ref.startsWith("origin/") ? ref.slice("origin/".length) : undefined;
+	const env = {
+		...nonInteractiveGitEnv(),
+		...(process.env.GIT_SSH_COMMAND ? {} : { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" }),
+	};
+	await gitAsync(
+		path,
+		["fetch", "--no-tags", "origin", ...(branch && branch !== "HEAD" ? ["--", branch] : [])],
+		{ network: true, timeoutMs: FETCH_TIMEOUT_MS, env },
+	);
+	return remoteRefOid(path, ref) ? ref : undefined;
+}
+
+/** No commit beyond `base` and a clean tree (tracked and untracked); ignored files do not count. */
+export async function worktreeUnchanged(path: string, base: string): Promise<boolean> {
+	if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(base)) return false;
+	const ahead = await gitAsync(path, ["rev-list", "--count", `${base}..HEAD`, "--"]);
+	if (!ahead.ok || ahead.out !== "0") return false;
+	const status = await gitAsync(path, ["status", "--porcelain", "--untracked-files=all"]);
+	return status.ok && status.out === "";
+}
+
+let archiveWorkspace: (workspaceId: string) => Promise<void> = removeWorkspace;
+/** The host's full workspace-archive teardown (sessions, terminals, watchers) used by cleanup. */
+export function setIssueWorkspaceArchiver(next: ((workspaceId: string) => Promise<void>) | null) {
+	archiveWorkspace = next ?? removeWorkspace;
+}
+
 export type IssueActionSessions = {
 	create?: typeof createHostSession;
 	status?: typeof sessionReuseStatus;
@@ -144,9 +262,10 @@ export function createIssuesActions(
 		input: unknown,
 	): Promise<IssueRepositoryContext[]>;
 	function run(
-		action: "repositories" | "setRepositories",
+		action: "repositories" | "setRepositories" | "addRepository",
 		input: unknown,
 	): Promise<IssueRepositories>;
+	function run(action: "cleanupRepositories", input: unknown): Promise<IssueRepositoriesCleanup>;
 	function run(
 		action:
 			| "beginDesign"
@@ -249,10 +368,14 @@ export function createIssuesActions(
 					reference.number,
 				]);
 				const existingOwnership = await checked(() => ports.load(ownershipKey));
+				const savedIds = existingOwnership?.repositoryProjectIds ?? [];
 				const selectedIds =
 					request.action === "setRepositories"
 						? request.args.projectIds
-						: (existingOwnership?.repositoryProjectIds ?? []);
+						: request.action === "addRepository" &&
+								!savedIds.includes(request.args.repositoryProjectId)
+							? [...savedIds, request.args.repositoryProjectId]
+							: savedIds;
 				for (const id of selectedIds) {
 					const member = trusted(id);
 					if (member.closed) stop();
@@ -263,6 +386,10 @@ export function createIssuesActions(
 					const member = trusted(id);
 					if (member.closed || selectedProjects.get(id) !== member.path) stop();
 					return member;
+				}
+				function nameOf(context: Pick<IssueRepositoryContext, "projectId" | "role">): string {
+					if (context.role !== "reference") return memberProject(context.projectId).name;
+					return getProjects().find((p) => p.id === context.projectId)?.name ?? context.projectId;
 				}
 				function find(query: { workspaceId: string } | { worktreePath: string }) {
 					return (
@@ -318,8 +445,49 @@ export function createIssuesActions(
 					save: (key, row) => checked(() => ports.save(key, row)),
 					findWorkspace: (query) => checked(() => find(query)),
 					listGitWorktrees: (id) => checked(() => listGitWorktrees(id)),
-					createWorkspaceAtPath: (id, path, branch, name) =>
-						checked(() => createWorkspaceAtPathWithBranch(id, path, branch, undefined, name)),
+					createWorkspaceAtPath: (id, path, branch, name, layoutRoot, baseRef) =>
+						checked(() =>
+							createWorkspaceAtPathWithBranch(
+								id,
+								path,
+								branch,
+								baseRef,
+								name,
+								layoutRoot === undefined ? {} : { layoutRoot },
+							),
+						),
+					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
+					baseRef: (id) => checked(() => freshBaseRef(memberProject(id).path)),
+					headCommit: (path) => checked(() => resolveCommitOid(path, "HEAD")),
+					references: () =>
+						checked(() =>
+							groupReferenceCandidates(projectId).flatMap((id) => {
+								const project = getProjects().find((p) => p.id === id);
+								const ws = defaultWorkspaceOf(id);
+								return project && ws
+									? [{ projectId: id, workspaceId: ws.id, path: project.path }]
+									: [];
+							}),
+						),
+					memberUnchanged: (ws, base) => checked(() => worktreeUnchanged(ws.worktreePath, base)),
+					removeMember: (ws, base) =>
+						checked(async () => {
+							const project = memberProject(ws.projectId);
+							if (
+								nestedWorkspaces(ws.id).length > 0 ||
+								!(await worktreeUnchanged(ws.worktreePath, base))
+							)
+								return false;
+							await archiveWorkspace(ws.id);
+							const tip = resolveCommitOid(project.path, `refs/heads/${ws.branch}`);
+							// Delete only the reserved branch, and only while its tip is still inside the base.
+							if (
+								tip &&
+								(await gitAsync(project.path, ["merge-base", "--is-ancestor", tip, base])).ok
+							)
+								await gitAsync(project.path, ["branch", "-D", ws.branch]);
+							return true;
+						}),
 					boundSession: (stage, workspaceId) =>
 						checked(async () => {
 							if (!agentSessions) stop();
@@ -408,7 +576,7 @@ export function createIssuesActions(
 						for (const member of await checked(() =>
 							coordinator.contexts(reference, "implementation"),
 						))
-							republishWorkspace(member.workspaceId);
+							if (member.role !== "reference") republishWorkspace(member.workspaceId);
 					}
 					if (startupPrompt !== undefined) {
 						if (!agentSessions || !startup) stop();
@@ -416,10 +584,7 @@ export function createIssuesActions(
 						startupPrompt = await checked(() =>
 							agentSessions.prepare(
 								{ projectId, reference, stage, locale: startup.locale },
-								repositories.map((repository) => ({
-									...repository,
-									name: memberProject(repository.projectId).name,
-								})),
+								repositories.map((repository) => ({ ...repository, name: nameOf(repository) })),
 							),
 						);
 						await checked(() => agentSessions.start(result.sessionId, startupPrompt));
@@ -433,11 +598,23 @@ export function createIssuesActions(
 							reference,
 							request.action === "designContexts" ? "design" : "implementation",
 						);
-						return contexts.map((context) => ({
-							...context,
-							name: memberProject(context.projectId).name,
-						}));
+						return contexts.map((context) => ({ ...context, name: nameOf(context) }));
 					}
+					case "addRepository": {
+						const result = await coordinator.addRepository(
+							reference,
+							request.args.repositoryProjectId,
+						);
+						if (result.locked)
+							for (const member of await checked(() =>
+								coordinator.contexts(reference, "implementation"),
+							))
+								if (member.projectId === request.args.repositoryProjectId)
+									republishWorkspace(member.workspaceId);
+						return result;
+					}
+					case "cleanupRepositories":
+						return coordinator.cleanupRepositories(reference);
 					case "repositories":
 						return coordinator.repositories(reference);
 					case "setRepositories":
@@ -476,8 +653,10 @@ export function createIssuesActions(
 			},
 			guard,
 			[
+				"addRepository",
 				"beginDesign",
 				"beginImplementation",
+				"cleanupRepositories",
 				"launchDesign",
 				"launchImplementation",
 				"startImplementation",
@@ -491,6 +670,8 @@ export function createIssuesActions(
 		implementationContexts: (input: unknown) => run("implementationContexts", input),
 		repositories: (input: unknown) => run("repositories", input),
 		setRepositories: (input: unknown) => run("setRepositories", input),
+		addRepository: (input: unknown) => run("addRepository", input),
+		cleanupRepositories: (input: unknown) => run("cleanupRepositories", input),
 		beginDesign: (input: unknown) => run("beginDesign", input),
 		beginImplementation: (input: unknown) => run("beginImplementation", input),
 		approveDesign: (input: unknown) => run("approveDesign", input),

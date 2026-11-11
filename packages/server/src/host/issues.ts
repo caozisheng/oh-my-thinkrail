@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import {
 	canonicalIssueInstanceUrl,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
+	type IssueReference,
 	type IssueTarget,
 	isIssueConnectionInput,
 	isIssueTarget,
@@ -184,6 +185,34 @@ function persistence(dir: string): IssuesServiceOptions["persistence"] {
 
 const log = logger("issues");
 
+/** One started implementation as the project group home reads it; `base` stays host-side. */
+export interface GroupIssueRecord {
+	provider: "gitlab" | "github";
+	instanceUrl: string;
+	number: number;
+	/** The tracker title the host last saw for this Issue (in-memory, since host start). */
+	title?: string;
+	projectId: string;
+	repositories: {
+		projectId: string;
+		role: "primary" | "associated";
+		workspaceId?: string;
+		base?: string;
+	}[];
+}
+
+/** In-memory titles keyed by local project and Issue reference, fed by Issues list/detail reads. */
+const TITLE_CACHE_MAX = 2000;
+function titleKey(projectId: string, reference: IssueReference): string {
+	return JSON.stringify([
+		projectId,
+		reference.provider,
+		reference.instanceUrl,
+		reference.projectId,
+		reference.number,
+	]);
+}
+
 /** Host-only composition seam; credentials remain solely inside the issues service. */
 export function createIssuesHost(
 	options: {
@@ -242,12 +271,29 @@ export function createIssuesHost(
 						projectId: target.projectId,
 						reference: target.reference,
 					}),
+		join: (target, repositoryProjectId) =>
+			actions.addRepository({
+				projectId: target.projectId,
+				reference: target.reference,
+				repositoryProjectId,
+			}),
 		locale: () => {
 			const locale = getConfig().locale;
 			return locale === "system" ? Intl.DateTimeFormat().resolvedOptions().locale : locale;
 		},
 	});
 	const actions = createIssuesActions(service, root, options.sessions, agentSessions);
+	const titles = new Map<string, string>();
+	function rememberTitle(projectId: string, reference: IssueReference, title: unknown) {
+		if (typeof title !== "string" || title === "") return;
+		const key = titleKey(projectId, reference);
+		titles.delete(key);
+		titles.set(key, title);
+		if (titles.size > TITLE_CACHE_MAX) {
+			const oldest = titles.keys().next().value;
+			if (oldest !== undefined) titles.delete(oldest);
+		}
+	}
 	/**
 	 * Workspace→Issue bindings for the project rail, derived from owned implementations (the single
 	 * source of ownership). Read-only and best effort: no worktree, session or remote access.
@@ -270,6 +316,46 @@ export function createIssuesHost(
 					bindings.set(member.ownership.workspaceId, { ...base, role: "associated" });
 		}
 		return bindings;
+	}
+	/**
+	 * Started implementations whose primary is one of `projectIds`, for the project group home:
+	 * the primary and every joined repository with its worktree id and recorded start commit.
+	 * Read-only and best effort, like the rail bindings.
+	 */
+	function groupIssueRecords(projectIds: ReadonlySet<string>): GroupIssueRecord[] {
+		const issues: GroupIssueRecord[] = [];
+		for (const row of createIssueWorkspacePersistence(join(root, "issue-workspaces")).list()) {
+			if (!projectIds.has(row.projectId) || !row.implementation) continue;
+			const implementation = row.implementation;
+			const title = titles.get(titleKey(row.projectId, row.reference));
+			issues.push({
+				provider: row.reference.provider,
+				instanceUrl: row.reference.instanceUrl,
+				number: row.reference.number,
+				...(title ? { title } : {}),
+				projectId: row.projectId,
+				repositories: [
+					{
+						projectId: row.projectId,
+						role: "primary",
+						...(implementation.state === "completed"
+							? { workspaceId: implementation.workspaceId }
+							: {}),
+					},
+					...(row.members ?? [])
+						.filter((member) => member.removing !== true)
+						.map((member) => ({
+							projectId: member.projectId,
+							role: "associated" as const,
+							...(member.ownership?.state === "completed"
+								? { workspaceId: member.ownership.workspaceId }
+								: {}),
+							...(member.base ? { base: member.base } : {}),
+						})),
+				],
+			});
+		}
+		return issues.sort((a, b) => a.number - b.number);
 	}
 	/**
 	 * The other source repositories this bound Issue session may edit. Design reads their Default
@@ -299,6 +385,7 @@ export function createIssuesHost(
 		agentSessions,
 		sessionMemberWorkspaces,
 		workspaceIssueBindings,
+		groupIssueRecords,
 		...actions,
 		async connection(params: unknown) {
 			const { projectId } = request(params);
@@ -335,13 +422,17 @@ export function createIssuesHost(
 			const { projectId, reference } = designTarget(params);
 			project(projectId, false);
 			await restore(projectId, false);
-			return (await service()).detail(projectId, reference);
+			const detail = await (await service()).detail(projectId, reference);
+			rememberTitle(projectId, detail.reference, detail.title);
+			return detail;
 		},
 		async list(params: unknown) {
 			const { projectId } = request(params);
 			project(projectId, false);
 			await restore(projectId, false);
-			return (await service()).list(projectId);
+			const list = await (await service()).list(projectId);
+			for (const issue of list.issues) rememberTitle(projectId, issue.reference, issue.title);
+			return list;
 		},
 		async content(params: unknown) {
 			const target = designTarget(params);
@@ -394,6 +485,9 @@ export const issuesPublishImplementation = issuesHost.publishImplementation;
 export const issuesRepositoryAddress = issuesHost.repositoryAddress;
 export const issuesRepositories = issuesHost.repositories;
 export const issuesSetRepositories = issuesHost.setRepositories;
+export const issuesAddRepository = issuesHost.addRepository;
+export const issuesCleanupRepositories = issuesHost.cleanupRepositories;
+export { setIssueWorkspaceArchiver } from "./issuesActions";
 export const issuesStartImplementation = issuesHost.startImplementation;
 export const issuesValidateDesign = issuesHost.validateDesign;
 export const issuesValidateImplementation = issuesHost.validateImplementation;

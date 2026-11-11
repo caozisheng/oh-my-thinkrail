@@ -9,6 +9,7 @@ import { Check } from "typebox/value";
 import { buildResourceLoader, childExtensionFactories } from "./extensions";
 import {
 	createIssueContextTool,
+	createIssueJoinRepositoryTool,
 	createIssueRecordSummaryTool,
 	type IssueToolHost,
 	issueToolsExtension,
@@ -149,14 +150,18 @@ test("default, reset, and arbitrary host failures are static coded errors withou
 	);
 });
 
-test("extension registers both tools without injecting global issue instructions", () => {
+test("extension registers the issue tools without injecting global issue instructions", () => {
 	const tools: Array<{ name: string; promptGuidelines?: string[] }> = [];
 	const hooks: string[] = [];
 	issueToolsExtension({
 		registerTool: (tool: { name: string }) => tools.push(tool),
 		on: (name: string) => hooks.push(name),
 	} as unknown as ExtensionAPI);
-	expect(tools.map((tool) => tool.name)).toEqual(["issue_context", "issue_record_summary"]);
+	expect(tools.map((tool) => tool.name)).toEqual([
+		"issue_context",
+		"issue_record_summary",
+		"issue_join_repository",
+	]);
 	expect(tools.every((tool) => !tool.promptGuidelines?.length)).toBe(true);
 	expect(hooks).toEqual([]);
 	expect(childExtensionFactories("workspace")).not.toContain(issueToolsExtension);
@@ -185,7 +190,11 @@ test("the shared resource loader registers issue tools as a named inline extensi
 			.getExtensions()
 			.extensions.find((item) => item.path === "<inline:issue-tools>");
 		expect(extension).toBeDefined();
-		expect([...(extension?.tools.keys() ?? [])]).toEqual(["issue_context", "issue_record_summary"]);
+		expect([...(extension?.tools.keys() ?? [])]).toEqual([
+			"issue_context",
+			"issue_record_summary",
+			"issue_join_repository",
+		]);
 		setIssueToolHost(fakeHost().host);
 		const tool = extension?.tools.get("issue_context");
 		expect(await tool?.definition.execute("call", {}, undefined, undefined, ctx)).toMatchObject({
@@ -231,4 +240,77 @@ test("recovery is an exact optional enum delegated unchanged and safely classifi
 		"ISSUE_SUMMARY_RECOVERY_REQUIRED",
 		"Issue summary requires reconciliation. Obtain explicit human confirmation before either recovery mode; reuse the original operationId and exact summary. Retry requires human confirmation that the original request/process ended without remote publication and authorization to retry. Absence, errors and timeouts are not proof.",
 	);
+});
+
+function joinContext(answer: boolean | null) {
+	const asked: string[] = [];
+	return {
+		asked,
+		ctx: {
+			sessionManager: { getSessionId: () => "own-session" },
+			hasUI: answer !== null,
+			ui: {
+				confirm: async (title: string) => {
+					asked.push(title);
+					return answer === true;
+				},
+			},
+		} as unknown as ExtensionToolContext,
+	};
+}
+const join_ = (params: unknown, context: ExtensionToolContext) =>
+	createIssueJoinRepositoryTool().execute("call", params as never, undefined, undefined, context);
+
+test("joining a reference repository asks the user first and joins only on confirmation", async () => {
+	const calls: string[] = [];
+	setIssueToolHost({
+		...fakeHost().host,
+		joinCandidate: async (sessionId, projectId) => {
+			calls.push(`candidate:${sessionId}:${projectId}`);
+			return { projectId, name: "core", path: "/suite/libs/core" };
+		},
+		joinRepository: async (sessionId, projectId) => {
+			calls.push(`join:${sessionId}:${projectId}`);
+			return {
+				projectId,
+				name: "core",
+				path: "/suite/.worktrees/issue-1/libs/core",
+				workspaceId: "w",
+			};
+		},
+	});
+	const declined = joinContext(false);
+	expect((await join_({ projectId: "core" }, declined.ctx)).details).toEqual({ joined: false });
+	expect(declined.asked).toEqual(["Join core to this Issue?"]);
+	expect(calls).toEqual(["candidate:own-session:core"]);
+	const confirmed = joinContext(true);
+	expect((await join_({ projectId: "core" }, confirmed.ctx)).details).toMatchObject({
+		joined: true,
+		repository: { path: "/suite/.worktrees/issue-1/libs/core" },
+	});
+	expect(calls).toEqual([
+		"candidate:own-session:core",
+		"candidate:own-session:core",
+		"join:own-session:core",
+	]);
+	await expect(join_({ projectId: "core" }, joinContext(null).ctx)).rejects.toThrow();
+	expect(calls).toHaveLength(4);
+	for (const bad of [{}, { projectId: "../x" }, { projectId: "core", extra: 1 }])
+		await expect(join_(bad, confirmed.ctx)).rejects.toMatchObject({ code: "RANGE_INVALID" });
+});
+
+test("a repository the host does not offer as a reference is refused without asking", async () => {
+	setIssueToolHost({
+		...fakeHost().host,
+		joinCandidate: async () => {
+			throw new Error("secret: not a reference");
+		},
+	});
+	const asking = joinContext(true);
+	await expectClosedFailure(
+		join_({ projectId: "core" }, asking.ctx),
+		"RESOURCE_UNAVAILABLE",
+		"Issue tools are unavailable for this session.",
+	);
+	expect(asking.asked).toEqual([]);
 });

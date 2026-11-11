@@ -21,6 +21,7 @@ import { NotificationPermissionPrompt, useAttentionNotifications } from "../noti
 import { AnalyticsConsentDialog } from "../panels/AnalyticsConsentDialog";
 import { canStartProjectlessChat } from "../panels/chatActions";
 import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
+import { ProjectGroupHome } from "../panels/ProjectGroupHome";
 import { SettingsDialog } from "../panels/SettingsDialog";
 import { SurveyInvitationDialog } from "../panels/SurveyInvitationDialog";
 import { SurveyWindow } from "../panels/SurveyWindow";
@@ -31,6 +32,7 @@ import { SearchSettings } from "../search";
 import {
 	isChatWorkspace,
 	SettingsSection,
+	selectActiveProjectGroupId,
 	selectActiveWorkspace,
 	selectAnalyticsConsentPromptOpen,
 	selectContextProject,
@@ -119,6 +121,7 @@ export function Shell() {
 		s.activeCreationId ? s.workspaceCreations[s.activeCreationId] : undefined,
 	);
 	const workspaceRetryDraft = useAppStore((s) => s.workspaceRetryDraft);
+	const activeGroupId = useAppStore(selectActiveProjectGroupId);
 	useCreationChatHandoff();
 	const canStartChat = useAppStore(canStartProjectlessChat);
 	const openNewWork = (initialPrompt?: string): boolean => {
@@ -319,7 +322,11 @@ export function Shell() {
 			) : (
 				<ProjectHome
 					projects={homeProjects}
-					{...(activeCreation ? { main: <WorkspaceCreationView creation={activeCreation} /> } : {})}
+					{...(activeCreation
+						? { main: <WorkspaceCreationView creation={activeCreation} /> }
+						: activeGroupId
+							? { main: <ProjectGroupHome groupId={activeGroupId} /> }
+							: {})}
 				/>
 			)}
 			{onboardingActive ? null : analyticsConsentOpen ? (

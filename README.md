@@ -36,6 +36,23 @@ token. It includes:
   it has linked repositories). Changes, review and commits stay attributed per repository; commits
   across repositories are not atomic, so a failure keeps the successful ones and is reported. Build
   and integration paths between the worktrees are the agent's normal reviewed work, not automatic.
+- **Project groups**: "Import folder as project group…" scans a folder (the folder itself may be a
+  repository or not) for nested Git repositories up to six levels deep, skipping hidden, dependency
+  and build folders and never following symlinks, lets you untick any, and opens the rest as projects.
+  The outer folder is usually a plain folder (as with Google `repo` or `west`) and never has to be a
+  repository. The project rail lists the members flat under the group header, sorted and labelled by
+  relative path (a folder that is itself a repository is just another member, `.`). Clicking the
+  group name opens the group home: the group's Issues as a collapsed-by-default list (each row shows
+  how many repositories the Issue touches, how many changed, its commits and uncommitted files; expand
+  it for every repository's Issue branch, commits since its start, commits behind the default branch
+  and uncommitted files), a warning only when a repository's main directory has uncommitted changes or
+  is far behind, and Rescan, Fetch all and Remove
+  group (which only ungroups or closes the projects; nothing on disk changes). An Issue started from a
+  group member begins with only its own repository; the other members are read-only references until
+  you or the agent (with your confirmation) join one, which creates its worktree from a fresh
+  `origin/<default>` in the same `.worktrees/issue-<n>…/` folder that mirrors the original layout, so
+  relative paths between repositories keep working. Unchanged joined repositories can be cleaned up in
+  one step. Submodules are not imported as separate repositories.
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.

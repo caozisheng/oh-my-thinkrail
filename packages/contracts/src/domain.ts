@@ -84,6 +84,141 @@ export interface Project {
 	mcpOverrides?: Record<string, McpProjectOverride>;
 	/** "Always allow" MCP tools per server name (never written to `.pi/mcp.json`). */
 	mcpToolGrants?: Record<string, McpToolGrant>;
+	/** Membership in a project group imported from one folder; absent before `PROJECT_GROUPS_PROTOCOL_VERSION`. */
+	projectGroup?: ProjectGroupMembership;
+}
+
+/**
+ * One repository's place in a project group: every member of a group carries the same `id`, `name`
+ * and host-absolute `root`; `path` is this repository's folder relative to `root` (`""` for the root).
+ */
+export interface ProjectGroupMembership {
+	id: string;
+	name: string;
+	root: string;
+	path: string;
+}
+
+/** A repository found below a group root; `path` is relative to the root, `""` for the root itself. */
+export interface ProjectGroupCandidate {
+	path: string;
+	name: string;
+}
+
+export interface ProjectGroupScan {
+	/** The resolved host-absolute folder that was scanned. */
+	root: string;
+	/** Default group name: the folder's basename. */
+	name: string;
+	/** Shallow-first, then by path; at most `PROJECT_GROUP_MAX_REPOSITORIES`. */
+	repositories: ProjectGroupCandidate[];
+	/** The scan stopped at its directory, repository or time budget before seeing everything. */
+	truncated: boolean;
+}
+
+export interface ProjectGroupImportInput {
+	root: string;
+	/** Relative candidate paths the user kept; each must still be found by a fresh scan. */
+	paths: string[];
+	name?: string;
+}
+
+export interface ProjectGroupImport {
+	projects: Project[];
+	failed: { path: string; reason: string }[];
+}
+
+/** Identifies one project group by its membership `id`. */
+export interface ProjectGroupTarget {
+	groupId: string;
+}
+
+/** One open member's checkout as `project.groupStatus` read it; absent fields were not measurable. */
+export interface ProjectGroupRepositoryStatus {
+	projectId: string;
+	/** Relative to the group root, `""` when the group folder is itself a repository. */
+	path: string;
+	/** Branch name, or null on a detached HEAD or when git could not be read. */
+	branch: string | null;
+	/** Tracked or untracked changes in the checkout; null when git could not be read. */
+	dirty: boolean | null;
+	/** The branch's configured upstream (e.g. `origin/main`), when it has one. */
+	upstream?: string;
+	ahead?: number;
+	behind?: number;
+}
+
+/** A repository taking part in an Issue implementation of a group member. */
+export interface ProjectGroupIssueRepository {
+	projectId: string;
+	role: "primary" | "associated";
+	/** The Issue worktree once created. */
+	workspaceId?: string;
+	/** Commits or changes beyond the start commit; absent when no start could be established. */
+	changed?: boolean;
+	/** Relative to the group root (`""` when the group folder is itself a repository); absent outside the group. */
+	path?: string;
+	/** The Issue worktree's branch. */
+	branch?: string;
+	/**
+	 * How the start commit was established: recorded at join (`recorded`), the branch's creation entry
+	 * in its reflog (`created`), or the merge-base with the repository's default branch (`mergeBase`).
+	 */
+	baseSource?: "recorded" | "created" | "mergeBase";
+	/** Commits on the Issue branch beyond its start commit. */
+	ahead?: number;
+	/** Commits on the default branch (e.g. `origin/main`, as of the last fetch) the Issue branch lacks. */
+	behind?: number;
+	/** The default branch `behind` counts against. */
+	defaultBranch?: string;
+	/** Changed paths in the worktree (tracked, staged and untracked); nested Issue worktrees excluded. */
+	changedFiles?: number;
+	/** The Issue branch's own upstream once pushed, with its divergence from local refs. */
+	upstream?: string;
+	upstreamAhead?: number;
+	upstreamBehind?: number;
+}
+
+export interface ProjectGroupIssue {
+	provider: "gitlab" | "github";
+	instanceUrl: string;
+	number: number;
+	/** The tracker title when the host has seen it since starting (Issues list or detail); else absent. */
+	title?: string;
+	/** The group member whose Issue this is. */
+	projectId: string;
+	repositories: ProjectGroupIssueRepository[];
+}
+
+export interface ProjectGroupStatus {
+	id: string;
+	name: string;
+	root: string;
+	/** Open members, shallow-first. */
+	repositories: ProjectGroupRepositoryStatus[];
+	/** Issues of members with a started implementation. */
+	issues: ProjectGroupIssue[];
+}
+
+export interface ProjectGroupFetchResult {
+	projectId: string;
+	path: string;
+	outcome: "fetched" | "noRemote" | "failed";
+	/** git's message for a failed fetch. */
+	error?: string;
+}
+
+export interface ProjectGroupFetch {
+	results: ProjectGroupFetchResult[];
+}
+
+export interface ProjectGroupRemoveInput extends ProjectGroupTarget {
+	/** Also close every member project; otherwise members stay open as ordinary projects. */
+	close: boolean;
+}
+
+export interface ProjectGroupRemove {
+	projects: Project[];
 }
 
 /** Tools (pi tool names) granted while the server keeps the command + args or URL hashed as `target`. */

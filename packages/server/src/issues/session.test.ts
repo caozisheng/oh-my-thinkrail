@@ -32,6 +32,11 @@ function context(): IssueStartupContext {
 	};
 }
 
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error("Missing fixture value");
+	return value;
+}
+
 function payload(prompt: string) {
 	return JSON.parse(
 		prompt
@@ -55,6 +60,42 @@ test("startup projects explicit repository identities without executable configu
 	expect(payload(prompt).repositories).toEqual(repositories);
 	expect(prompt).toContain("not a shell sandbox");
 	expect(prompt).toContain("Do not merge or execute repository configuration");
+});
+
+test("reference repositories are read-only context, joinable only through the join tool in implementation", () => {
+	const repositories = [
+		{
+			projectId: "local",
+			workspaceId: "w",
+			name: "api",
+			path: "/g/.wt/api",
+			role: "primary" as const,
+		},
+		{
+			projectId: "core",
+			workspaceId: "d",
+			name: "core",
+			path: "/g/core",
+			role: "reference" as const,
+		},
+	];
+	const implementation = createIssueStartupPrompt({
+		...context(),
+		stage: "implementation",
+		locale: "en",
+		repositories,
+	});
+	expect(payload(implementation).repositories[1].role).toBe("reference");
+	expect(implementation).toContain("readable for context only");
+	expect(implementation).toContain("issue_join_repository");
+	const design = createIssueStartupPrompt({ ...context(), repositories });
+	expect(design).toContain("readable for context only");
+	expect(design).not.toContain("issue_join_repository");
+	const plain = createIssueStartupPrompt({
+		...context(),
+		repositories: [required(repositories[0])],
+	});
+	expect(plain).not.toContain("readable for context only");
 });
 
 test("design startup is explicit, Chinese, pure and preserves the whole Issue and every comment", () => {
