@@ -71,8 +71,12 @@ right after the body-preview eye toggle: `RiLinkUnlink` with no repository linke
 (soft-primary) once one is, opening a popover multi-select listbox of the open
 repository projects beside the issue's own project (`selectRepoProjects`, never the synthetic Chats container). That project always participates and is never listed as a
 candidate — exclusion compares **local** project ids, since `reference.projectId` is the remote provider
-id and never matches a project id. The saved selection starts empty, is read on open
-(`issues.repositories`) and written whole per toggle (`issues.setRepositories`); the host owns validation
+id and never matches a project id. Saved selections are read automatically after initial list loading
+and every refresh (`issues.repositories`), and re-read on popover open for retry and fresh lock state.
+Reads preserve the last confirmed indicator while pending or failed, but the popover blocks edits
+until a fresh read succeeds; failed reads show an error rather than a confirmed empty selection. Superseded refreshes and earlier per-issue reads cannot overwrite newer
+results, and displayed selections are scoped to the project/connection identity.
+Selections are written whole per toggle (`issues.setRepositories`); the host owns validation
 and locks the set once implementation preparation starts, so a locked list renders read-only with its
 reason. `supportsIssueRepositories` is that floor, and an older host simply omits the control. A failed
 list read shows one localized failure instead of rendering an empty selection as if it were saved, and a

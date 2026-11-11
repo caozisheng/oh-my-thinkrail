@@ -992,25 +992,27 @@ function WorkspaceRow({
 				: GitBranch;
 	const isTwoLine = !isSettled && workspace.branch !== workspace.name;
 	const issue = workspace.issue;
-	const issueTag = issue ? (
-		<span
-			data-testid="workspace-issue"
-			data-role={issue.role}
-			data-linked={issue.hasAssociations || undefined}
-			title={t(
-				issue.role === "associated"
-					? "panels.projectTree.issueTagAssociated"
-					: issue.hasAssociations
-						? "panels.projectTree.issueTagPrimaryLinked"
-						: "panels.projectTree.issueTagPrimary",
-				{ number: issue.number },
-			)}
-			aria-hidden={true}
-			className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight"
-		>
-			{workspaceIssueTagText(issue)}
-		</span>
-	) : null;
+	const issueTagText = issue ? workspaceIssueTagText(issue) : null;
+	const issueTag =
+		issue && issueTagText ? (
+			<span
+				data-testid="workspace-issue"
+				data-role={issue.role}
+				data-linked={issue.hasAssociations || undefined}
+				title={t(
+					issue.role === "associated"
+						? "panels.projectTree.issueTagAssociated"
+						: issue.hasAssociations
+							? "panels.projectTree.issueTagPrimaryLinked"
+							: "panels.projectTree.issueTagPrimary",
+					{ number: issue.number },
+				)}
+				aria-hidden={true}
+				className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight"
+			>
+				{issueTagText}
+			</span>
+		) : null;
 	const displayName = workspaceName(t, workspace);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const openMenuFromContext = (event: MouseEvent) => {

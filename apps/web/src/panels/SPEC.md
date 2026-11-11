@@ -171,7 +171,7 @@ treatment.
   name is decoupled from the git branch (see [[submodule-server-workspaces]]). A workspace the host binds to
   an Issue (`Workspace.issue`) carries an **oval tag** beside the name: `#<number>` for an associated
   repository, and `#<number>(master)` for the primary worktree of an issue that actually has associated
-  repositories (a single-repository issue keeps the bare number). The tag is host metadata, never parsed
+  repositories. A single-repository issue workspace has no tag. The tag is host metadata, never parsed
   from the branch; it is a compact caption with a tooltip naming the role, and the row keeps its one entry
   in its own source project.
 
