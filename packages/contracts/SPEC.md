@@ -1532,7 +1532,7 @@ and keeps the v115 read-only locked list.
 `PROJECT_GROUPS_PROTOCOL_VERSION = 125` adds **`project.scanGroup`** (`{ path }` → `ProjectGroupScan`:
 the resolved real `root`, a default `name`, and the nested repositories found below it as
 `{ path, name }` with `/`-separated `path` relative to the root — `""` is the root itself — shallow
-first, at most `PROJECT_GROUP_MAX_REPOSITORIES` (64), plus `truncated` when a scan budget stopped the
+first, at most `PROJECT_GROUP_MAX_REPOSITORIES` (500; 64 before the scan rework, a host-only limit — clients never enforce it), plus `truncated` when a scan budget stopped the
 walk) and **`project.importGroup`** (`ProjectGroupImportInput` `{ root, paths, name? }` →
 `ProjectGroupImport` `{ projects, failed: { path, reason }[] }`). Import re-scans and refuses
 (`RANGE_INVALID`) any path the fresh scan no longer finds; each kept repository is opened as an
