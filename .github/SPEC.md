@@ -72,8 +72,8 @@ that does not touch artifacts.
 
 **Required gate.** The ruleset requires one check, "CI passed": an aggregate job that succeeds only when the
 change classifier, conformance/lint/typecheck and unit tests succeeded and every other job either succeeded
-or was skipped by the classifier. CI can then add, rename or skip jobs without a ruleset edit; renaming "CI
-passed" itself blocks the merge queue. Every job carries a timeout a few times its healthy duration, so a
+or was skipped by the classifier. CI can then add, rename or skip jobs without a ruleset edit; conditionally skipped jobs are accepted but
+are not evidence that their checks ran. Renaming "CI passed" itself blocks the merge queue. Every job carries a timeout a few times its healthy duration, so a
 hung process fails its job, and with it "CI passed", within minutes instead of holding a runner for GitHub's
 six-hour default.
 
