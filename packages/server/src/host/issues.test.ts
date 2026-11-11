@@ -20,6 +20,7 @@ import { saveProjects } from "../persistence";
 import { setProjectTrust } from "../projects";
 import { createIssuesHost } from "./issues";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
+import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 let dir: string;
 let previous: string | undefined;
@@ -67,6 +68,61 @@ const fetcher = (async (url: string | URL | Request) =>
 			String(url).includes("/issues?") ? [] : { id: 42, path_with_namespace: "group/repo" },
 		),
 	)) as typeof fetch;
+
+test("the group home's Issue records carry titles the host saw in an Issues list", async () => {
+	const listing = (async (url: string | URL | Request) =>
+		new Response(
+			JSON.stringify(
+				String(url).includes("/issues?")
+					? [
+							{
+								iid: 7,
+								title: "Split invoices",
+								description: "",
+								state: "opened",
+								labels: [],
+								updated_at: "2026-11-11T00:00:00Z",
+							},
+						]
+					: { id: 42, path_with_namespace: "group/repo" },
+			),
+		)) as typeof fetch;
+	const host = createIssuesHost({ dir, fetch: listing, credentials });
+	await host.connect({ projectId: "one", input });
+	const reference = {
+		provider: "gitlab" as const,
+		instanceUrl: "https://gitlab.example",
+		projectId: "42",
+		number: 7,
+	};
+	const workspaces = join(dir, "issue-workspaces");
+	mkdirSync(workspaces, { recursive: true });
+	await createIssueWorkspacePersistence(workspaces).withLaunch("one", reference, (ports) =>
+		ports.save(JSON.stringify(["one", "gitlab", reference.instanceUrl, "42", 7]), {
+			projectId: "one",
+			reference,
+			implementation: {
+				state: "completed",
+				worktreePath: "/w",
+				branch: "issue-7-abc",
+				workspaceId: "w1",
+			},
+		}),
+	);
+	expect(host.groupIssueRecords(new Set(["one"]))[0]?.title).toBeUndefined();
+	await host.list({ projectId: "one" });
+	expect(host.groupIssueRecords(new Set(["one"]))).toEqual([
+		{
+			provider: "gitlab",
+			instanceUrl: "https://gitlab.example",
+			number: 7,
+			title: "Split invoices",
+			projectId: "one",
+			repositories: [{ projectId: "one", role: "primary", workspaceId: "w1" }],
+		},
+	]);
+	await host.disconnect({ projectId: "one" });
+});
 
 test("lazy adapter connects, lists, disconnects and reloads only public bindings", async () => {
 	const host = createIssuesHost({ dir, fetch: fetcher, credentials });

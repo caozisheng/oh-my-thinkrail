@@ -3,6 +3,7 @@ import type {
 	ProjectGroupFetch,
 	ProjectGroupFetchResult,
 	ProjectGroupIssue,
+	ProjectGroupIssueRepository,
 	ProjectGroupRepositoryStatus,
 	ProjectGroupStatus,
 	ProjectGroupTarget,
@@ -12,7 +13,6 @@ import { gitAsync } from "../git";
 import { projectGroupProjects } from "../projects";
 import { getWorkspace } from "../workspaces";
 import type { GroupIssueRecord } from "./issues";
-import { worktreeUnchanged } from "./issuesActions";
 
 const STATUS_TIMEOUT_MS = 10_000;
 const FETCH_TIMEOUT_MS = 30_000;
@@ -102,30 +102,196 @@ async function repositoryStatus(
 	return { ...base, ...parseBranchStatus(read.out, nestedPaths(base.path, all)) };
 }
 
-async function issueChanged(workspaceId: string, start: string): Promise<boolean | undefined> {
-	let path: string;
-	try {
-		path = getWorkspace(workspaceId).worktreePath;
-	} catch {
-		return undefined;
+const OID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
+const SAFE_REF = /^(?!-)[A-Za-z0-9._/-]+$/;
+
+/**
+ * An Issue worktree's changed paths and its branch's own upstream from one `status --porcelain=v2
+ * --branch --untracked-files=all` read. Folders that are, or hold, `nested` (other worktrees of the
+ * same Issue below this one, relative to it) are the Issue's layout, not a change.
+ */
+export function parseWorktreeStatus(
+	out: string,
+	nested: readonly string[] = [],
+): { changedFiles: number; upstream?: string; upstreamAhead?: number; upstreamBehind?: number } {
+	const { upstream, ahead, behind } = parseBranchStatus(out, nested);
+	let changedFiles = 0;
+	for (const line of out.split("\n")) {
+		if (line === "" || line.startsWith("#")) continue;
+		if (line.startsWith("? ") && line.endsWith("/")) {
+			const folder = line.slice(2);
+			if (nested.some((path) => `${path}/`.startsWith(folder))) continue;
+		}
+		changedFiles++;
 	}
-	return !(await worktreeUnchanged(path, start));
+	return {
+		changedFiles,
+		...(upstream ? { upstream } : {}),
+		...(ahead !== undefined && behind !== undefined
+			? { upstreamAhead: ahead, upstreamBehind: behind }
+			: {}),
+	};
 }
 
-async function groupIssue(record: GroupIssueRecord): Promise<ProjectGroupIssue> {
+async function revCount(cwd: string, range: string): Promise<number | undefined> {
+	const read = await gitAsync(cwd, ["rev-list", "--count", range, "--"], {
+		timeoutMs: STATUS_TIMEOUT_MS,
+	});
+	if (!read.ok || !/^\d+$/.test(read.out)) return undefined;
+	return Number(read.out);
+}
+
+/**
+ * The default branch to measure an Issue branch against: `origin/HEAD`, else `origin/main` or
+ * `origin/master`, else the main checkout's current branch (local), as of the last fetch.
+ */
+async function defaultBranchOf(cwd: string, mainBranch: string | null, issueBranch: string) {
+	const head = await gitAsync(
+		cwd,
+		["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+		{
+			timeoutMs: STATUS_TIMEOUT_MS,
+		},
+	);
+	if (head.ok && SAFE_REF.test(head.out)) return head.out;
+	for (const candidate of ["origin/main", "origin/master"]) {
+		const found = await gitAsync(
+			cwd,
+			["rev-parse", "--verify", "--quiet", `refs/remotes/${candidate}`],
+			{
+				timeoutMs: STATUS_TIMEOUT_MS,
+			},
+		);
+		if (found.ok) return candidate;
+	}
+	return mainBranch && mainBranch !== issueBranch && SAFE_REF.test(mainBranch)
+		? mainBranch
+		: undefined;
+}
+
+async function isAncestor(cwd: string, oid: string): Promise<boolean> {
+	return (
+		await gitAsync(cwd, ["merge-base", "--is-ancestor", oid, "HEAD"], {
+			timeoutMs: STATUS_TIMEOUT_MS,
+		})
+	).ok;
+}
+
+/**
+ * The commit an Issue worktree started at. A joined repository records it at join; the primary does
+ * not, so its branch's reflog creation entry (the oldest, written by `git worktree add -b`) stands in
+ * while it is still an ancestor of HEAD, and failing that the merge-base with the default branch.
+ */
+export async function issueStartCommit(
+	cwd: string,
+	branch: string,
+	recorded: string | undefined,
+	defaultBranch: string | undefined,
+): Promise<{ base: string; source: "recorded" | "created" | "mergeBase" } | undefined> {
+	if (recorded && OID.test(recorded)) return { base: recorded, source: "recorded" };
+	if (SAFE_REF.test(branch)) {
+		const log = await gitAsync(cwd, ["reflog", "show", "--format=%H", `refs/heads/${branch}`], {
+			timeoutMs: STATUS_TIMEOUT_MS,
+		});
+		const oldest = log.ok ? log.out.split("\n").filter(Boolean).at(-1) : undefined;
+		if (oldest && OID.test(oldest) && (await isAncestor(cwd, oldest)))
+			return { base: oldest, source: "created" };
+	}
+	if (defaultBranch) {
+		const merged = await gitAsync(cwd, ["merge-base", "HEAD", defaultBranch], {
+			timeoutMs: STATUS_TIMEOUT_MS,
+		});
+		if (merged.ok && OID.test(merged.out)) return { base: merged.out, source: "mergeBase" };
+	}
+	return undefined;
+}
+
+function relativeBelow(path: string, others: readonly string[]): string[] {
+	const prefix = `${path}/`;
+	return others
+		.filter((other) => other.startsWith(prefix))
+		.map((other) => other.slice(prefix.length));
+}
+
+async function issueRepository(
+	repository: GroupIssueRecord["repositories"][number],
+	context: {
+		paths: ReadonlyMap<string, string>;
+		mainBranches: ReadonlyMap<string, string | null>;
+		worktrees: readonly string[];
+		worktreePath: string | undefined;
+		branch: string | undefined;
+	},
+): Promise<ProjectGroupIssueRepository> {
+	const { base: recorded, ...rest } = repository;
+	const path = context.paths.get(repository.projectId);
+	const out: ProjectGroupIssueRepository = { ...rest, ...(path !== undefined ? { path } : {}) };
+	const cwd = context.worktreePath;
+	const branch = context.branch;
+	if (!cwd || !branch) return out;
+	out.branch = branch;
+	const status = await gitAsync(
+		cwd,
+		["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+		{ timeoutMs: STATUS_TIMEOUT_MS },
+	);
+	const worktree = status.ok
+		? parseWorktreeStatus(status.out, relativeBelow(cwd, context.worktrees))
+		: undefined;
+	if (worktree) Object.assign(out, worktree);
+	const defaultBranch = await defaultBranchOf(
+		cwd,
+		context.mainBranches.get(repository.projectId) ?? null,
+		branch,
+	);
+	const start = await issueStartCommit(cwd, branch, recorded, defaultBranch);
+	if (start) {
+		out.baseSource = start.source;
+		const ahead = await revCount(cwd, `${start.base}..HEAD`);
+		if (ahead !== undefined) out.ahead = ahead;
+	}
+	if (defaultBranch) {
+		const behind = await revCount(cwd, `HEAD..${defaultBranch}`);
+		if (behind !== undefined) {
+			out.behind = behind;
+			out.defaultBranch = defaultBranch;
+		}
+	}
+	if (out.ahead !== undefined && worktree) out.changed = out.ahead > 0 || worktree.changedFiles > 0;
+	return out;
+}
+
+async function groupIssue(
+	record: GroupIssueRecord,
+	paths: ReadonlyMap<string, string>,
+	mainBranches: ReadonlyMap<string, string | null>,
+): Promise<ProjectGroupIssue> {
+	const places = record.repositories.map((repository) => {
+		if (!repository.workspaceId) return undefined;
+		try {
+			const ws = getWorkspace(repository.workspaceId);
+			return { worktreePath: ws.worktreePath, branch: ws.branch };
+		} catch {
+			return undefined;
+		}
+	});
+	const worktrees = places.flatMap((place) => (place ? [place.worktreePath] : []));
 	return {
 		provider: record.provider,
 		instanceUrl: record.instanceUrl,
 		number: record.number,
+		...(record.title ? { title: record.title } : {}),
 		projectId: record.projectId,
 		repositories: await Promise.all(
-			record.repositories.map(async ({ base, ...repository }) => {
-				const changed =
-					base && repository.workspaceId
-						? await issueChanged(repository.workspaceId, base)
-						: undefined;
-				return changed === undefined ? repository : { ...repository, changed };
-			}),
+			record.repositories.map((repository, index) =>
+				issueRepository(repository, {
+					paths,
+					mainBranches,
+					worktrees,
+					worktreePath: places[index]?.worktreePath,
+					branch: places[index]?.branch,
+				}),
+			),
 		),
 	};
 }
@@ -149,10 +315,14 @@ export async function projectGroupStatus(
 	} catch {
 		records = [];
 	}
-	const [repositories, groupIssues] = await Promise.all([
-		mapBounded(projects, (project) => repositoryStatus(project, paths)),
-		mapBounded(records, groupIssue),
-	]);
+	const repositories = await mapBounded(projects, (project) => repositoryStatus(project, paths));
+	const placeOf = new Map(
+		projects.map((project) => [project.id, project.projectGroup?.path ?? ""]),
+	);
+	const mainBranches = new Map(repositories.map((row) => [row.projectId, row.branch]));
+	const groupIssues = await mapBounded(records, (record) =>
+		groupIssue(record, placeOf, mainBranches),
+	);
 	return { id: group.id, name: group.name, root: group.root, repositories, issues: groupIssues };
 }
 

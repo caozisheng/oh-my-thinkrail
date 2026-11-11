@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import {
 	canonicalIssueInstanceUrl,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
+	type IssueReference,
 	type IssueTarget,
 	isIssueConnectionInput,
 	isIssueTarget,
@@ -188,6 +189,8 @@ export interface GroupIssueRecord {
 	provider: "gitlab" | "github";
 	instanceUrl: string;
 	number: number;
+	/** The tracker title the host last saw for this Issue (in-memory, since host start). */
+	title?: string;
 	projectId: string;
 	repositories: {
 		projectId: string;
@@ -195,6 +198,18 @@ export interface GroupIssueRecord {
 		workspaceId?: string;
 		base?: string;
 	}[];
+}
+
+/** In-memory titles keyed by local project and Issue reference, fed by Issues list/detail reads. */
+const TITLE_CACHE_MAX = 2000;
+function titleKey(projectId: string, reference: IssueReference): string {
+	return JSON.stringify([
+		projectId,
+		reference.provider,
+		reference.instanceUrl,
+		reference.projectId,
+		reference.number,
+	]);
 }
 
 /** Host-only composition seam; credentials remain solely inside the issues service. */
@@ -267,6 +282,17 @@ export function createIssuesHost(
 		},
 	});
 	const actions = createIssuesActions(service, root, options.sessions, agentSessions);
+	const titles = new Map<string, string>();
+	function rememberTitle(projectId: string, reference: IssueReference, title: unknown) {
+		if (typeof title !== "string" || title === "") return;
+		const key = titleKey(projectId, reference);
+		titles.delete(key);
+		titles.set(key, title);
+		if (titles.size > TITLE_CACHE_MAX) {
+			const oldest = titles.keys().next().value;
+			if (oldest !== undefined) titles.delete(oldest);
+		}
+	}
 	/**
 	 * Workspace→Issue bindings for the project rail, derived from owned implementations (the single
 	 * source of ownership). Read-only and best effort: no worktree, session or remote access.
@@ -300,10 +326,12 @@ export function createIssuesHost(
 		for (const row of createIssueWorkspacePersistence(join(root, "issue-workspaces")).list()) {
 			if (!projectIds.has(row.projectId) || !row.implementation) continue;
 			const implementation = row.implementation;
+			const title = titles.get(titleKey(row.projectId, row.reference));
 			issues.push({
 				provider: row.reference.provider,
 				instanceUrl: row.reference.instanceUrl,
 				number: row.reference.number,
+				...(title ? { title } : {}),
 				projectId: row.projectId,
 				repositories: [
 					{
@@ -393,13 +421,17 @@ export function createIssuesHost(
 			const { projectId, reference } = designTarget(params);
 			project(projectId, false);
 			await restore(projectId, false);
-			return (await service()).detail(projectId, reference);
+			const detail = await (await service()).detail(projectId, reference);
+			rememberTitle(projectId, detail.reference, detail.title);
+			return detail;
 		},
 		async list(params: unknown) {
 			const { projectId } = request(params);
 			project(projectId, false);
 			await restore(projectId, false);
-			return (await service()).list(projectId);
+			const list = await (await service()).list(projectId);
+			for (const issue of list.issues) rememberTitle(projectId, issue.reference, issue.title);
+			return list;
 		},
 		async content(params: unknown) {
 			const target = designTarget(params);

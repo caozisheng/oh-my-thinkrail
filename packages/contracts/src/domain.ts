@@ -150,14 +150,37 @@ export interface ProjectGroupIssueRepository {
 	role: "primary" | "associated";
 	/** The Issue worktree once created. */
 	workspaceId?: string;
-	/** Commits or changes beyond the recorded start; absent when no start commit is recorded. */
+	/** Commits or changes beyond the start commit; absent when no start could be established. */
 	changed?: boolean;
+	/** Relative to the group root (`""` for the root repository); absent outside the group. */
+	path?: string;
+	/** The Issue worktree's branch. */
+	branch?: string;
+	/**
+	 * How the start commit was established: recorded at join (`recorded`), the branch's creation entry
+	 * in its reflog (`created`), or the merge-base with the repository's default branch (`mergeBase`).
+	 */
+	baseSource?: "recorded" | "created" | "mergeBase";
+	/** Commits on the Issue branch beyond its start commit. */
+	ahead?: number;
+	/** Commits on the default branch (e.g. `origin/main`, as of the last fetch) the Issue branch lacks. */
+	behind?: number;
+	/** The default branch `behind` counts against. */
+	defaultBranch?: string;
+	/** Changed paths in the worktree (tracked, staged and untracked); nested Issue worktrees excluded. */
+	changedFiles?: number;
+	/** The Issue branch's own upstream once pushed, with its divergence from local refs. */
+	upstream?: string;
+	upstreamAhead?: number;
+	upstreamBehind?: number;
 }
 
 export interface ProjectGroupIssue {
 	provider: "gitlab" | "github";
 	instanceUrl: string;
 	number: number;
+	/** The tracker title when the host has seen it since starting (Issues list or detail); else absent. */
+	title?: string;
 	/** The group member whose Issue this is. */
 	projectId: string;
 	repositories: ProjectGroupIssueRepository[];

@@ -1433,8 +1433,15 @@ record their introduction, not the current wire version.
 (`ProjectGroupTarget` `{ groupId }`): **`project.groupStatus`** → `ProjectGroupStatus` (`{ id, name,
 root, repositories, issues }`; each open member's `ProjectGroupRepositoryStatus` `{ projectId, path,
 branch | null, dirty | null, upstream?, ahead?, behind? }` from local refs only, and each started Issue
-implementation whose primary is a member as `ProjectGroupIssue` with its `repositories`
-`{ projectId, role, workspaceId?, changed? }`); **`project.fetchGroup`** → `ProjectGroupFetch`
+implementation whose primary is a member as `ProjectGroupIssue` (`title?` when the host has seen the
+Issue in a list or detail read since it started) with its `repositories` `{ projectId, role,
+workspaceId?, changed?, path?, branch?, baseSource?, ahead?, behind?, defaultBranch?, changedFiles?,
+upstream?, upstreamAhead?, upstreamBehind? }` measured in the Issue worktree: `ahead` counts commits
+beyond the start commit (`baseSource` `recorded` at join, `created` from the branch's reflog creation
+entry, or `mergeBase` with the default branch), `behind` the `defaultBranch` commits the branch lacks,
+`changedFiles` the worktree's changed paths minus the Issue's nested worktrees, and `upstream*` the
+branch's own pushed upstream; every addition is optional, so a v120 client of the first shape still
+reads it); **`project.fetchGroup`** → `ProjectGroupFetch`
 (`results: { projectId, path, outcome: "fetched" | "noRemote" | "failed", error? }[]`, one per open
 member, never failing the whole call for one repository); and **`project.removeGroup`**
 (`ProjectGroupRemoveInput` `{ groupId, close }` → `{ projects }`), which only rewrites project records.

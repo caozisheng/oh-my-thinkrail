@@ -1071,8 +1071,16 @@ sit behind `PROJECT_GROUP_HOME_PROTOCOL_VERSION`. `projectGroupHome.ts` composes
 --branch` per open member (10 s budget, at most six at once; local refs only, so ahead/behind are as of
 the last fetch, and an untracked folder that is or holds another member is the group layout, not a
 change); Issues come from `issuesHost.groupIssueRecords` (implementations whose primary is a member,
-read-only like the rail bindings, any reconciliation failure yields none) and a joined repository's
-`changed` reuses `worktreeUnchanged` against its recorded `base`. Fetch runs `git fetch --all
+read-only like the rail bindings, any reconciliation failure yields none, each carrying the title the
+host last saw in an `issues.list`/`issues.detail` answer — an in-memory, bounded cache, so a title
+appears once the Issues tool has listed since host start). Each Issue repository with a worktree is
+measured there with local refs only: one `status --porcelain=v2 --branch --untracked-files=all`
+(changed paths, minus folders that are this Issue's nested worktrees; the branch's own upstream), the
+start commit — a joined member's recorded `base`, else for the primary (which records none) the oldest
+reflog entry of its Issue branch (the `worktree add -b` creation, kept only while still an ancestor of
+HEAD), else the merge-base with the default branch — and `rev-list --count` for `ahead` (start..HEAD)
+and `behind` (HEAD..default branch: `origin/HEAD`, else `origin/main`/`origin/master`, else the main
+checkout's branch). `changed` is `ahead > 0` or any changed path. Fetch runs `git fetch --all
 --no-tags --quiet` under the default non-interactive env (no ssh rewrite, per the `git` SPEC) with a
 30 s budget per repository, skips a repository without remotes, and reports each outcome with git's
 redacted stderr. Remove delegates to `projects.removeProjectGroup` and never touches disk.
