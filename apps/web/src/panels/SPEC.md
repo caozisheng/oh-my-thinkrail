@@ -521,10 +521,24 @@ records `activeProjectGroupId`; `selectActiveProjectGroupId` yields it only whil
 selected and an open project still carries the group, and Shell then renders `ProjectGroupHome` in
 Project Home's `main` slot. Every other selection (`selectProject`, `selectMain`, `selectCreation`,
 workspace activation) wins. The location stays the main route, so a reload lands on Welcome. The home
-shows the group name, root and the same tree with each member's branch, clean/changes chip and
-ahead/behind its upstream from `project.groupStatus` (a member row opens its Project Home), the
-members' started Issues with their joined repositories as changed/unchanged chips that open the Issue
-worktree, and the actions **Rescan** (`useOpenProject.rescanGroup`: the import dialog over a fresh
+does not repeat the member tree (the rail browses repositories). It shows the group name, root and
+counts, then the members' started Issues from `project.groupStatus` as one list, **every row collapsed
+by default**: chevron, `#number`, the tracker title when the host has one (else the primary's path),
+the primary's path, aggregate badges (commits ahead of start summed over the Issue's repositories;
+repositories with uncommitted files) and "N repositories · M changed". Expanding a row (persisted per
+Issue in `localStorage` under `group-home-expanded-issues`, keyed by group, instance, number and
+primary — `groupHomeModel`) lists the primary and every joined repository with its relative path,
+primary/root chips, Issue branch, ↑ commits since its start (tooltip names how the start was
+established), ↓ commits on the default branch it lacks, the pushed-upstream glyph when it has one, and
+a state chip: *N uncommitted files*, *committed*, or *unchanged* (no commits since the start and a
+clean worktree); a row opens that repository's Issue worktree, a repository without one says so.
+"Changed" on this page always means the Issue worktree. Main checkouts appear only as an exception:
+when a member's main directory (Default workspace) has uncommitted changes or is at least
+`MAIN_BEHIND_WARNING` (10) commits behind its upstream, one warning line per kind names them
+("2 repositories' main directories have uncommitted changes: app, server"); it expands to the list
+(each opens that Project Home) and a line saying this is the original folder, not an Issue. Nothing
+shows when every main checkout is fine. The actions are
+**Rescan** (`useOpenProject.rescanGroup`: the import dialog over a fresh
 `project.scanGroup` of the root, without navigating away), **Fetch all** (`project.fetchGroup`, then a
 per-repository result list and a status refresh), **Refresh**, and **Remove group** — a danger-styled
 dialog offering *Ungroup* or *Ungroup and close* (`project.removeGroup`), stating that nothing on disk

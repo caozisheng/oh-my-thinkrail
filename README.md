@@ -41,8 +41,11 @@ token. It includes:
   and build folders and never following symlinks, lets you untick any, and opens the rest as projects.
   The project rail shows them as a tree that mirrors the folder (nested repositories under the one that
   holds them, plain folders in between, single-child folder chains folded into one row). Clicking the
-  group name opens the group home: every member's branch, clean or changed state and ahead/behind its
-  upstream, the group's Issues with the repositories they joined, and Rescan, Fetch all and Remove
+  group name opens the group home: the group's Issues as a collapsed-by-default list (each row shows
+  how many repositories the Issue touches, how many changed, its commits and uncommitted files; expand
+  it for every repository's Issue branch, commits since its start, commits behind the default branch
+  and uncommitted files), a warning only when a repository's main directory has uncommitted changes or
+  is far behind, and Rescan, Fetch all and Remove
   group (which only ungroups or closes the projects; nothing on disk changes). An Issue started from a
   group member begins with only its own repository; the other members are read-only references until
   you or the agent (with your confirmation) join one, which creates its worktree from a fresh

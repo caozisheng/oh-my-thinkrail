@@ -1,19 +1,25 @@
 import {
+	RiAlertLine,
 	RiArrowDownLine,
+	RiArrowDownSLine,
+	RiArrowRightSLine,
 	RiArrowUpLine,
 	RiDeleteBin6Line,
 	RiDownloadCloud2Line,
-	RiFolderOpenLine,
+	RiEditLine,
 	RiGitBranchLine,
+	RiGitCommitLine,
 	RiGitRepositoryLine,
 	RiRefreshLine,
 	RiSearchLine,
 	RiStackLine,
+	RiUploadCloud2Line,
 } from "@remixicon/react";
 import type {
 	Project,
 	ProjectGroupFetchResult,
 	ProjectGroupIssue,
+	ProjectGroupIssueRepository,
 	ProjectGroupRepositoryStatus,
 	ProjectGroupStatus,
 } from "@thinkrail/contracts";
@@ -32,7 +38,15 @@ import { cn } from "@thinkrail/ui/utils";
 import { useEffect, useState } from "react";
 import { toast, useAppStore } from "../store";
 import { errorText, getTransport } from "../transport";
-import { type ProjectGroupTreeNode, projectGroupTree } from "./projectGroups";
+import {
+	issueKey,
+	issueTotals,
+	MAIN_BEHIND_WARNING,
+	mainCheckoutWarnings,
+	persistExpandedIssues,
+	readExpandedIssues,
+	repositoryState,
+} from "./groupHomeModel";
 import { useOpenProject } from "./useOpenProject";
 import { goToProjectHome, loadProjectWorkspaces } from "./workspaceActions";
 
@@ -45,7 +59,10 @@ async function openIssueWorkspace(projectId: string, workspaceId: string): Promi
 	useAppStore.getState().activateWorkspace(workspace);
 }
 
-/** The group home: one imported folder's members, their checkouts, Issues and group actions. */
+/**
+ * The group home: one imported folder's started Issues (what each changed in its worktrees), a notice
+ * only when a member's main checkout needs attention, and the group actions. The rail browses repos.
+ */
 export function ProjectGroupHome({ groupId }: { groupId: string }) {
 	const t = useT();
 	const allProjects = useAppStore((s) => s.projects);
@@ -61,6 +78,7 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 	const [fetchResults, setFetchResults] = useState<ProjectGroupFetchResult[] | null>(null);
 	const [removeOpen, setRemoveOpen] = useState(false);
 	const [removing, setRemoving] = useState(false);
+	const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => readExpandedIssues());
 	const { rescanGroup, dialogs } = useOpenProject(() => {});
 
 	const requestKey = `${groupId}\n${membershipKey}\n${generation}`;
@@ -82,8 +100,6 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 
 	if (!group) return null;
 	const status = loaded?.status.id === groupId ? loaded.status : null;
-	const tree = projectGroupTree(groupId, members);
-	const byProject = new Map(status?.repositories.map((row) => [row.projectId, row]) ?? []);
 	const projectById = new Map(members.map((project) => [project.id, project]));
 	const refresh = () => setGeneration((value) => value + 1);
 
@@ -114,6 +130,14 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 				setRemoving(false);
 				toast.error(errorText(err, t("panels.groupHome.removeFailed")));
 			});
+	};
+
+	const toggleIssue = (key: string) => {
+		const next = new Set(expanded);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		setExpanded(next);
+		persistExpandedIssues(next);
 	};
 
 	const openWorkspace = (projectId: string, workspaceId: string) => {
@@ -200,42 +224,35 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 					/>
 				) : null}
 
-				<section className="flex flex-col gap-8" aria-labelledby="group-home-repositories">
-					<h2 id="group-home-repositories" className="tr-title-section text-text-default">
-						{t("panels.groupHome.repositories")}
-					</h2>
+				{status ? (
+					<MainCheckoutNotice repositories={status.repositories} projectById={projectById} />
+				) : null}
+
+				<section className="flex flex-col gap-8" aria-labelledby="group-home-issues">
+					<div className="flex flex-col gap-2">
+						<h2 id="group-home-issues" className="tr-title-section text-text-default">
+							{t("panels.groupHome.issues")}
+						</h2>
+						<p className="tr-text-metadata text-text-subtle">{t("panels.groupHome.issuesHint")}</p>
+					</div>
 					{statusError ? (
 						<p role="alert" className="tr-text-ui text-feedback-error">
 							{statusError}
 						</p>
 					) : null}
-					<ul
-						data-testid="group-home-tree"
-						className="flex flex-col rounded-sm border border-border-muted py-4"
-					>
-						<TreeRows nodes={tree} byProject={byProject} loading={status === null} />
-					</ul>
-				</section>
-
-				<section className="flex flex-col gap-8" aria-labelledby="group-home-issues">
-					<h2 id="group-home-issues" className="tr-title-section text-text-default">
-						{t("panels.groupHome.issues")}
-					</h2>
 					{status === null && !statusError ? (
 						<LoadingRegion rows={2} className="py-4" />
 					) : (status?.issues.length ?? 0) === 0 ? (
 						<p className="tr-text-metadata text-text-muted">{t("panels.groupHome.noIssues")}</p>
 					) : (
-						<ul data-testid="group-home-issues" className="flex flex-col gap-8">
-							{status?.issues.map((issue) => (
-								<IssueRow
-									key={`${issue.instanceUrl}#${issue.number}:${issue.projectId}`}
-									issue={issue}
-									projectById={projectById}
-									onOpen={openWorkspace}
-								/>
-							))}
-						</ul>
+						<GroupIssueList
+							groupId={groupId}
+							issues={status?.issues ?? []}
+							projectById={projectById}
+							expanded={expanded}
+							onToggle={toggleIssue}
+							onOpen={openWorkspace}
+						/>
 					)}
 				</section>
 			</div>
@@ -279,206 +296,425 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 	);
 }
 
-function TreeRows({
-	nodes,
-	byProject,
-	loading,
-}: {
-	nodes: readonly ProjectGroupTreeNode[];
-	byProject: ReadonlyMap<string, ProjectGroupRepositoryStatus>;
-	loading: boolean;
-}) {
-	return nodes.map((node) => (
-		<li key={node.key} data-group-path={node.path}>
-			{node.kind === "repository" ? (
-				<RepositoryRow
-					project={node.project}
-					path={node.path}
-					status={byProject.get(node.project.id)}
-					loading={loading}
-				/>
-			) : (
-				<div
-					className="flex h-panel-row items-center gap-4 pr-8 pl-8 text-text-subtle"
-					title={node.path}
-				>
-					<RiFolderOpenLine className="size-14 shrink-0" aria-hidden="true" />
-					<span className="truncate tr-text-metadata">{node.label}</span>
-				</div>
-			)}
-			{node.children.length > 0 ? (
-				<ul className="ml-16 flex flex-col border-border-muted border-l">
-					<TreeRows nodes={node.children} byProject={byProject} loading={loading} />
-				</ul>
-			) : null}
-		</li>
-	));
+function repositoryLabel(
+	repository: { projectId: string; path?: string },
+	projectById: ReadonlyMap<string, Project>,
+): { label: string; root: boolean } {
+	const project = projectById.get(repository.projectId);
+	const path = repository.path ?? project?.projectGroup?.path;
+	if (path) return { label: path, root: false };
+	return { label: project?.name ?? repository.projectId, root: path === "" };
 }
 
-function RepositoryRow({
-	project,
-	path,
-	status,
-	loading,
+/** One line per kind of trouble in members' main checkouts (Default workspaces); nothing when fine. */
+export function MainCheckoutNotice({
+	repositories,
+	projectById,
 }: {
-	project: Project;
-	path: string;
-	status: ProjectGroupRepositoryStatus | undefined;
-	loading: boolean;
+	repositories: readonly ProjectGroupRepositoryStatus[];
+	projectById: ReadonlyMap<string, Project>;
 }) {
 	const t = useT();
+	const [open, setOpen] = useState(false);
+	const { dirty, behind } = mainCheckoutWarnings(repositories);
+	if (dirty.length === 0 && behind.length === 0) return null;
+	const names = (rows: readonly ProjectGroupRepositoryStatus[]) =>
+		rows
+			.map((row) => repositoryLabel(row, projectById).label)
+			.join(t("panels.groupHome.listSeparator"));
+	const Chevron = open ? RiArrowDownSLine : RiArrowRightSLine;
 	return (
-		<button
-			type="button"
-			data-testid="group-home-repository"
-			data-project={project.id}
-			data-dirty={status?.dirty ?? undefined}
-			title={path || t("panels.groupHome.rootPath")}
-			onClick={() => goToProjectHome(project.id)}
-			className="flex h-panel-row w-full min-w-0 items-center gap-8 pr-8 pl-8 text-left hover:bg-control-bg-hovered"
+		<section
+			data-testid="group-home-main-notice"
+			className="flex flex-col gap-4 rounded-sm border border-feedback-warning-muted bg-container-elevated-bg px-12 py-8"
 		>
-			<RiGitRepositoryLine className="size-14 shrink-0 text-text-muted" aria-hidden="true" />
-			<span className="min-w-0 truncate tr-text-ui text-text-default">{project.name}</span>
-			{path === "" ? (
-				<span className={cn(CHIP_CLASS, "border-border-default text-text-subtle tr-text-caption")}>
-					{t("panels.projectTree.groupRootBadge")}
+			<button
+				type="button"
+				data-testid="group-home-main-notice-toggle"
+				aria-expanded={open}
+				onClick={() => setOpen(!open)}
+				className="flex min-w-0 items-start gap-8 text-left"
+			>
+				<RiAlertLine className="mt-2 size-14 shrink-0 text-feedback-warning" aria-hidden="true" />
+				<span className="flex min-w-0 flex-1 flex-col gap-2 tr-text-ui text-text-default">
+					{dirty.length > 0 ? (
+						<span className="truncate" data-testid="group-home-main-dirty">
+							{t("panels.groupHome.mainDirty", { count: dirty.length, names: names(dirty) })}
+						</span>
+					) : null}
+					{behind.length > 0 ? (
+						<span className="truncate" data-testid="group-home-main-behind">
+							{t("panels.groupHome.mainBehind", {
+								count: behind.length,
+								threshold: MAIN_BEHIND_WARNING,
+								names: names(behind),
+							})}
+						</span>
+					) : null}
 				</span>
+				<Chevron className="mt-2 size-14 shrink-0 text-text-muted" aria-hidden="true" />
+			</button>
+			{open ? (
+				<div className="flex flex-col gap-4 pl-24">
+					<p className="tr-text-metadata text-text-subtle">{t("panels.groupHome.mainHint")}</p>
+					<ul className="flex flex-col">
+						{repositories
+							.filter((row) => dirty.includes(row) || behind.includes(row))
+							.map((row) => (
+								<li key={row.projectId}>
+									<button
+										type="button"
+										data-testid="group-home-main-repository"
+										data-project={row.projectId}
+										onClick={() => goToProjectHome(row.projectId)}
+										className="flex h-panel-row w-full min-w-0 items-center gap-8 rounded-sm px-4 text-left hover:bg-control-bg-hovered"
+									>
+										<RiGitRepositoryLine
+											className="size-14 shrink-0 text-text-muted"
+											aria-hidden="true"
+										/>
+										<span className="min-w-0 truncate tr-code-text text-text-default">
+											{repositoryLabel(row, projectById).label}
+										</span>
+										<span className="flex-1" />
+										{row.dirty ? (
+											<span className="shrink-0 tr-text-metadata text-feedback-warning">
+												{t("panels.groupHome.mainDirtyItem")}
+											</span>
+										) : null}
+										{(row.behind ?? 0) >= MAIN_BEHIND_WARNING ? (
+											<span className="shrink-0 tr-text-metadata text-text-muted">
+												{t("panels.groupHome.mainBehindItem", {
+													count: row.behind ?? 0,
+													upstream: row.upstream ?? "",
+												})}
+											</span>
+										) : null}
+									</button>
+								</li>
+							))}
+					</ul>
+				</div>
 			) : null}
-			<span className="flex-1" />
-			{status ? (
-				<RepositoryStatusChips status={status} />
-			) : loading ? (
-				<span className="tr-text-metadata text-text-subtle">{t("panels.groupHome.loading")}</span>
-			) : null}
-		</button>
+		</section>
 	);
 }
 
-function RepositoryStatusChips({ status }: { status: ProjectGroupRepositoryStatus }) {
-	const t = useT();
+/** The group's started Issues, one collapsible row each (collapsed by default). */
+export function GroupIssueList({
+	groupId,
+	issues,
+	projectById,
+	expanded,
+	onToggle,
+	onOpen,
+}: {
+	groupId: string;
+	issues: readonly ProjectGroupIssue[];
+	projectById: ReadonlyMap<string, Project>;
+	expanded: ReadonlySet<string>;
+	onToggle: (key: string) => void;
+	onOpen: (projectId: string, workspaceId: string) => void;
+}) {
 	return (
-		<span className="flex shrink-0 items-center gap-4">
-			{status.ahead !== undefined && status.behind !== undefined ? (
-				<span
-					data-testid="group-home-divergence"
-					title={t("panels.groupHome.divergence", {
-						upstream: status.upstream ?? "",
-						ahead: status.ahead,
-						behind: status.behind,
-					})}
-					className="flex items-center gap-2 tr-text-metadata text-text-subtle"
-				>
-					<RiArrowUpLine className="size-12" aria-hidden="true" />
-					{status.ahead}
-					<RiArrowDownLine className="size-12" aria-hidden="true" />
-					{status.behind}
-				</span>
-			) : (
-				<span className="tr-text-metadata text-text-subtle">
-					{t("panels.groupHome.noUpstream")}
-				</span>
-			)}
-			<span
-				className={cn(
-					CHIP_CLASS,
-					"tr-text-caption",
-					status.dirty === null
-						? "border-border-default text-text-subtle"
-						: status.dirty
-							? "border-feedback-warning-muted text-feedback-warning"
-							: "border-border-default text-text-subtle",
-				)}
-			>
-				{status.dirty === null
-					? t("panels.groupHome.unreadable")
-					: status.dirty
-						? t("panels.groupHome.dirty")
-						: t("panels.groupHome.clean")}
-			</span>
-			<span className="flex max-w-[160px] items-center gap-2 tr-code-text-small text-text-muted">
-				<RiGitBranchLine className="size-12 shrink-0" aria-hidden="true" />
-				<span className="truncate">{status.branch ?? t("panels.groupHome.detached")}</span>
-			</span>
-		</span>
+		<ul
+			data-testid="group-home-issues"
+			className="flex flex-col divide-y divide-border-muted rounded-sm border border-border-muted"
+		>
+			{issues.map((issue) => {
+				const key = issueKey(groupId, issue);
+				return (
+					<IssueRow
+						key={key}
+						issue={issue}
+						expanded={expanded.has(key)}
+						onToggle={() => onToggle(key)}
+						projectById={projectById}
+						onOpen={onOpen}
+					/>
+				);
+			})}
+		</ul>
 	);
 }
 
 function IssueRow({
 	issue,
+	expanded,
+	onToggle,
 	projectById,
 	onOpen,
 }: {
 	issue: ProjectGroupIssue;
+	expanded: boolean;
+	onToggle: () => void;
 	projectById: ReadonlyMap<string, Project>;
 	onOpen: (projectId: string, workspaceId: string) => void;
 }) {
 	const t = useT();
+	const totals = issueTotals(issue);
 	const primary = issue.repositories.find((repository) => repository.role === "primary");
-	const place = (projectId: string) => {
-		const project = projectById.get(projectId);
-		if (!project) return projectId;
-		return project.projectGroup?.path || project.name;
-	};
+	const Chevron = expanded ? RiArrowDownSLine : RiArrowRightSLine;
 	return (
 		<li
 			data-testid="group-home-issue"
 			data-number={issue.number}
-			className="flex flex-col gap-8 rounded-sm border border-border-muted px-12 py-8"
+			data-expanded={expanded}
+			className="flex flex-col"
 		>
-			<div className="flex min-w-0 items-center gap-8">
-				<button
-					type="button"
-					disabled={!primary?.workspaceId}
-					onClick={() =>
-						primary?.workspaceId ? onOpen(primary.projectId, primary.workspaceId) : undefined
-					}
-					className="min-w-0 truncate text-left tr-text-ui text-text-default hover:text-primary disabled:hover:text-text-default"
-					title={t("panels.groupHome.openIssue")}
+			<button
+				type="button"
+				data-testid="group-home-issue-toggle"
+				aria-expanded={expanded}
+				title={issue.instanceUrl}
+				onClick={onToggle}
+				className="flex min-h-panel-row w-full min-w-0 items-center gap-8 px-8 py-4 text-left hover:bg-control-bg-hovered"
+			>
+				<Chevron className="size-16 shrink-0 text-text-muted" aria-hidden="true" />
+				<span className="shrink-0 tr-text-ui text-text-muted">
+					{t("panels.groupHome.issueNumber", { number: issue.number })}
+				</span>
+				<span className="min-w-0 truncate tr-text-ui text-text-default">
+					{issue.title ?? repositoryLabel(primary ?? issue, projectById).label}
+				</span>
+				{issue.title && primary ? (
+					<span className="hidden min-w-0 shrink truncate tr-code-text-small text-text-subtle sm:inline">
+						{repositoryLabel(primary, projectById).label}
+					</span>
+				) : null}
+				<span className="flex-1" />
+				<IssueBadges totals={totals} />
+				<span
+					data-testid="group-home-issue-summary"
+					className="shrink-0 tr-text-metadata text-text-subtle"
 				>
-					{t("panels.groupHome.issueTitle", {
-						number: issue.number,
-						primary: place(issue.projectId),
-					})}
-				</button>
-				<span className="truncate tr-text-metadata text-text-subtle">{issue.instanceUrl}</span>
-			</div>
-			<ul className="flex flex-wrap gap-4">
-				{issue.repositories.map((repository) => (
-					<li key={repository.projectId}>
-						<button
-							type="button"
-							data-testid="group-home-issue-repository"
-							data-changed={repository.changed}
-							disabled={!repository.workspaceId}
-							onClick={() =>
-								repository.workspaceId
-									? onOpen(repository.projectId, repository.workspaceId)
-									: undefined
-							}
-							className={cn(
-								CHIP_CLASS,
-								"py-2 tr-text-metadata",
-								repository.changed
-									? "border-feedback-info-muted text-feedback-info"
-									: "border-border-default text-text-muted",
-								repository.workspaceId && "hover:bg-control-bg-hovered",
-							)}
-						>
-							{t(
-								repository.changed === undefined
-									? repository.role === "primary"
-										? "panels.groupHome.issueRepositoryPrimary"
-										: "panels.groupHome.issueRepository"
-									: repository.changed
-										? "panels.groupHome.issueRepositoryChanged"
-										: "panels.groupHome.issueRepositoryUnchanged",
-								{ path: place(repository.projectId) },
-							)}
-						</button>
-					</li>
-				))}
-			</ul>
+					{t("panels.groupHome.issueRepositories", { count: totals.repositories })}
+					{t("panels.groupHome.listDot")}
+					{totals.measured
+						? totals.changed > 0
+							? t("panels.groupHome.issueChanged", { count: totals.changed })
+							: t("panels.groupHome.issueNoChanges")
+						: t("panels.groupHome.issueNotMeasured")}
+				</span>
+			</button>
+			{expanded ? (
+				<ul data-testid="group-home-issue-repositories" className="flex flex-col pb-8 pl-24">
+					{issue.repositories.map((repository) => (
+						<IssueRepositoryRow
+							key={repository.projectId}
+							repository={repository}
+							projectById={projectById}
+							onOpen={onOpen}
+						/>
+					))}
+				</ul>
+			) : null}
 		</li>
+	);
+}
+
+function IssueBadges({ totals }: { totals: ReturnType<typeof issueTotals> }) {
+	const t = useT();
+	if (!totals.measured) return null;
+	return (
+		<span className="flex shrink-0 items-center gap-4">
+			{totals.ahead > 0 ? (
+				<span
+					data-testid="group-home-issue-ahead"
+					title={t("panels.groupHome.aheadTotal", { count: totals.ahead })}
+					className={cn(
+						CHIP_CLASS,
+						"flex items-center gap-2 tr-text-caption",
+						"border-feedback-info-muted text-feedback-info",
+					)}
+				>
+					<RiGitCommitLine className="size-12" aria-hidden="true" />
+					{totals.ahead}
+				</span>
+			) : null}
+			{totals.dirty > 0 ? (
+				<span
+					data-testid="group-home-issue-dirty"
+					title={t("panels.groupHome.dirtyTotal", { count: totals.dirty })}
+					className={cn(
+						CHIP_CLASS,
+						"flex items-center gap-2 tr-text-caption",
+						"border-feedback-warning-muted text-feedback-warning",
+					)}
+				>
+					<RiEditLine className="size-12" aria-hidden="true" />
+					{totals.dirty}
+				</span>
+			) : null}
+		</span>
+	);
+}
+
+function IssueRepositoryRow({
+	repository,
+	projectById,
+	onOpen,
+}: {
+	repository: ProjectGroupIssueRepository;
+	projectById: ReadonlyMap<string, Project>;
+	onOpen: (projectId: string, workspaceId: string) => void;
+}) {
+	const t = useT();
+	const { label, root } = repositoryLabel(repository, projectById);
+	const state = repositoryState(repository);
+	const workspaceId = repository.workspaceId;
+	const baseText =
+		repository.baseSource === "recorded"
+			? t("panels.groupHome.baseRecorded")
+			: repository.baseSource === "created"
+				? t("panels.groupHome.baseCreated")
+				: repository.baseSource === "mergeBase"
+					? t("panels.groupHome.baseMergeBase", { branch: repository.defaultBranch ?? "" })
+					: "";
+	return (
+		<li>
+			<button
+				type="button"
+				data-testid="group-home-issue-repository"
+				data-project={repository.projectId}
+				data-state={state}
+				disabled={!workspaceId}
+				title={t("panels.groupHome.openIssueRepository")}
+				onClick={() => (workspaceId ? onOpen(repository.projectId, workspaceId) : undefined)}
+				className="flex h-panel-row w-full min-w-0 items-center gap-8 rounded-sm pr-8 pl-4 text-left enabled:hover:bg-control-bg-hovered"
+			>
+				<RiGitRepositoryLine className="size-14 shrink-0 text-text-muted" aria-hidden="true" />
+				<span className="min-w-0 truncate tr-code-text text-text-default">{label}</span>
+				{root ? (
+					<span
+						className={cn(CHIP_CLASS, "border-border-default text-text-subtle tr-text-caption")}
+					>
+						{t("panels.projectTree.groupRootBadge")}
+					</span>
+				) : null}
+				{repository.role === "primary" ? (
+					<span
+						className={cn(CHIP_CLASS, "border-border-default text-text-subtle tr-text-caption")}
+					>
+						{t("panels.groupHome.primaryBadge")}
+					</span>
+				) : null}
+				<span className="flex-1" />
+				{!workspaceId ? (
+					<span className="shrink-0 tr-text-metadata text-text-subtle">
+						{t("panels.groupHome.worktreePending")}
+					</span>
+				) : (
+					<>
+						{repository.branch ? (
+							<span
+								className="flex max-w-[180px] min-w-0 items-center gap-2 tr-code-text-small text-text-muted"
+								title={repository.branch}
+							>
+								<RiGitBranchLine className="size-12 shrink-0" aria-hidden="true" />
+								<span className="truncate">{repository.branch}</span>
+							</span>
+						) : null}
+						{repository.ahead !== undefined ? (
+							<span
+								data-testid="group-home-repository-ahead"
+								title={t("panels.groupHome.aheadOfStart", {
+									count: repository.ahead,
+									base: baseText,
+								})}
+								className={cn(
+									"flex shrink-0 items-center gap-2 tr-text-metadata",
+									repository.ahead > 0 ? "text-feedback-info" : "text-text-subtle",
+								)}
+							>
+								<RiArrowUpLine className="size-12" aria-hidden="true" />
+								{repository.ahead}
+							</span>
+						) : null}
+						{repository.behind !== undefined && repository.behind > 0 ? (
+							<span
+								data-testid="group-home-repository-behind"
+								title={t("panels.groupHome.behindDefault", {
+									count: repository.behind,
+									branch: repository.defaultBranch ?? "",
+								})}
+								className="flex shrink-0 items-center gap-2 tr-text-metadata text-text-subtle"
+							>
+								<RiArrowDownLine className="size-12" aria-hidden="true" />
+								{repository.behind}
+							</span>
+						) : null}
+						{repository.upstream ? (
+							<span
+								data-testid="group-home-repository-upstream"
+								title={t("panels.groupHome.pushedDivergence", {
+									upstream: repository.upstream,
+									ahead: repository.upstreamAhead ?? 0,
+									behind: repository.upstreamBehind ?? 0,
+								})}
+								className="flex shrink-0 items-center gap-2 tr-text-metadata text-text-subtle"
+							>
+								<RiUploadCloud2Line className="size-12" aria-hidden="true" />
+								{repository.upstreamAhead || repository.upstreamBehind
+									? `${repository.upstreamAhead ?? 0}/${repository.upstreamBehind ?? 0}`
+									: null}
+							</span>
+						) : null}
+						<RepositoryStateChip repository={repository} state={state} />
+					</>
+				)}
+			</button>
+		</li>
+	);
+}
+
+function RepositoryStateChip({
+	repository,
+	state,
+}: {
+	repository: ProjectGroupIssueRepository;
+	state: "changed" | "unchanged" | "unknown";
+}) {
+	const t = useT();
+	const files = repository.changedFiles ?? 0;
+	if (state === "unknown" && repository.changedFiles === undefined)
+		return (
+			<span className="shrink-0 tr-text-metadata text-text-subtle">
+				{t("panels.groupHome.unmeasured")}
+			</span>
+		);
+	if (files > 0)
+		return (
+			<span
+				data-testid="group-home-repository-uncommitted"
+				className={cn(
+					CHIP_CLASS,
+					"tr-text-caption",
+					"border-feedback-warning-muted text-feedback-warning",
+				)}
+			>
+				{t("panels.groupHome.uncommitted", { count: files })}
+			</span>
+		);
+	if (state === "changed")
+		return (
+			<span
+				className={cn(
+					CHIP_CLASS,
+					"tr-text-caption",
+					"border-feedback-info-muted text-feedback-info",
+				)}
+			>
+				{t("panels.groupHome.committedOnly")}
+			</span>
+		);
+	return (
+		<span
+			data-testid="group-home-repository-unchanged"
+			className={cn(CHIP_CLASS, "tr-text-caption", "border-border-default text-text-subtle")}
+		>
+			{t("panels.groupHome.unchanged")}
+		</span>
 	);
 }
 
