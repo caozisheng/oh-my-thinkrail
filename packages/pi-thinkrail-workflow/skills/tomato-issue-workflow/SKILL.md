@@ -133,7 +133,7 @@ in-progress and moves to in-review. Both GitHub and GitLab preserve unrelated la
 An implementation report binds the confirmed design and each repository's clean commit. Confirmation
 of a stage does not start another stage or authorize delivery.
 
-Offer delivery separately per changed repository. Prepare with projectId, exact title/body and, when
+After implementation and validation, offer delivery separately per changed repository. Delivery does not require a prior design or implementation stage-confirmation record; its own card authorizes the current checkout and PR/MR content. Do not block delivery on a missing historical stage receipt. Prepare with projectId, exact title/body and, when
 needed, an explicit targetBranch. Use the exact returned card, then execute after its submitted answer.
 It authorizes only non-force push and Draft PR/MR creation or reuse of the displayed existing request.
 No automatic commit, ready transition, merge or closure is included. A changed version invalidates the

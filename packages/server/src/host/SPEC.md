@@ -18,7 +18,7 @@ intents block re-execution and require reconciliation; no automated replay or in
 Host composition rechecks project trust, workspace ownership, clean checkout SHA/branch and live provider
 identity. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP clone
 URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
-creates drafts only. Existing matching requests are reused without editing. The agent receives no token,
+creates drafts only. Existing matching requests are reused without editing. Delivery readiness is determined by the agent's work and validation, not a prior implementation-stage journal receipt; the delivery card freezes the current clean checkout and exact PR/MR content. The exact submitted questionnaire receipt, repository identity, remote, Issue snapshot and checkout are still revalidated before mutation. A changed checkout requires a fresh card; uncertain intents remain fenced. The agent receives no token,
 path override or merge/close capability.
 
 ## Responsibility

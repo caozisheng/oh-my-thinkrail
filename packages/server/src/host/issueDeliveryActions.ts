@@ -5,7 +5,6 @@ import { CodedError } from "@thinkrail/shared/codedError";
 import type { IssueDeliveryRemote, IssueMergeRequest } from "../issues";
 import type { IssueConfirmationStore } from "./issueConfirmations";
 import type { IssueSessionAssociation } from "./issueSessions";
-import type { StagePayload } from "./issueStageActions";
 
 export interface DeliveryRepository {
 	projectId: string;
@@ -21,8 +20,6 @@ export interface DeliveryPayload {
 	reference: IssueReference;
 	repository: DeliveryRepository;
 	repositoryId: string;
-	implementationOperationId: string;
-	report: string;
 	title: string;
 	body: string;
 	sha: string;
@@ -117,46 +114,13 @@ export function deliveryQuestions(payload: DeliveryPayload) {
 			{
 				question: EN["issue.confirm.delivery.question"] ?? "",
 				header: EN["issue.confirm.delivery.header"] ?? "",
-				preview: `Issue: ${payload.reference.instanceUrl} / ${payload.reference.projectId} #${payload.reference.number}\nRepository: ${payload.repository.name} (${payload.repository.projectId})\nPath: ${payload.repository.path}\nSource: ${payload.branch} @ ${payload.sha}\nRemote: ${payload.url}\nTarget: ${payload.targetBranch}\nImplementation: ${payload.implementationOperationId}\n\n${payload.report}\n\nTitle: ${payload.title}\n\n${payload.body}\n\n${action}\nNo merge or Issue closure is authorized.`,
+				preview: `Issue: ${payload.reference.instanceUrl} / ${payload.reference.projectId} #${payload.reference.number}\nRepository: ${payload.repository.name} (${payload.repository.projectId})\nPath: ${payload.repository.path}\nSource: ${payload.branch} @ ${payload.sha}\nRemote: ${payload.url}\nTarget: ${payload.targetBranch}\n\nTitle: ${payload.title}\n\n${payload.body}\n\n${action}\nNo merge or Issue closure is authorized.`,
 				options: [{ label: "Looks right", description: EN["issue.confirm.delivery.option"] ?? "" }],
 			},
 		],
 	};
 }
 export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) {
-	async function implementation(
-		reference: IssueReference,
-		repository: DeliveryRepository,
-		sha: string,
-		branchName: string,
-	) {
-		const records = await options.journal.listCompleted();
-		const matches = records.filter((record) => {
-			const payload = record.payload as Partial<StagePayload> | null;
-			const result = record.result as { stage?: string; noteId?: number } | null;
-			return (
-				payload?.stage === "implementation" &&
-				result?.stage === "implementation" &&
-				Number.isSafeInteger(result.noteId) &&
-				isDeepStrictEqual(payload.reference, reference) &&
-				typeof payload.report === "string" &&
-				!!payload.report.trim() &&
-				payload.commits?.some(
-					(commit) =>
-						commit.projectId === repository.projectId &&
-						commit.workspaceId === repository.workspaceId &&
-						commit.path === repository.path &&
-						commit.sha === sha &&
-						commit.branch === branchName,
-				)
-			);
-		});
-		const record = matches.sort(
-			(a, b) => (b.result as { noteId: number }).noteId - (a.result as { noteId: number }).noteId,
-		)[0];
-		if (!record) stop();
-		return { operationId: record.operationId, report: (record.payload as StagePayload).report };
-	}
 	async function existing(
 		remote: IssueDeliveryRemote,
 		payload: Pick<DeliveryPayload, "repositoryId" | "branch" | "targetBranch" | "sha">,
@@ -199,8 +163,6 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 		guard();
 		if (state.dirty || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(state.sha) || !branch(state.branch))
 			stop();
-		const completed = await implementation(binding.reference, repository, state.sha, state.branch);
-		guard();
 		const host = await options.repositoryRemote(repository);
 		guard();
 		const targetBranch = input.targetBranch ?? host.targetBranch;
@@ -222,8 +184,6 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			reference: binding.reference,
 			repository,
 			repositoryId: host.repositoryId,
-			implementationOperationId: completed.operationId,
-			report: completed.report,
 			title: input.title,
 			body: input.body,
 			sha: state.sha,
@@ -269,18 +229,6 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 				const state = await options.checkout(payload.repository);
 				guard();
 				if (state.dirty || state.sha !== payload.sha || state.branch !== payload.branch) stop();
-				const current = await implementation(
-					payload.reference,
-					payload.repository,
-					state.sha,
-					state.branch,
-				);
-				guard();
-				if (
-					current.operationId !== payload.implementationOperationId ||
-					current.report !== payload.report
-				)
-					stop();
 				const issue = await remote.issue(payload.reference.number);
 				guard();
 				if (!isDeepStrictEqual(issue, payload.issueSnapshot)) stop();

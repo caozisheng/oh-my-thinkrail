@@ -2266,7 +2266,7 @@ export async function respondToTool(
 	if (!hasPendingToolResult(entry.session.messages, toolCallId)) {
 		throw new Error(`${RESPONDABILITY_ERRORS.not_awaiting}: ${toolCallId}`);
 	}
-	const content = describeToolResponse(verdict.toolName, verdict.args, response, interactive);
+	const content = `${describeToolResponse(verdict.toolName, verdict.args, response, interactive)}\ntoolCallId: ${JSON.stringify(toolCallId)}`;
 	const release = admitPreflight(entry);
 	try {
 		await entry.session.sendCustomMessage(buildToolResponseMessage(content, toolCallId, response), {
