@@ -124,6 +124,76 @@ export interface ProjectGroupImport {
 	failed: { path: string; reason: string }[];
 }
 
+/** Identifies one project group by its membership `id`. */
+export interface ProjectGroupTarget {
+	groupId: string;
+}
+
+/** One open member's checkout as `project.groupStatus` read it; absent fields were not measurable. */
+export interface ProjectGroupRepositoryStatus {
+	projectId: string;
+	/** Relative to the group root, `""` for the root repository. */
+	path: string;
+	/** Branch name, or null on a detached HEAD or when git could not be read. */
+	branch: string | null;
+	/** Tracked or untracked changes in the checkout; null when git could not be read. */
+	dirty: boolean | null;
+	/** The branch's configured upstream (e.g. `origin/main`), when it has one. */
+	upstream?: string;
+	ahead?: number;
+	behind?: number;
+}
+
+/** A repository taking part in an Issue implementation of a group member. */
+export interface ProjectGroupIssueRepository {
+	projectId: string;
+	role: "primary" | "associated";
+	/** The Issue worktree once created. */
+	workspaceId?: string;
+	/** Commits or changes beyond the recorded start; absent when no start commit is recorded. */
+	changed?: boolean;
+}
+
+export interface ProjectGroupIssue {
+	provider: "gitlab" | "github";
+	instanceUrl: string;
+	number: number;
+	/** The group member whose Issue this is. */
+	projectId: string;
+	repositories: ProjectGroupIssueRepository[];
+}
+
+export interface ProjectGroupStatus {
+	id: string;
+	name: string;
+	root: string;
+	/** Open members, shallow-first. */
+	repositories: ProjectGroupRepositoryStatus[];
+	/** Issues of members with a started implementation. */
+	issues: ProjectGroupIssue[];
+}
+
+export interface ProjectGroupFetchResult {
+	projectId: string;
+	path: string;
+	outcome: "fetched" | "noRemote" | "failed";
+	/** git's message for a failed fetch. */
+	error?: string;
+}
+
+export interface ProjectGroupFetch {
+	results: ProjectGroupFetchResult[];
+}
+
+export interface ProjectGroupRemoveInput extends ProjectGroupTarget {
+	/** Also close every member project; otherwise members stay open as ordinary projects. */
+	close: boolean;
+}
+
+export interface ProjectGroupRemove {
+	projects: Project[];
+}
+
 /** Tools (pi tool names) granted while the server keeps the command + args or URL hashed as `target`. */
 export interface McpToolGrant {
 	target: string;

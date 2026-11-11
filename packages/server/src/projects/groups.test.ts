@@ -3,7 +3,13 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Project } from "@thinkrail/contracts";
-import { importProjectGroup, projectGroupMembers, scanProjectGroup } from "./groups";
+import {
+	importProjectGroup,
+	projectGroupMembers,
+	projectGroupProjects,
+	removeProjectGroup,
+	scanProjectGroup,
+} from "./groups";
 import { closeProject, getProjects, setProjectPublisher } from "./projects";
 
 function git(cwd: string, ...args: string[]): void {
@@ -210,4 +216,35 @@ test("import refuses a path a fresh scan does not find and reports per-repositor
 	expect(result.projects.map((p) => p.projectGroup?.path)).toEqual(["app"]);
 	expect(result.failed.map((f) => f.path)).toEqual(["api"]);
 	expect(result.failed[0]?.reason).toContain("already open");
+});
+
+test("removing a group strips membership, optionally closes members, and never touches folders", async () => {
+	const root = join(work, "suite");
+	makeRepo(root);
+	makeRepo(join(root, "app"));
+	makeRepo(join(root, "libs", "core"));
+	const imported = await importProjectGroup({ root, paths: ["", "app", "libs/core"] });
+	const groupId = imported.projects[0]?.projectGroup?.id ?? "";
+	expect(projectGroupProjects(groupId).map((p) => p.projectGroup?.path)).toEqual([
+		"",
+		"app",
+		"libs/core",
+	]);
+	closeProject(imported.projects[2]?.id ?? "");
+	expect(projectGroupProjects(groupId)).toHaveLength(2);
+
+	const kept = removeProjectGroup({ groupId, close: false });
+	expect(kept.projects).toHaveLength(3);
+	expect(kept.projects.every((p) => p.projectGroup === undefined)).toBe(true);
+	expect(getProjects().filter((p) => p.closed !== true)).toHaveLength(2);
+	expect(projectGroupProjects(groupId)).toEqual([]);
+	expect(() => removeProjectGroup({ groupId, close: false })).toThrow("Unknown project group");
+
+	const again = await importProjectGroup({ root, paths: ["", "app"] });
+	const nextId = again.projects[0]?.projectGroup?.id ?? "";
+	const closed = removeProjectGroup({ groupId: nextId, close: true });
+	expect(closed.projects.map((p) => p.closed)).toEqual([true, true]);
+	expect(getProjects().every((p) => p.projectGroup === undefined)).toBe(true);
+	expect(Bun.spawnSync(["git", "-C", join(root, "app"), "rev-parse", "HEAD"]).success).toBe(true);
+	expect(() => removeProjectGroup({ groupId: "", close: true })).toThrow();
 });

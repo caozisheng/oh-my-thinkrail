@@ -28,6 +28,7 @@ import {
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	isControlMessage,
 	isSpeechModel,
+	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
@@ -177,6 +178,7 @@ import {
 	inspectProjectPath,
 	listProjects,
 	openProject,
+	removeProjectGroup,
 	renameProject,
 	scanProjectGroup,
 	setProjectGroupEnabled,
@@ -341,6 +343,7 @@ import {
 	observeSetupRead,
 	providerAvailability,
 } from "./productAnalytics";
+import { fetchProjectGroup, projectGroupStatus } from "./projectGroupHome";
 import { startPlanReview } from "./requestReview";
 import { withChangeLock, withReviewLock } from "./reviewLock";
 import { runObservation } from "./runAnalytics";
@@ -484,6 +487,21 @@ function withIssuesRepositoryJoinProtocol<P, R>(handler: (params: P) => R) {
 			throw new CodedError(
 				"RESOURCE_UNAVAILABLE",
 				"Joining Issue repositories is unavailable for this protocol version.",
+			);
+		}
+		return handler(params);
+	};
+}
+
+function withProjectGroupHomeProtocol<P, R>(handler: (params: P) => R) {
+	return (params: P, ctx: RequestContext): R => {
+		if (
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < PROJECT_GROUP_HOME_PROTOCOL_VERSION
+		) {
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"The project group home is unavailable for this protocol version.",
 			);
 		}
 		return handler(params);
@@ -823,6 +841,11 @@ const handlers: WsHandlers = {
 	},
 	"project.scanGroup": (params) => scanProjectGroup(params.path),
 	"project.importGroup": (params) => importProjectGroup(params),
+	"project.groupStatus": withProjectGroupHomeProtocol((params) =>
+		projectGroupStatus(params, issuesHost.groupIssueRecords),
+	),
+	"project.fetchGroup": withProjectGroupHomeProtocol((params) => fetchProjectGroup(params)),
+	"project.removeGroup": withProjectGroupHomeProtocol((params) => removeProjectGroup(params)),
 	"project.list": () =>
 		observeSetupRead(listProjects, (projects) => ({
 			project_present: projects.length > 0 ? "yes" : "no",

@@ -183,6 +183,20 @@ function persistence(dir: string): IssuesServiceOptions["persistence"] {
 
 const log = logger("issues");
 
+/** One started implementation as the project group home reads it; `base` stays host-side. */
+export interface GroupIssueRecord {
+	provider: "gitlab" | "github";
+	instanceUrl: string;
+	number: number;
+	projectId: string;
+	repositories: {
+		projectId: string;
+		role: "primary" | "associated";
+		workspaceId?: string;
+		base?: string;
+	}[];
+}
+
 /** Host-only composition seam; credentials remain solely inside the issues service. */
 export function createIssuesHost(
 	options: {
@@ -277,6 +291,44 @@ export function createIssuesHost(
 		return bindings;
 	}
 	/**
+	 * Started implementations whose primary is one of `projectIds`, for the project group home:
+	 * the primary and every joined repository with its worktree id and recorded start commit.
+	 * Read-only and best effort, like the rail bindings.
+	 */
+	function groupIssueRecords(projectIds: ReadonlySet<string>): GroupIssueRecord[] {
+		const issues: GroupIssueRecord[] = [];
+		for (const row of createIssueWorkspacePersistence(join(root, "issue-workspaces")).list()) {
+			if (!projectIds.has(row.projectId) || !row.implementation) continue;
+			const implementation = row.implementation;
+			issues.push({
+				provider: row.reference.provider,
+				instanceUrl: row.reference.instanceUrl,
+				number: row.reference.number,
+				projectId: row.projectId,
+				repositories: [
+					{
+						projectId: row.projectId,
+						role: "primary",
+						...(implementation.state === "completed"
+							? { workspaceId: implementation.workspaceId }
+							: {}),
+					},
+					...(row.members ?? [])
+						.filter((member) => member.removing !== true)
+						.map((member) => ({
+							projectId: member.projectId,
+							role: "associated" as const,
+							...(member.ownership?.state === "completed"
+								? { workspaceId: member.ownership.workspaceId }
+								: {}),
+							...(member.base ? { base: member.base } : {}),
+						})),
+				],
+			});
+		}
+		return issues.sort((a, b) => a.number - b.number);
+	}
+	/**
 	 * The other source repositories this bound Issue session may edit. Design reads their Default
 	 * checkouts, implementation their fixed Issue worktrees; the primary is resolved separately by the
 	 * caller. An unbound session, a fenced launch or any reconciliation failure simply yields none.
@@ -304,6 +356,7 @@ export function createIssuesHost(
 		agentSessions,
 		sessionMemberWorkspaces,
 		workspaceIssueBindings,
+		groupIssueRecords,
 		...actions,
 		async connection(params: unknown) {
 			const { projectId } = request(params);

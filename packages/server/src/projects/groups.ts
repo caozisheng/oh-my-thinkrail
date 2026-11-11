@@ -7,11 +7,14 @@ import {
 	type ProjectGroupImport,
 	type ProjectGroupImportInput,
 	type ProjectGroupMembership,
+	type ProjectGroupRemove,
+	type ProjectGroupRemoveInput,
 	type ProjectGroupScan,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { canonicalPath } from "../git";
 import {
+	closeProject,
 	getProjects,
 	openProject,
 	resolveProjectPath,
@@ -217,4 +220,33 @@ export function projectGroupMembers(projectId: string): Project[] {
 				project.projectGroup?.id === group.id,
 		)
 		.sort((a, b) => shallowFirst(a.projectGroup?.path ?? "", b.projectGroup?.path ?? ""));
+}
+
+/** The open members of group `groupId`, shallow-first; empty when no open project carries it. */
+export function projectGroupProjects(groupId: string): Project[] {
+	return getProjects()
+		.filter((project) => project.closed !== true && project.projectGroup?.id === groupId)
+		.sort((a, b) => shallowFirst(a.projectGroup?.path ?? "", b.projectGroup?.path ?? ""));
+}
+
+/**
+ * Dissolve a group: every member (open or closed) loses its membership, and with `close` every open
+ * member is also closed. Only project records change; no folder, repository or workspace is touched.
+ */
+export function removeProjectGroup(input: ProjectGroupRemoveInput): ProjectGroupRemove {
+	if (
+		typeof input?.groupId !== "string" ||
+		input.groupId === "" ||
+		typeof input.close !== "boolean"
+	)
+		throw new CodedError("RANGE_INVALID", "Invalid project group removal.");
+	const members = getProjects().filter((project) => project.projectGroup?.id === input.groupId);
+	if (members.length === 0) throw new Error(`Unknown project group: ${input.groupId}`);
+	const projects: Project[] = [];
+	for (const member of members) {
+		let project = setProjectGroupMembership(member.id, null);
+		if (input.close && project.closed !== true) project = closeProject(member.id);
+		projects.push(project);
+	}
+	return { projects };
 }

@@ -1065,6 +1065,18 @@ the real group root, and then also places every other open member found at its p
 (ordinary per-repository paths) in every other case. The group's root repository no longer has to
 participate: `workspaces` excludes `/.worktrees/` in a layout root that is a repository.
 
+**Project group home (v120).** `project.groupStatus`, `project.fetchGroup` and `project.removeGroup`
+sit behind `PROJECT_GROUP_HOME_PROTOCOL_VERSION`. `projectGroupHome.ts` composes them over
+`projects.projectGroupProjects`: status runs one `git --no-optional-locks status --porcelain=v2
+--branch` per open member (10 s budget, at most six at once; local refs only, so ahead/behind are as of
+the last fetch, and an untracked folder that is or holds another member is the group layout, not a
+change); Issues come from `issuesHost.groupIssueRecords` (implementations whose primary is a member,
+read-only like the rail bindings, any reconciliation failure yields none) and a joined repository's
+`changed` reuses `worktreeUnchanged` against its recorded `base`. Fetch runs `git fetch --all
+--no-tags --quiet` under the default non-interactive env (no ssh rewrite, per the `git` SPEC) with a
+30 s budget per repository, skips a repository without remotes, and reports each outcome with git's
+redacted stderr. Remove delegates to `projects.removeProjectGroup` and never touches disk.
+
 **On-demand joins (v119).** `issues.addRepository` (`IssueRepositoryJoinInput`) and
 `issues.cleanupRepositories` (`IssueTarget` → `IssueRepositoriesCleanup`) run under the same launch
 fence with the `release-on-settle` policy, behind `ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION`. The joining

@@ -9,6 +9,8 @@ export {
 	PROJECT_GROUP_SCAN_DEPTH,
 	type ProjectGroupScanOptions,
 	projectGroupMembers,
+	projectGroupProjects,
+	removeProjectGroup,
 	scanProjectGroup,
 } from "./groups";
 export {

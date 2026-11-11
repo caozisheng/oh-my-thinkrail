@@ -126,9 +126,14 @@ every other project mutation, so `project.updated` carries it.
   the group's current name. A project belongs to at most one group (the latest import wins). Import grants
   no trust.
 - **`projectGroupMembers(id)`** lists the other open members, shallow-first — the host's default Issue
-  repository selection reads it.
+  repository selection reads it. **`projectGroupProjects(groupId)`** lists a group's open members,
+  shallow-first — the group home's reads and fetch walk it.
+- **`removeProjectGroup({ groupId, close })`** dissolves a group: every member record, open or closed,
+  loses its membership (`setProjectGroupMembership(id, null)`), and with `close` each open member is also
+  closed through `closeProject`. It changes project records only — never a folder, repository,
+  worktree or workspace record — and an unknown group (no record carries it) throws.
 
-Submodules (gitlinks) and ungrouping are out of scope for v1.
+Submodules (gitlinks) are out of scope.
 
 ## Repository cloning
 
@@ -158,7 +163,8 @@ and truncating first can separate a secret suffix from the URL prefix needed to 
   `setProjectSkillEnabled`, `setProjectGroupEnabled`, `acknowledgeProjectSkills`,
   `approveProjectMcpServer`, `setProjectMcpOverride`, `grantProjectMcpTool`, `revokeProjectMcpTool`,
   `setPiTrustSeed`, `setProjectGroupMembership`, `scanProjectGroup`, `importProjectGroup`,
-  `projectGroupMembers`, `PROJECT_GROUP_SCAN_DEPTH`, `ProjectGroupScanOptions`.
+  `projectGroupMembers`, `projectGroupProjects`, `removeProjectGroup`, `PROJECT_GROUP_SCAN_DEPTH`,
+  `ProjectGroupScanOptions`.
 - **Allowed deps:** `persistence`; the `git` sub-module (shared `git()` runner, which now owns the
   environment its children spawn under — this module passes none); `contracts` (`Project`, `ProjectPathStatus`);
   `shared/codedError` (the two named open failures); Node/Bun.

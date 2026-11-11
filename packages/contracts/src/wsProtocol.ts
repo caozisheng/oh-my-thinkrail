@@ -48,9 +48,14 @@ import type {
 	PiPackagesCatalog,
 	PrBodySource,
 	Project,
+	ProjectGroupFetch,
 	ProjectGroupImport,
 	ProjectGroupImportInput,
+	ProjectGroupRemove,
+	ProjectGroupRemoveInput,
 	ProjectGroupScan,
+	ProjectGroupStatus,
+	ProjectGroupTarget,
 	ProjectPathStatus,
 	ProjectTrustSummary,
 	ProviderStatusReport,
@@ -164,9 +169,10 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 119;
+export const PROTOCOL_VERSION = 120;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 118;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 119;
+export const PROJECT_GROUP_HOME_PROTOCOL_VERSION = 120;
 export const PROJECT_GROUP_MAX_REPOSITORIES = 64;
 export const SEARCH_PROTOCOL_VERSION = 116;
 export const SPEECH_PROTOCOL_VERSION = 117;
@@ -344,6 +350,9 @@ export const WS_METHODS = {
 	projectCancelClone: "project.cancelClone",
 	projectScanGroup: "project.scanGroup",
 	projectImportGroup: "project.importGroup",
+	projectGroupStatus: "project.groupStatus",
+	projectFetchGroup: "project.fetchGroup",
+	projectRemoveGroup: "project.removeGroup",
 	projectHasSpecs: "project.hasSpecs",
 	projectSetTrust: "project.setTrust",
 	projectAcknowledgeSkills: "project.acknowledgeSkills",
@@ -863,6 +872,9 @@ export interface WsMethodMap {
 	"project.cancelClone": { params: { operationId: string }; result: Ack };
 	"project.scanGroup": { params: { path: string }; result: ProjectGroupScan };
 	"project.importGroup": { params: ProjectGroupImportInput; result: ProjectGroupImport };
+	"project.groupStatus": { params: ProjectGroupTarget; result: ProjectGroupStatus };
+	"project.fetchGroup": { params: ProjectGroupTarget; result: ProjectGroupFetch };
+	"project.removeGroup": { params: ProjectGroupRemoveInput; result: ProjectGroupRemove };
 	"project.hasSpecs": { params: { projectId: string }; result: { hasSpecs: boolean } };
 	"project.setTrust": {
 		params: { id: string; trusted: boolean; resources?: boolean };

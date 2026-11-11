@@ -17,6 +17,8 @@ import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type {
 	AppConfig,
 	Project,
+	ProjectGroupRemove,
+	ProjectGroupStatus,
 	Template,
 	TemplateInfo,
 	WireModel,
@@ -27,6 +29,7 @@ import type {
 } from "@thinkrail/contracts";
 import {
 	BRANCH_STATUS_PROTOCOL_VERSION,
+	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 	WS_METHODS,
 } from "@thinkrail/contracts";
@@ -1227,6 +1230,45 @@ test("workspace mutation handlers reject the Default before any side effect", as
 	const after = (await handleRequest("workspace.list", { projectId: "p1" }, CTX)) as Workspace[];
 	expect(after.filter((w) => w.kind === "default")).toHaveLength(1);
 	expect(after[0]?.id).toBe(def.id);
+});
+
+test("project group home methods are refused below v120 and dissolve a group without touching disk", async () => {
+	const old = { ...CTX, protocolVersion: PROJECT_GROUP_HOME_PROTOCOL_VERSION - 1 };
+	for (const [method, params] of [
+		["project.groupStatus", { groupId: "g" }],
+		["project.fetchGroup", { groupId: "g" }],
+		["project.removeGroup", { groupId: "g", close: false }],
+	] as const)
+		await expect(handleRequest(method, params, old)).rejects.toMatchObject({
+			code: "RESOURCE_UNAVAILABLE",
+		});
+	const projects = JSON.parse(readFileSync(join(dataDir, "projects.json"), "utf8")) as Project[];
+	writeFileSync(
+		join(dataDir, "projects.json"),
+		JSON.stringify(
+			projects.map((project) => ({
+				...project,
+				projectGroup: { id: "g", name: "suite", root: repo, path: "" },
+			})),
+		),
+	);
+	const status = (await handleRequest(
+		"project.groupStatus",
+		{ groupId: "g" },
+		CTX,
+	)) as ProjectGroupStatus;
+	expect(status.repositories.map((row) => row.path)).toEqual([""]);
+	expect(status.repositories[0]?.branch).toBeTruthy();
+	const removed = (await handleRequest(
+		"project.removeGroup",
+		{ groupId: "g", close: false },
+		CTX,
+	)) as ProjectGroupRemove;
+	expect(removed.projects.every((project) => project.projectGroup === undefined)).toBe(true);
+	expect(existsSync(join(repo, ".git"))).toBe(true);
+	await expect(handleRequest("project.groupStatus", { groupId: "g" }, CTX)).rejects.toThrow(
+		"Unknown project group",
+	);
 });
 
 test("workspace.remove refuses a workspace that still holds a nested group member's worktree", async () => {

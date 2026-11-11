@@ -1418,14 +1418,27 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 119`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 120`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
-hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 118` (below). Issues content/detail/repositories retain their v113/v114/v115 floors.
+hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 118`, on-demand Issue joins v119 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 120` (below). Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
 `WORKSPACE_CREATION_PROTOCOL_VERSION = 111`; extension settings and Discuss answers share
 `EXTENSION_SETTINGS_PROTOCOL_VERSION = 112` and `ASK_DISCUSS_PROTOCOL_VERSION = 112`.
 The existing Issues feature floors v103–v110 remain unchanged; the historical sections below
 record their introduction, not the current wire version.
+
+## Project group home (v120)
+
+`PROJECT_GROUP_HOME_PROTOCOL_VERSION = 120` adds three read-mostly methods over one group
+(`ProjectGroupTarget` `{ groupId }`): **`project.groupStatus`** → `ProjectGroupStatus` (`{ id, name,
+root, repositories, issues }`; each open member's `ProjectGroupRepositoryStatus` `{ projectId, path,
+branch | null, dirty | null, upstream?, ahead?, behind? }` from local refs only, and each started Issue
+implementation whose primary is a member as `ProjectGroupIssue` with its `repositories`
+`{ projectId, role, workspaceId?, changed? }`); **`project.fetchGroup`** → `ProjectGroupFetch`
+(`results: { projectId, path, outcome: "fetched" | "noRemote" | "failed", error? }[]`, one per open
+member, never failing the whole call for one repository); and **`project.removeGroup`**
+(`ProjectGroupRemoveInput` `{ groupId, close }` → `{ projects }`), which only rewrites project records.
+A client hides the group home below v120; the rail tree needs no wire change.
 
 ## On-demand Issue repositories (v119)
 
