@@ -69,6 +69,14 @@ const args: AskUserQuestionArgs = {
 const text = (result: ExecResult): string => result.content.map((block) => block.text).join("");
 
 describe("ask_user_question extension", () => {
+	test("Skip preserves its canonical result without correlation text", async () => {
+		const { tool } = load({
+			ask: async () => ({ kind: "answered", result: { answers: [], cancelled: true } }),
+		});
+		const result = await tool.execute("skip-call", args, undefined, undefined, { hasUI: false });
+		expect(text(result)).toBe("User declined to answer questions");
+		expect(result.details).toEqual({ answers: [], cancelled: true });
+	});
 	test("registers a sequential, model-only ask_user_question with the default guidance", () => {
 		const { tool, handlers } = load();
 		expect(tool.name).toBe("ask_user_question");
