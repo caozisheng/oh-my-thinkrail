@@ -73,7 +73,8 @@ function request(
 }
 function project(projectId: string, trusted: boolean) {
 	const found = getProjects().find((candidate) => candidate.id === projectId);
-	if (!found) throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project is unavailable.");
+	if (!found || found.kind === "chats")
+		throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project is unavailable.");
 	if (trusted && found.trusted !== true)
 		throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project requires trust.");
 	return found;

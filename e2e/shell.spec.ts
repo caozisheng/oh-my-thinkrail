@@ -36,14 +36,29 @@ test("renders the branded shell and, with no workspace, the Welcome screen", asy
 	}));
 	expect(logoColors.fill).toBe(logoColors.color);
 
-	const favicon = page.locator('link[rel="icon"]');
-	await expect(favicon).toHaveAttribute("type", "image/svg+xml");
-	await expect(favicon).toHaveAttribute("href", "/favicon.svg");
+	await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute(
+		"href",
+		"/favicon.svg",
+	);
 	const faviconResponse = await page.request.get("/favicon.svg");
 	expect(faviconResponse.ok()).toBe(true);
 	const faviconSvg = await faviconResponse.text();
-	expect(faviconSvg).toContain("<title>ThinkRail</title>");
-	expect(faviconSvg).toContain("prefers-color-scheme: dark");
+	expect(faviconSvg).toContain("<title>ThinkRail OMT mark</title>");
+	expect(faviconSvg).toContain('viewBox="0 -128.5 623 623"');
+	expect(faviconSvg).toContain('fill="#8dff4f"');
+	await expect(page.locator('link[rel="icon"][sizes="32x32"]')).toHaveAttribute(
+		"href",
+		"/favicon.ico",
+	);
+	await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
+		"href",
+		"/apple-touch-icon.png",
+	);
+	for (const path of ["/favicon.ico", "/apple-touch-icon.png"]) {
+		const response = await page.request.get(path);
+		expect(response.ok()).toBe(true);
+		expect(response.headers()["content-type"]).not.toContain("text/html");
+	}
 
 	await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", "connected");
 	await expect(page.getByTestId("connection-status")).toHaveAttribute("aria-label", "Connected");

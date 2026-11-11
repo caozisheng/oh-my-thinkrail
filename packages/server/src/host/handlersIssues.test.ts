@@ -518,8 +518,8 @@ test("v115 associated repositories gate older protocols before delegation", asyn
 	}
 });
 
-test("v119 repository joins and cleanup gate older protocols before delegation", async () => {
-	expect(ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION).toBe(119);
+test("v126 repository joins and cleanup gate older protocols before delegation", async () => {
+	expect(ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION).toBe(126);
 	const join = { ...actionTarget, repositoryProjectId: "api" };
 	for (const [method, params] of [
 		["issues.addRepository", join],
@@ -527,7 +527,7 @@ test("v119 repository joins and cleanup gate older protocols before delegation",
 	] as const) {
 		const error = await handleRequest(method, params as never, {
 			clientKey: "issues-join-test",
-			protocolVersion: 118,
+			protocolVersion: ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION - 1,
 		}).catch((error: unknown) => error);
 		expect((error as CodedError).code).toBe("RESOURCE_UNAVAILABLE");
 		expect((error as Error).message).toBe(
@@ -541,7 +541,10 @@ test("v119 repository joins and cleanup gate older protocols before delegation",
 		removed: [],
 	});
 	try {
-		const context = { clientKey: "issues-join-test", protocolVersion: 119 };
+		const context = {
+			clientKey: "issues-join-test",
+			protocolVersion: ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
+		};
 		expect(await handleRequest("issues.addRepository", join, context)).toEqual(joined);
 		expect(await handleRequest("issues.cleanupRepositories", actionTarget, context)).toEqual({
 			...joined,

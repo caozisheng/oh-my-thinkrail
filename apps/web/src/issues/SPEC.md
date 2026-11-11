@@ -69,7 +69,7 @@ stage mutations.
 **Associated repositories (v115).** Each issue row carries an icon-only trigger on the title row,
 right after the body-preview eye toggle: `RiLinkUnlink` with no repository linked and `RiLink`
 (soft-primary) once one is, opening a popover multi-select listbox of the open
-projects beside the issue's own project. That project always participates and is never listed as a
+repository projects beside the issue's own project (`selectRepoProjects`, never the synthetic Chats container). That project always participates and is never listed as a
 candidate — exclusion compares **local** project ids, since `reference.projectId` is the remote provider
 id and never matches a project id. The saved selection starts empty, is read on open
 (`issues.repositories`) and written whole per toggle (`issues.setRepositories`); the host owns validation
@@ -79,7 +79,7 @@ list read shows one localized failure instead of rendering an empty selection as
 rejected write leaves the last confirmed selection in place. Selection grants no trust, push or delivery
 right.
 
-**On-demand joins (v119).** With `supportsIssueRepositoryJoin`, a locked list stays interactive: joined
+**On-demand joins (v126).** With `supportsIssueRepositoryJoin`, a locked list stays interactive: joined
 repositories render selected and disabled (`data-joined`), every other candidate joins on click through
 `issues.addRepository` (which creates its Issue worktree, so the request allows 120 s), and a "remove
 unchanged repositories" button calls `issues.cleanupRepositories` once something is joined. The

@@ -28,23 +28,25 @@ pipeline.
 
 ## CI
 
-### Fork development policy: Windows only
+### Fork development policy: cross-platform verification
 
-During active fork development, `ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI retains
-Windows lint/typecheck, existing Windows-targeted unit checks and native CLI/desktop smoke; the
-`CI passed` aggregate requires all three jobs to succeed (no allowed skipped jobs). Full POSIX
-unit, source/browser, binary-browser and desktop-browser suites are temporarily suspended, not
-claimed covered by the Windows smokes. No Linux/macOS runner is scheduled by CI; only the Linux CLI release (manual, or on `main` pushes when
-explicitly enabled) uses Linux runners, and its binary smoke is release verification, not restored Linux application CI.
+`ci.yml`, `build-preview.yml`, and the manual Windows Desktop and Linux CLI release workflows remain active. CI runs
+Windows lint/typecheck and native CLI/desktop smoke alongside Linux unit, pi-package and source/browser
+checks. Packaging-affecting changes and merge groups also run Linux binary/desktop browser suites.
+The restored `changes` classifier preserves the existing app/artifact path filters; manual dispatch runs
+all coverage. `CI passed` requires classification, lint, unit and Windows jobs to succeed, and every
+classifier-gated job to succeed or be legitimately skipped. No macOS CI runner is scheduled; Linux CLI
+release runners are separate from application CI. Source browser CI pins Ubuntu 24.04, matching the
+validated WebKit/system-library baseline rather than following `ubuntu-latest` distribution upgrades.
 
 The synchronized upstream cross-platform CI recipe is retained fully commented in
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
-but are not invoked by active workflows. Restoring Linux execution is deferred, not a deletion.
+and are invoked by the active Linux artifact jobs.
 
 Website deploy/preview/cleanup workflows are removed: website deployment belongs to the upstream
 ThinkRail repository, not this fork. The npm publication recipe remains as a `.yml.disabled` file
-and therefore does not run. Restoring npm publication or the broader CI matrix is a deliberate later
-change; the historical cross-platform policy below describes that suspended coverage, not active jobs.
+and therefore does not run. Restoring npm publication remains a separate decision; the historical cross-platform notes below
+retain upstream context where platform assignments differ from this fork's active workflow.
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 
@@ -102,13 +104,19 @@ no job is re-run automatically. They install Chromium without `--with-deps`: the
 carries its shared libraries, and the extra apt packages (CJK/Thai/X fonts) feed no assertion while their
 Ubuntu-mirror download was the slowest step of the job, often for minutes. A missing library fails
 Chromium's launch loudly. The one exception is the source no-agent E2E job, which also runs the
-questionnaire specs under WebKit. The image lacks WebKit's libraries, so that job installs the packages
-Playwright's `install-deps --dry-run webkit` reports missing, minus its font and X-server group
-(`fonts-*`, `xfonts-*`, `ttf-*`, `xvfb`), not `--with-deps`, which always adds that group. Those fonts
-feed no assertion, and the Azure mirror trickled one of them for minutes, past the wait deadline, in two of
-four shard runs; apt also gets a 20 s HTTP timeout with five retries for outright stalls. The browsers
+questionnaire specs under WebKit. The image lacks WebKit's libraries, so that job installs the `webkit` set of
+`.github/actions/apt-packages` (below): Playwright's Ubuntu 26.04 WebKit package list without its four
+GStreamer plugin packages (`gstreamer1.0-libav`, `-plugins-bad`, `-plugins-base`, `-plugins-good`) and without
+its font and X-server group. The plugins load only to play media, which no spec does, yet on a bare Ubuntu 26.04
+they alone add 163 of the list's 375 packages (94 of 221 MB: libavcodec, onnxruntime, tensorflow-lite, codecs,
+a soundfont). Before the
+cache, every shard fetched that set from the Azure Ubuntu mirror, which now and then trickles one file: apt
+pipelines a host's downloads over one connection and a trickle never trips its idle timeout, so the queue
+stalled until the 420 s wait failed, in 27 of 478 shard runs (6–10 November 2026). Because the list names
+Ubuntu 26.04 packages, the job pins `ubuntu-26.04`, and `install-playwright.sh wait webkit` launches headless
+WebKit once, so a missing library fails that step by name instead of every WebKit test. The browsers
 themselves are not cached: the Playwright CDN download takes seconds, no slower than an Actions-cache
-restore of the same bytes. Linux jobs, here and in the website workflows,
+restore of the same bytes. Linux jobs
 install dependencies without the Actions cache for the same reason: a cold `bun install --frozen-lockfile` on a hosted runner takes 3–4 s,
 while restoring the ~600 MB Bun cache took 12–16 s before an install of 1–3 s, and every PR and merge-group
 ref saved its own copy, crowding the 10 GB quota the apt cache depends on. Jobs download only Chromium's headless shell,
@@ -116,7 +124,7 @@ the one binary headless tests launch, and start it in the background right after
 step joins it, failing with its status, just before the browser tests, so the download overlaps the build
 instead of preceding it.
 
-The Lint & Typecheck job and the website workflows (`site.yml`, `site-preview.yml`) set up Node 22 before
+The Lint & Typecheck job sets up Node 22 before
 installing: the website typecheck and build run Astro 7.4 and its TypeScript content mapper under Node, which
 need >= 22.23.4, and the runner image's preinstalled Node is not guaranteed to be that recent.
 
@@ -129,10 +137,11 @@ release download (`ReleaseDownloadFailed`, a timed-out Hutch index) failed whole
 Native artifact smokes run only in shard 1: repeating an identical probe per shard adds no coverage and
 multiplies exposure to runner-environment faults.
 
-macOS desktop jobs use native system frameworks, without apt, GTK/WebKitGTK installation or Xvfb.
-The Linux-only `CI cache` workflow is removed; the unused desktop-apt action remains available for
-separate release recipes but is not called by application CI. Job ids and the required `CI passed`
-aggregate remain stable while runner labels and display names make macOS coverage explicit.
+Linux desktop jobs install GTK/WebKitGTK through the shared `.github/actions/apt-packages` desktop set;
+source E2E uses its WebKit set. Package installation is bounded by the consumer steps. The Linux-only
+`CI cache` workflow remains removed: caches are populated by consumer jobs, with no seeding workflow.
+Xvfb startup retries only the display before native tests, not failed app assertions.
+Job ids and the required `CI passed` aggregate remain stable.
 
 A platform's native behavior is proven only on that platform. Windows remains a PR gate because its
 executable, environment, path, and trash behavior differs materially from POSIX hosts. Its subprocess unit

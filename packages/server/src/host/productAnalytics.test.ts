@@ -21,7 +21,11 @@ import {
 } from "../analytics";
 import { gitHeadSha } from "../git";
 import { resetConfigCache } from "../settings";
-import { maybeAttachChangeArtifacts, settleChangeArtifacts } from "../todos";
+import {
+	maybeAttachChangeArtifacts,
+	setSessionMemberWorkspaces,
+	settleChangeArtifacts,
+} from "../todos";
 import { handleRequest } from "./handlers";
 import { dropLogin, recordLoginStart, trackLoginOutcome } from "./loginAnalytics";
 import {
@@ -57,6 +61,7 @@ interface SentEvent {
 let sent: SentEvent[];
 
 beforeEach(() => {
+	setSessionMemberWorkspaces(async () => []);
 	dataDir = mkdtempSync(join(tmpdir(), "thinkrail-host-observation-"));
 	process.env.THINKRAIL_DATA_DIR = dataDir;
 	process.env.PI_CODING_AGENT_DIR = join(dataDir, "pi");
@@ -76,6 +81,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+	setSessionMemberWorkspaces(() => []);
 	await shutdownAnalytics();
 	resetAnalyticsForTests();
 	resetConfigCache();

@@ -41,7 +41,7 @@ export function IssueRepositoriesControl({
 	disabled: boolean;
 	onOpen: () => void;
 	onToggle: (projectId: string) => void;
-	/** Present when the host joins repositories on demand after implementation starts (v119). */
+	/** Present when the host joins repositories on demand after implementation starts (v126). */
 	onJoin?: ((projectId: string) => Promise<IssueRepositoriesNotice | null>) | undefined;
 	onCleanup?: (() => Promise<IssueRepositoriesNotice>) | undefined;
 }) {

@@ -238,7 +238,7 @@ export interface IssueRepositories {
 	projectIds: string[];
 	locked: boolean;
 }
-/** Join one more repository to an Issue (v119); after implementation starts this is add-only. */
+/** Join one more repository to an Issue (v126); after implementation starts this is add-only. */
 export interface IssueRepositoryJoinInput extends IssueTarget {
 	repositoryProjectId: string;
 }

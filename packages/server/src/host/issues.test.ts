@@ -168,6 +168,49 @@ test("unknown params and missing projects fail closed; an untrusted project may 
 	expect(await host.disconnect({ projectId: "one" })).toEqual({ ok: true });
 });
 
+test("the synthetic Chats container rejects Issue connections before any side effects", async () => {
+	saveProjects([
+		{
+			id: "chats",
+			name: "Chats",
+			slug: "chats",
+			path: join(dir, "chats"),
+			lastOpened: 1,
+			kind: "chats",
+			// Even a stale or forged trust flag cannot make the container a repository.
+			trusted: true,
+		},
+	]);
+	const effects: string[] = [];
+	const host = createIssuesHost({
+		dir,
+		fetch: (async (...args) => {
+			effects.push("fetch");
+			return fetcher(...args);
+		}) as typeof fetch,
+		credentials: {
+			async get() {
+				effects.push("get");
+				return null;
+			},
+			async set() {
+				effects.push("set");
+			},
+			async delete() {
+				effects.push("delete");
+			},
+		},
+	});
+	await expect(host.connect({ projectId: "chats", input })).rejects.toThrow(
+		"Issue project is unavailable.",
+	);
+	for (const read of [host.connection, host.list, host.repositoryAddress, host.disconnect]) {
+		await expect(read({ projectId: "chats" })).rejects.toThrow("Issue project is unavailable.");
+	}
+	expect(effects).toEqual([]);
+	expect(existsSync(join(dir, "issue-bindings.json"))).toBe(false);
+});
+
 test("concurrent upserts across adapters retain both bindings", async () => {
 	const a = createIssuesHost({ dir, fetch: fetcher, credentials });
 	const b = createIssuesHost({ dir, fetch: fetcher, credentials });

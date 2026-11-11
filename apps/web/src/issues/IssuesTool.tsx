@@ -12,9 +12,10 @@ import {
 } from "@thinkrail/contracts";
 import { localeOf, useT } from "@thinkrail/locales/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
-import { useAppStore } from "../store";
+import { selectRepoProjects, useAppStore } from "../store";
 import { getTransport, wsErrorCode } from "../transport";
 import type { IssuePreview } from "./IssueBody";
 import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
@@ -92,7 +93,7 @@ export function IssuesTool({
 	const authSupported = supportsIssueAuth(version);
 	const githubSupported = supportsIssueGithub(version);
 	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
-	const projects = useAppStore((s) => s.projects);
+	const projects = useAppStore(useShallow(selectRepoProjects));
 	const repositoriesSupported = supportsIssueRepositories(version);
 	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(

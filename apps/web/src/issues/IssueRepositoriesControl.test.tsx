@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
-import type { IssueRepositories, IssueSummary } from "@thinkrail/contracts";
+import { readFileSync } from "node:fs";
+import type { IssueRepositories, IssueSummary, Project } from "@thinkrail/contracts";
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { renderToStaticMarkup } from "react-dom/server";
+import { selectRepoProjects } from "../store/selectors";
 import { IssueRepositoriesControl, IssueRepositoriesPanel } from "./IssueRepositoriesControl";
 
 /** `reference.projectId` is the remote id; the local primary project is identified separately. */
@@ -98,4 +100,25 @@ test("a running implementation offers the other repositories to join and a clean
 	const fixed = panel({ projectIds: ["api-local"], locked: true }, false);
 	expect(fixed).toContain('data-testid="issue-repositories-locked"');
 	expect(fixed).not.toContain("backend");
+});
+
+test("Issue repository choices use the repository selector and exclude the Chats container", () => {
+	const projects: Project[] = [
+		{ id: primaryProjectId, name: "frontend", path: "/frontend", slug: "frontend", lastOpened: 1 },
+		{ id: "chats", name: "Chats", path: "/chats", slug: "chats", lastOpened: 1, kind: "chats" },
+		{
+			id: "api-local",
+			name: "backend",
+			path: "/backend",
+			slug: "backend",
+			lastOpened: 1,
+		},
+	];
+	expect(selectRepoProjects({ projects }).map((project) => project.id)).toEqual([
+		primaryProjectId,
+		"api-local",
+	]);
+	const source = readFileSync(new URL("./IssuesTool.tsx", import.meta.url), "utf8");
+	expect(source).toContain("useAppStore(useShallow(selectRepoProjects))");
+	expect(source).toContain("repositoryProjects={projects}");
 });

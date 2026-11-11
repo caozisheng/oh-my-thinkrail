@@ -82,7 +82,7 @@ export interface IssuesPanelProps {
 	onToggleRepository?:
 		| ((issue: IssueSummary, projectId: string) => Promise<IssueRepositories | null>)
 		| undefined;
-	/** Present when this host joins repositories on demand after implementation starts (v119). */
+	/** Present when this host joins repositories on demand after implementation starts (v126). */
 	onJoinRepository?:
 		| ((issue: IssueSummary, projectId: string) => Promise<IssueRepositoriesNotice | null>)
 		| undefined;

@@ -164,34 +164,35 @@ test("publishes trusted receipts, validates fresh Developer approval and preserv
 	expect(JSON.stringify(f.record)).not.toMatch(/SECRET|token|clientFor/);
 });
 
-test.each([
-	3, 8,
-])("design revocation after design snapshot %i cannot authorize a transition", async (revokeAt) => {
-	const f = fixture();
-	const design = await f.workflow.publishDesign(reference, "old", "design");
-	f.approve(tomatoLabels.design);
-	await f.workflow.validateDesign(reference);
-	await f.workflow.publishImplementation(reference, design.version, "a".repeat(40));
-	f.approve(tomatoLabels.implementation);
-	const record = structuredClone(f.record);
-	const readIssue = f.remote.issue;
-	let reads = 0;
-	f.remote.issue = async (iid) => {
-		const snapshot = await readIssue(iid);
-		// Revoke after the initial or final design evidence captures its after
-		// snapshot, before implementation evidence starts. Neither read is torn.
-		if (++reads === revokeAt) f.revoke(tomatoLabels.design);
-		return snapshot;
-	};
-	expect((await f.workflow.validateImplementation(reference)).approved).toBe(false);
-	expect(reads).toBeGreaterThanOrEqual(revokeAt);
-	expect(f.issue.labels).not.toContain(tomatoLabels.design);
-	expect(f.issue.labels).toContain("workflow::in-progress");
-	expect(f.issue.labels).not.toContain("workflow::in-review");
-	expect(f.record).toEqual(record);
-	expect(f.record?.implementation?.approved).toBe(false);
-	expect(f.record?.pending).toBeUndefined();
-});
+test.each([3, 8])(
+	"design revocation after design snapshot %i cannot authorize a transition",
+	async (revokeAt) => {
+		const f = fixture();
+		const design = await f.workflow.publishDesign(reference, "old", "design");
+		f.approve(tomatoLabels.design);
+		await f.workflow.validateDesign(reference);
+		await f.workflow.publishImplementation(reference, design.version, "a".repeat(40));
+		f.approve(tomatoLabels.implementation);
+		const record = structuredClone(f.record);
+		const readIssue = f.remote.issue;
+		let reads = 0;
+		f.remote.issue = async (iid) => {
+			const snapshot = await readIssue(iid);
+			// Revoke after the initial or final design evidence captures its after
+			// snapshot, before implementation evidence starts. Neither read is torn.
+			if (++reads === revokeAt) f.revoke(tomatoLabels.design);
+			return snapshot;
+		};
+		expect((await f.workflow.validateImplementation(reference)).approved).toBe(false);
+		expect(reads).toBeGreaterThanOrEqual(revokeAt);
+		expect(f.issue.labels).not.toContain(tomatoLabels.design);
+		expect(f.issue.labels).toContain("workflow::in-progress");
+		expect(f.issue.labels).not.toContain("workflow::in-review");
+		expect(f.record).toEqual(record);
+		expect(f.record?.implementation?.approved).toBe(false);
+		expect(f.record?.pending).toBeUndefined();
+	},
+);
 
 test("old approvals, wrong roles and changed descriptions cannot authorize", async () => {
 	const f = fixture();
@@ -376,20 +377,20 @@ test("invalid or unavailable host SHA fails statically; design-only operations d
 	await f.workflow.publishDesign(reference, "design", "new design");
 });
 
-test.each([
-	false,
-	true,
-])("HEAD changes at final pre-reservation check deny, including fast path %s", async (alreadyApproved) => {
-	const { f } = await implementationFixture();
-	if (alreadyApproved) await f.workflow.validateImplementation(reference);
-	const before = structuredClone(f.record);
-	let reads = 0;
-	f.commitRead = async () => (++reads < 5 ? "a".repeat(40) : "b".repeat(40));
-	expect((await f.workflow.validateImplementation(reference)).approved).toBe(false);
-	expect(reads).toBe(5);
-	expect(f.record).toEqual(before);
-	if (!alreadyApproved) expect(f.issue.labels).toContain("workflow::in-progress");
-});
+test.each([false, true])(
+	"HEAD changes at final pre-reservation check deny, including fast path %s",
+	async (alreadyApproved) => {
+		const { f } = await implementationFixture();
+		if (alreadyApproved) await f.workflow.validateImplementation(reference);
+		const before = structuredClone(f.record);
+		let reads = 0;
+		f.commitRead = async () => (++reads < 5 ? "a".repeat(40) : "b".repeat(40));
+		expect((await f.workflow.validateImplementation(reference)).approved).toBe(false);
+		expect(reads).toBe(5);
+		expect(f.record).toEqual(before);
+		if (!alreadyApproved) expect(f.issue.labels).toContain("workflow::in-progress");
+	},
+);
 
 test("HEAD change during label write cannot complete approval and retains pending", async () => {
 	const { f } = await implementationFixture();

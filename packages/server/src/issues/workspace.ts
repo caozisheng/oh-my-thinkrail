@@ -15,7 +15,7 @@ export interface WorkspaceHandle {
 	worktreePath: string;
 	branch: string;
 	/** Existing Workspace records omit kind for managed worktrees. */
-	kind?: "default" | "external";
+	kind?: "default" | "external" | "chat";
 }
 
 interface PendingWorkspace {

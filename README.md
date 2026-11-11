@@ -56,6 +56,8 @@ token. It includes:
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.
   The skill requires confirmed summary publication before handoff; automatic turn-end posting is not enforced.
+  Referenced design documents and implementation plans are included in full as Issue comments; long documents
+  use ordered, individually confirmed parts. Background specs are not attached merely because they were read.
   If publication is uncertain, reuse the original operation ID and exact summary with
   `issue_record_summary`'s `recovery: "reconcile"` to recover a unique matching published comment.
   Both recovery modes require explicit **human confirmation**; selecting the recovery enum represents
@@ -68,6 +70,8 @@ token. It includes:
 
 Starting implementation does not require design approval and does not change Issue labels. Approval
 and Issue closure remain in the tracker. Automated push/MR/CI/merge delivery is not implemented.
+
+- **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. You can also attach existing git worktrees or explicitly work in the project folder.
 
 Reads, listing, Issue sessions and summary publication work on both providers with identical issue and
 label presentation. Approval receipts, design/implementation publication and merge stay GitLab-only for
@@ -98,7 +102,6 @@ To connect, enter a **Repository address** and a personal access token in the Is
 - GitLab addresses select GitLab, including self-hosted instances with a confirmed instance URL.
 - Each local project has at most one Issue association: GitHub, GitLab, or none. Disconnect the current
   association before switching trackers in the UI.
-- **Find anything from one box.** `⌘K` (or a double tap of Shift) opens a palette that finds chats and the messages inside them, workspaces and projects, files in the current workspace, specs, and plans, with a preview pane. It also runs the app's commands and opens Settings sections, and with nothing typed it lists the chats waiting for you. Type a task and press `⌘↵` to open Create workspace with it as the prompt.
 
 The connection token remains in the host OS credential vault, never in agent prompts. GitHub Enterprise
 Server and SSH/SCP repository addresses are not supported by this association flow. Approval and
@@ -106,7 +109,14 @@ publication workflow APIs remain GitLab-only as described above; ordinary Design
 not require those APIs on either provider.
 
 ## Inherited IDE capabilities
-- **Skills.** ThinkRail imports skills from `pi`, Claude, Codex, and other coding agents, as well as any already in your project. A large library is listed within a small prompt budget, and the agent finds the rest with a skill search.
+
+- **Find anything from one box.** `⌘K` (or a double tap of Shift) opens a palette that finds chats and the messages inside them, workspaces and projects, files in the current workspace, specs, and plans, with a preview pane. It also runs the app's commands and opens Settings sections, and with nothing typed it lists the chats waiting for you. Type a task and press `⌘↵` to open Create workspace with it as the prompt. Press `⌘⇧F` to find text inside the workspace's files as you type: matches are grouped by file, with match-case and whole-word toggles and a code preview, and `↵` opens the file at that line.
+
+- **Chats without a project.** Ask, plan, or draft without a repository. Each chat gets its own scratch folder under **Chats** for its files, terminal, and plan, with no branch, review, or pull request. Start one from the Welcome screen, the Create dialog, the palette, or the Chats section; deleting a chat moves its whole folder to the Trash. When a chat turns into work, **Continue in workspace** has the agent write a handoff summary and starts a new workspace chat with it.
+
+- **Always up-to-date specifications.** A connected graph of `SPEC.md` files lives beside the code; the agent reads, searches, and maintains it through dedicated `spec_*` tools, so project intent persists across sessions. The read-only Specs tool renders the graph as a tree in its own view. Type `#` and a question in the palette to find the spec sections that answer it, in any word order and word form, ranked the way the agent's own `spec_search` ranks them. Press `↵` to open the spec at that heading, or `⌥↵` to ask the agent in a new chat when the specs phrase it differently.
+
+- **Skills.** ThinkRail loads your `pi` skills and any already in your project. It can also import skills from Claude, Codex, and other coding agents: switch them on in Settings → Extensions, or per project in the Skills dialog, which also shows the size of your skill catalog. A large library is listed within a small prompt budget, and the agent finds the rest with a skill search.
 
 Workspaces use Git worktrees; managed checkout creation runs in the background with progress so large
 repositories do not freeze the host. The shared IDE includes editor tabs, terminals, GitHub PR controls,
@@ -116,6 +126,8 @@ an on-demand NVIDIA speech runtime and model download. Audio and transcripts are
 speech service. Structured agent questions support rich previews,
 per-option notes, and a Discuss action. These upstream capabilities remain separate from this fork's
 Issue association and Tomato sessions.
+
+- **Your `pi` setup.** ThinkRail reads your existing `pi` configuration (`~/.pi/agent`). To use another one (for example, a personal `~/.pi/agent-personal`), or to pass extra environment variables to the agent, terminals and MCP servers, set them in Settings → Environment. The configuration becomes active on the next start. Settings → Models also holds `pi`'s prompt-cache warming (off, only while a run is active, or also between runs); ThinkRail keeps it to active runs unless you choose otherwise, so idle chats don't spend in the background.
 
 ## Windows Desktop releases
 
@@ -136,6 +148,7 @@ setup. Automatic desktop updates stay disabled; instead the packaged app checks 
 latest Release at launch, notifies you once per new version, and Settings → Software updates links to
 the release page so you install subsequent releases manually. Release builds
 carry no upstream PostHog project key. Source-run privacy behavior is unchanged below.
+
 
 ## Linux CLI releases
 

@@ -60,7 +60,7 @@ for (const provider of ["github", "gitlab"] as const) {
 			});
 			server.onMessage((message) => browser.send(message));
 		});
-		await openFixtureProject(page);
+		await openFixtureProject(page, { issueAlreadyAssociated: true });
 		await enterDefaultWorkspace(page);
 		const rail = page.getByTestId("tool-rail-issues");
 		if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
@@ -150,7 +150,7 @@ for (const provider of ["github", "gitlab"] as const) {
 				browser.send(JSON.stringify(frame));
 			});
 		});
-		await openFixtureProject(page);
+		await openFixtureProject(page, { issueAlreadyAssociated: true });
 		await enterDefaultWorkspace(page);
 		const rail = page.getByTestId("tool-rail-issues");
 		if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
@@ -218,7 +218,7 @@ test("old hosts keep body preview disabled", async ({ page }) => {
 			browser.send(JSON.stringify(frame));
 		});
 	});
-	await openFixtureProject(page);
+	await openFixtureProject(page, { issueAlreadyAssociated: true });
 	await enterDefaultWorkspace(page);
 	const rail = page.getByTestId("tool-rail-issues");
 	if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();

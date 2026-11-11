@@ -36,7 +36,7 @@ test("Skills renders existing controls as explicit switches without making rows 
 
 	const row = skillSwitch.locator('xpath=ancestor::*[@data-testid="skill-row"]');
 	const skillName = await row.getAttribute("data-skill");
-	await row.getByText(skillName ?? "").click();
+	await row.getByText(skillName ?? "", { exact: true }).click();
 	await expect(skillSwitch).toHaveAttribute("aria-checked", before ?? "false");
 
 	await skillSwitch.click();

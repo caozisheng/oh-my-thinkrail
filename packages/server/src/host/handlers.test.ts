@@ -1232,7 +1232,7 @@ test("workspace mutation handlers reject the Default before any side effect", as
 	expect(after[0]?.id).toBe(def.id);
 });
 
-test("project group home methods are refused below v120 and dissolve a group without touching disk", async () => {
+test("project group home methods are refused below v127 and dissolve a group without touching disk", async () => {
 	const old = { ...CTX, protocolVersion: PROJECT_GROUP_HOME_PROTOCOL_VERSION - 1 };
 	for (const [method, params] of [
 		["project.groupStatus", { groupId: "g" }],

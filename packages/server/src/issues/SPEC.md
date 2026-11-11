@@ -338,8 +338,13 @@ response locale, and instructs reading the entire context. Design delegates to t
 brainstorming process without implementation; implementation uses existing plans/TODOs, verification
 and review without a design approval gate. Both require confirmed `issue_record_summary` publication
 to the bound Issue comments before conclusions or yielding, including blocked/partial work, with key
-decisions, results, validation and next steps only. Missing/uncertain context or publication blocks
-success; transcripts, internal reasoning, raw tool output and secrets must not be published.
+decisions, results, validation and next steps only. Failed context reads, mismatched Issue identity,
+and failed/uncertain publication block success. The prompt adds no agent-side completeness gate;
+[[submodule-tomato-issue-workflow]] owns how the agent uses returned context and relevant references.
+The startup reminder requires full referenced design/plan artifacts with ordered, confirmed parts;
+[[submodule-tomato-issue-workflow]] owns the detailed publication rules. This is an agent instruction,
+not host file access or completeness enforcement. Transcripts, internal reasoning, raw tool output
+and secrets must not be published.
 
 The reference uses the shared strict action identity guard. Links must be canonical credential-free
 HTTP(S), on that instance beneath its base path, ending in `/<project path>/-/issues/<bound IID>`;
@@ -367,3 +372,6 @@ pagination, response shapes, sanitized errors, fresh version-bound Developer+ ap
 implementation start gate (backlog transition, in-progress/in-review idempotence, refused labels,
 retained reservations) and version-free session reuse across re-entries. Target CE
 compatibility and full workflow integration remain separate delivery gates.
+
+Workspace handles admit the shared `chat` kind as input, but every ownership/default validation
+rejects it: Issue work always requires a real project checkout. Projectless chats cannot be Issue targets.

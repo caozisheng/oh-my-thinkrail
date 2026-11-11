@@ -1819,7 +1819,10 @@ test("a layout root places a group member at its mirrored path and refuses other
 		"issue-7",
 		{ layoutRoot: repo },
 	);
-	expect(gitOut(inner.worktreePath, "rev-parse", "--show-toplevel")).toBe(inner.worktreePath);
+	// Git prints `/`-separated paths on Windows; resolve() puts them in the platform spelling.
+	expect(resolve(gitOut(inner.worktreePath, "rev-parse", "--show-toplevel"))).toBe(
+		inner.worktreePath,
+	);
 	expect(gitOut(inner.worktreePath, "symbolic-ref", "--short", "HEAD")).toBe("issue-7-b");
 	expect(nestedWorkspaces(outer.id).map((ws) => ws.id)).toEqual([inner.id]);
 	expect(nestedWorkspaces(inner.id)).toEqual([]);

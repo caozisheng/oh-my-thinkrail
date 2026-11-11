@@ -105,7 +105,19 @@ these structural guards do not grant trust or enable an RPC by themselves.
   folder already owned by a workspace),
   `PROJECT_CLONE_INVALID`, `PROJECT_CLONE_FAILED`, and `PROJECT_CLONE_CLEANUP_FAILED` (input
   correction, Git failure, and incomplete cleanup requiring filesystem intervention),
-  `RESOURCE_UNAVAILABLE`, and `SUBAGENT_TRANSCRIPT_NOT_FOUND` — the latter is
+  `CHATS_CONTAINER` / `CHAT_WORKSPACE` / `NOT_A_CHAT` /
+  `CHATS_STORE_UNAVAILABLE` (a repository door asked of the Chats container or a chat without a project,
+  a chat method asked of something else, and the chats store unavailable — names the retry), and the three
+  ways a chat refuses to start something, which a client must not confuse: **`CHAT_HAS_SESSION`** (a second
+  conversation asked of a chat — the client starts a new chat instead), **`CHAT_DELETING`** (a delete of
+  this chat is running — wait for its `workspace.removed`, never start a sibling) and
+  **`CHAT_DELETION_PENDING`** (a delete did not finish — offer Retry, nothing else),
+  `CONTINUATION_UNKNOWN` (`chat.continuationStatus` for an operation the host neither holds nor linked —
+  a restart lost it mid-flight; the card offers Retry), `CONTINUATION_IN_FLIGHT` (`chat.continue` for
+  another project while the chat is already being continued — the first gesture is never silently
+  joined by a different choice), `TEXT_SEARCH_TIMEOUT` / `TEXT_SEARCH_FAILED` (a text search git could not
+  finish in its budget, or could not run — the host's logged classifier; the client only sees the search
+  end `failed`), `RESOURCE_UNAVAILABLE`, and `SUBAGENT_TRANSCRIPT_NOT_FOUND` — the latter is
   `subagent.getTranscript`'s **permanent** miss, the
   signal that stops the transcript dialog's polling. A known child whose first transcript file is not
   written yet instead returns empty messages with its current status, so a live run remains pollable;
@@ -279,7 +291,8 @@ these structural guards do not grant trust or enable an RPC by themselves.
     (tokens/cost/context bar — display only) and **`SlashCommandInfo`** + **`SlashCommandSourceInfo`** (the
     command autocomplete rows, returned by live `session.getCommands`, skill-only pre-session `skill.list`,
     and mapped prompt-template listings), and **`SkillCatalogEntry`** + **`SkillDecision`** (`load`/`untrusted`/`pending-ack`/
-    `disabled`) — the workspace Skills manager's `skills.state` rows.
+    `disabled`) — the workspace Skills manager's `skills.state` rows; the additive optional `manualOnly`
+    marks pi's `disable-model-invocation` skills, which pi never lists in the prompt (an older host omits it).
   - **`ExtensionCatalogEntry`** (`{ name, title, description?, enabled, tools, hasChildExtensions, settings? }`) — one
     host-registry ThinkRail extension as `extension.list` reports it; `name` is the identity the
     `AppConfig.disabledExtensions` list keys on, `tools` the names its parent factories register, and
@@ -389,7 +402,12 @@ these structural guards do not grant trust or enable an RPC by themselves.
   changes the project's id or deletes its workspace associations — plus the skill-trust fields **`trusted`**
   (the per-project grant), **`acknowledgedSkills`** (re-confirm-new — which committed aliases are OK'd) and
   **`disabledSkills`** / **`disabledGroups`** (project-baseline per-skill and per-group off — a group is a
-  plugin, a source tier, or the special `@plugins`), which gate what its skills contribute; a workspace layers
+  plugin, a source tier, or the special `@plugins`) plus **`enabledGroups`** (per-group on against the host
+  default), which gate what its skills contribute. **`isSkillGroupEnabled`** is the one group rule shared by
+  the host gate and the Skills dialog: a project's explicit choice (on wins over off) beats
+  `AppConfig.otherAgentSkills`, which governs only **`OTHER_AGENT_SKILL_GROUPS`** (`personal`, `@plugins`).
+  **`SKILL_LISTING_MIN_TOKENS`** / **`SKILL_LISTING_MAX_TOKENS`** (4K / 8K) bound the host's per-request skill
+  listing budget, so the Skills dialog's size line names the same limits; a workspace layers
   **`Workspace.skillOverrides`** (per-skill on/off) over that baseline;
   **`SubagentOverride`** (`"on" | "off"`) + optional **`Workspace.subagentsOverride`** let a workspace
   force subagents on/off, while absence inherits the host's `AppConfig.subagentsEnabled` default;
@@ -405,7 +423,11 @@ these structural guards do not grant trust or enable an RPC by themselves.
   one later call from that chat may still move the branch; its optional **`kind: "default"`** marks the built-in per-project **Default workspace** — the
   project folder itself as a workspace, exactly one per project, pinned first in `workspace.list`,
   non-removable and non-renamable server-side; **`kind: "external"`** marks an explicitly attached,
-  user-owned worktree ThinkRail may forget but must never rename or reclaim; absent = a ThinkRail-managed
+  user-owned worktree ThinkRail may forget but must never rename or reclaim; **`kind: "chat"`** (from
+  `CHATS_PROTOCOL_VERSION`, v119) marks a **chat without a project** — its own folder in the built-in Chats
+  container (**`Project.kind: "chats"`**, the one project that is not a repository), never a git checkout,
+  `branch` / `baseBranch` pinned to `""`, with the optional **`deletionPending: true`** while a delete that
+  did not finish waits for Retry; absent = a ThinkRail-managed
   worktree workspace; optional literal **`initialTerminalPending: true`** is the host-owned provisioning
   marker carried only while a workspace still needs host reservation: the host reserves the deterministic
   terminal then clears it; absence means no provisioning work remains—explicit wire fields, never id
@@ -538,15 +560,22 @@ these structural guards do not grant trust or enable an RPC by themselves.
   since the review has no chat to carry it. An older client reads the dropped fields as absent, so the pin
   is what lets a client tell "this host has no reviewer chat" from "this host is older" rather than inferring it;
   **`AppConfig`** (`{ theme, themeMode, systemThemePair?, analyticsEnabled, analyticsConsentConfirmed, terminalReplayKb,
-  terminalWindowsShell, composerGrowthLimit, chatLineWidth, fileLineWidth, chatLineWidthBounded,
+  terminalWindowsShell, composerGrowthLimit, questionPanelHeight, chatLineWidth, fileLineWidth, chatLineWidthBounded,
   fileLineWidthBounded, voiceInputEnabled, customLayoutPresets, defaultModel?, defaultEffort?, reviewModel?, reviewEffort?,
   favoriteModels, recentModels, reviewAutoFix, agentReviewEnabled, subagentsEnabled, subagentMaxConcurrent,
-  jbcentralQuotaEnabled, jbcentralQuotaRefreshSeconds, disabledExtensions, extensionSettings, onboardingDismissed, interfaceFont,
-  codeFont, codeFontSize, codeLigatures, fontWeightOffset }` — an extensible bag; the five font fields join at
-  v102 and normalize together through `normalizeFontSettings` (host load, web store, fonts runtime); the line-width fields join
-  the wire at protocol v61, `terminalWindowsShell` at v62, and `voiceInputEnabled` (default `true`) with voice input
-  at v117. `onboardingDismissed` (v94, default `false`)
-  records that the user finished or skipped the cold-start onboarding wizard, so it never returns. **`DEFAULT_MODEL_PROTOCOL_VERSION`** pins
+  jbcentralQuotaEnabled, jbcentralQuotaRefreshSeconds, disabledExtensions, extensionSettings, otherAgentSkills,
+  onboardingDismissed, interfaceFont, codeFont, codeFontSize, codeLigatures, fontWeightOffset }` — an extensible
+  bag; the five font fields join at v102 and normalize together through `normalizeFontSettings` (host load, web
+  store, fonts runtime); the line-width fields join the wire at protocol v61, `terminalWindowsShell` at v62, and
+  `voiceInputEnabled` (default `true`) with voice input at v117, and `questionPanelHeight`
+  (**`QUESTION_PANEL_PROTOCOL_VERSION`** = v124; whole percents `QUESTION_PANEL_HEIGHT_PERCENT` 40–100,
+  default 60, `isQuestionPanelHeight`) caps the chat's interaction dock; a client of an older host hides
+  the setting and uses the default. `onboardingDismissed` (v94, default `false`)
+  records that the user finished or skipped the cold-start onboarding wizard, so it never returns.
+  `otherAgentSkills` (**`OTHER_AGENT_SKILLS_PROTOCOL_VERSION`** = v118, default `false`) is the host-wide
+  opt-in for other agents' user skill directories and Claude plugins: every listed skill is resent in every
+  request, so a machine with several agents installed must not pay for their catalogs by default (#1210). A
+  client of an older host reads the absent field as `true`, which is what that host does. **`DEFAULT_MODEL_PROTOCOL_VERSION`** pins
   v72's AppConfig `defaultModel`/`defaultEffort` and host-side default resolution; the Settings controls are
   hidden against older hosts. `defaultModel` is a full allowlisted `WireModel`, `defaultEffort` is an optional
   `ThinkingLevel`, and `settings.update` accepts `null` to clear either optional value.
@@ -657,13 +686,15 @@ these structural guards do not grant trust or enable an RPC by themselves.
   `session.getMessages` order, `anchorText` makes the anchor drift-tolerant), and
   **`HistorySearchResult`** (the prompts + full-text messages sections, with totals and indexing status);
   the **search palette DTOs** (`SEARCH_PROTOCOL_VERSION`, v116): **`SearchKind`** (`transcript` / `file` /
-  `spec` / `plan` — chats and workspaces are the palette's own rows), **`SearchContext`** (the active workspace + context project the
+  `spec` / `section` / `plan` — chats and workspaces are the palette's own rows; `section` from
+  `SPEC_SECTIONS_PROTOCOL_VERSION`, v123, a ranked spec section that replaced a spec's line-level body hit), **`SearchContext`** (the active workspace + context project the
   host turns into its one file/spec root), **`SearchHit`** (a union per kind over **`SearchHitBase`** — a stable
   `kind:id[:locator]` id, title / subtitle, the shared matcher's `MatchTier` + `score` and highlight `ranges`
   so the browser merges host hits with its local ones by the same rule, and the `projectId` / `workspaceId`
   every hit opens in — with each kind's own required target: a file's root-relative `path` and byte `size`
-  when readable, a spec's `path` / `specId` / `size` and the body line a `content` hit matched (`snippet`), a
-  plan's `sessionId`, a transcript's `sessionId` / `messageIndex` + `anchorText`; a size lets the client
+  when readable, a spec's `path` / `specId` / `size` (its title, id or path matched), a section's `path` / `specId`, its
+  best line as `snippet` and **`SearchHitSection`** — the heading trail, its 1-based `line`, and how many of
+  the query's words the section holds (`matched` of `terms`) — a plan's `sessionId`, a transcript's `sessionId` / `messageIndex` + `anchorText`; a size lets the client
   decline to preview a large file; nothing else rides the wire — sort keys stay on the host), **`SearchGroup`** (one per kind:
   capped `hits`, the true `total`, a lifecycle `state` — `ready`, `indexing` (never loaded: the client
   polls), `refreshing` (a reload runs behind these hits: the client re-asks quietly), `failed` (the last
@@ -673,7 +704,15 @@ these structural guards do not grant trust or enable an RPC by themselves.
   bounded transcript window or `unavailable` — files and specs render client-side over `fs.readFile`), and the limits `MAX_SEARCH_QUERY_LENGTH`,
   `MAX_SEARCH_GROUP_LIMIT`, `MAX_SEARCH_PREVIEW_BYTES` (the preview pane's
   read cap); the matcher gains the `content` tier for
-  body/transcript matches, always below every field tier;
+  body/transcript matches, always below every field tier; the **Find in Files DTOs**
+  (`TEXT_SEARCH_PROTOCOL_VERSION`, v122): **`TextSearchMatch`** (a matching line — 1-based `line`, the
+  first match's 1-based UTF-16 `column` + `length` so a client can open the file at it, the line `text`
+  cut around that match and the `[start, end)` `ranges` of every match inside it), **`TextSearchFile`**
+  (one root-relative `path` with its matches, the grouping unit), **`TextSearchBatch`** (the `seq` it
+  answers, the `root` workspace the paths belong to, a slice of files, and on the last batch
+  `done: { reason: TextSearchEnd, files, lines }` — `complete` / `limit` / `failed`) and the limits
+  **`TEXT_SEARCH_LIMITS`** (`lines` 2 000 matching lines, `fileBytes` 1 MB, `lineChars` 400,
+  `minQuery` 2, `maxQuery` 200 — the host enforces them, the client renders them);
   the **review DTOs** — **`Review`** (one open review per workspace; `baseSha` — the reviewed diff's
   ORIGINAL side (the branch range's fork point, what that diff actually displays — never the target's
   tip, which can carry upstream commits the review never showed) pinned to a **full commit oid at
@@ -797,6 +836,12 @@ these structural guards do not grant trust or enable an RPC by themselves.
   only settings **`isSharedModelContextTarget`** accepts (no override, or one inside the range): an
   override the app could not have written is changed only by naming its `{provider,id}`. Saves emit the
   existing `provider.changed` invalidation; no AppConfig state or raw configuration crosses the wire) /
+  **`cacheWarming.get`** / **`cacheWarming.set`** (v121, `CACHE_WARMING_SETTINGS_PROTOCOL_VERSION`; both
+  return a **`CacheWarmingSetting`** — pi's `cacheWarming` mode, one of **`CACHE_WARMING_MODES`** `off` /
+  `streaming` / `idle` tested by `isCacheWarmingMode`, and `source`: `user` when pi's global `settings.json`
+  names it, `default` when the host's own default applies. The mutation takes `{mode}`; a write pi's
+  settings loader would silently skip fails with **`CACHE_WARMING_WRITE_FAILED`**. The value lives only in
+  pi's file; no AppConfig field mirrors it) /
   **`customEndpoints.list`** / **`customEndpoints.probe`** / **`customEndpoints.save`** /
   **`customEndpoints.remove`** (v101, `CUSTOM_ENDPOINTS_PROTOCOL_VERSION`; the user's OpenAI-compatible
   servers stored as pi `models.json` providers whose ids carry **`CUSTOM_ENDPOINT_ID_PREFIX`** (`custom-`,
@@ -956,10 +1001,31 @@ these structural guards do not grant trust or enable an RPC by themselves.
   **`client.reportError`** (`ClientErrorReport { kind: render | window | rejection, type, stack?,
   boundary?, chunkIds? }` → ack; `chunkIds` maps stack URLs to PostHog source-map chunk ids; a fire-and-forget UI error for host error tracking — the payload is raw and untrusted,
   the host is the only sanitizer; `CLIENT_ERROR_REPORT_PROTOCOL_VERSION` pins its v90 introduction so a
-  newer client never sends it to an older host) / **`search.query`** + **`search.preview`** (the palette's host
+  newer client never sends it to an older host) / the **`chat.*` set** from `CHATS_PROTOCOL_VERSION` (v119) —
+  **`create`** (`{ model?, thinkingLevel? }` → `ChatCreateResult`: the `kind: "chat"` workspace plus the
+  one session it owns, created by the host in one call), **`delete`** (`{ workspaceId }` → ack; the only
+  teardown door — transcripts and folder to the Trash, `session.delete` refuses a chat) and **`inspect`**
+  (`{ workspaceId }` → `ChatInspection { files, truncated }`, the confirmation's file count — `truncated`
+  when the host's walk stopped at its entry or time budget, so the folder may hold more),
+  and from `CONTINUATION_PROTOCOL_VERSION` (v120) **`continue`** (`{ workspaceId, projectId }` →
+  `{ operationId }`: bind one in-memory continuation and ask the chat's agent for a summary) and
+  **`continuationStatus`** (`{ operationId }` → `ChatContinuation` — the host-owned phases `requested →
+  summarizing → creating → started | failed | lost` with the created `workspaceId` / `sessionId` and
+  `firstMessage: sent | failed` reported apart; after a restart a linked operation answers `started`
+  from its `continuedTo` link, any other `CONTINUATION_UNKNOWN`; the same shape rides the scoped
+  `chat.continuation` push); the custom messages **`continue-in-workspace-request`** (`ContinueInWorkspaceRequestDetails`,
+  the host's card in the source chat) and **`chat-handoff`** (`ChatHandoffDetails`: the clamped summary
+  — `CHAT_HANDOFF_SUMMARY_MAX_LENGTH` — plus the source chat, the new chat's first message); and
+  `Workspace.continuedTo: ChatContinuationLink[]` on a chat record (each link names its `operationId`) /
+  **`search.query`** + **`search.preview`** (the palette's host
   providers from `SEARCH_PROTOCOL_VERSION`, v116: `{ query, kinds?, context, limit? }` → per-kind
   groups with the shared matcher's tiers; a preview is a bounded
-  transcript read that never attaches a session) / **`history.search`** (the prompt-recall + conversation-search read; results capped,
+  transcript read that never attaches a session) / **`search.text`** (Find in Files from
+  `TEXT_SEARCH_PROTOCOL_VERSION`, v122: `{ seq, query, context, caseSensitive, wholeWord }` — a plain
+  substring over the same one root as the `file` kind; answers `{ seq }` at once or `{ seq, superseded }`
+  for a `seq` older than the client's latest, and streams the matches on the addressed
+  `search.textResults` push; `seq` is the client's monotonic counter, never reused across a reload) /
+  **`history.search`** (the prompt-recall + conversation-search read; results capped,
   recency-ordered; the messages section is assistant-only — a user-role hit surfaces as a jumpable
   `PromptHit` instead, never a separate `MessageHit`) / the **`review.*` set** — **`get`** (the open
   review + comments, lazily created; re-anchored on read) / **`commentAdd`**/**`commentUpdate`**/
@@ -1013,7 +1079,9 @@ these structural guards do not grant trust or enable an RPC by themselves.
   `terminal.data` + **`terminal.exit`** + **`terminal.detached`** (the addressed terminal channels — sent to
   the single *attached* client rather than broadcast, so a shell's bytes never
   reach another browser; `terminal.data` may carry `truncated` when the host had to drop held output,
-  `terminal.detached` says another client took the tab over) / the **workspace lifecycle
+  `terminal.detached` says another client took the tab over) / **`search.textResults`** (the addressed
+  Find in Files stream — `TextSearchBatch`es sent only to the socket whose `search.text` they answer,
+  never broadcast or replayed; a client drops a batch whose `seq` is not its latest) / the **workspace lifecycle
   trio** — **`workspace.created`**
   / **`workspace.updated`** / **`workspace.removed`** — registry membership changes fanned out to every
   client so it stays shared domain state (architecture #9), all emitted by the server's `workspaces`
@@ -1418,18 +1486,18 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 120`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 127`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
-hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 118`, on-demand Issue joins v119 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 120` (below). Issues content/detail/repositories retain their v113/v114/v115 floors.
+hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 125`, on-demand Issue joins v126 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` (below), allocated above upstream's v118–v124 floors. Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
 `WORKSPACE_CREATION_PROTOCOL_VERSION = 111`; extension settings and Discuss answers share
 `EXTENSION_SETTINGS_PROTOCOL_VERSION = 112` and `ASK_DISCUSS_PROTOCOL_VERSION = 112`.
 The existing Issues feature floors v103–v110 remain unchanged; the historical sections below
 record their introduction, not the current wire version.
 
-## Project group home (v120)
+## Project group home (v127)
 
-`PROJECT_GROUP_HOME_PROTOCOL_VERSION = 120` adds three read-mostly methods over one group
+`PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` adds three read-mostly methods over one group
 (`ProjectGroupTarget` `{ groupId }`): **`project.groupStatus`** → `ProjectGroupStatus` (`{ id, name,
 root, repositories, issues }`; each open member's `ProjectGroupRepositoryStatus` `{ projectId, path,
 branch | null, dirty | null, upstream?, ahead?, behind? }` from local refs only, and each started Issue
@@ -1440,28 +1508,28 @@ upstream?, upstreamAhead?, upstreamBehind? }` measured in the Issue worktree: `a
 beyond the start commit (`baseSource` `recorded` at join, `created` from the branch's reflog creation
 entry, or `mergeBase` with the default branch), `behind` the `defaultBranch` commits the branch lacks,
 `changedFiles` the worktree's changed paths minus the Issue's nested worktrees, and `upstream*` the
-branch's own pushed upstream; every addition is optional, so a v120 client of the first shape still
+branch's own pushed upstream; every addition is optional, so a v127 client of the first shape still
 reads it); **`project.fetchGroup`** → `ProjectGroupFetch`
 (`results: { projectId, path, outcome: "fetched" | "noRemote" | "failed", error? }[]`, one per open
 member, never failing the whole call for one repository); and **`project.removeGroup`**
 (`ProjectGroupRemoveInput` `{ groupId, close }` → `{ projects }`), which only rewrites project records.
-A client hides the group home below v120; the rail tree needs no wire change.
+A client hides the group home below v127; the rail tree needs no wire change.
 
-## On-demand Issue repositories (v119)
+## On-demand Issue repositories (v126)
 
-`ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 119` adds **`issues.addRepository`**
+`ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126` adds **`issues.addRepository`**
 (`IssueRepositoryJoinInput` `{ projectId, reference, repositoryProjectId }` → `IssueRepositories`; strict
 `isIssueRepositoryJoinInput`, the joining id never the primary) and **`issues.cleanupRepositories`**
 (`IssueTarget` → `IssueRepositoriesCleanup` `{ projectIds, locked, removed }`). Before implementation
 the join extends the saved selection; afterwards it is add-only and creates the repository's Issue
 worktree at once. Cleanup removes only joined repositories without commits or changes. An expected
 refusal (nesting, member limit, implementation not started) carries the new
-**`ISSUE_REPOSITORY_REFUSED`** code with a readable reason. A newer client hides join/cleanup below v119
+**`ISSUE_REPOSITORY_REFUSED`** code with a readable reason. A newer client hides join/cleanup below v126
 and keeps the v115 read-only locked list.
 
-## Project groups (v118)
+## Project groups (v125)
 
-`PROJECT_GROUPS_PROTOCOL_VERSION = 118` adds **`project.scanGroup`** (`{ path }` → `ProjectGroupScan`:
+`PROJECT_GROUPS_PROTOCOL_VERSION = 125` adds **`project.scanGroup`** (`{ path }` → `ProjectGroupScan`:
 the resolved real `root`, a default `name`, and the nested repositories found below it as
 `{ path, name }` with `/`-separated `path` relative to the root — `""` is the root itself — shallow
 first, at most `PROJECT_GROUP_MAX_REPOSITORIES` (64), plus `truncated` when a scan budget stopped the
@@ -1472,7 +1540,7 @@ ordinary project and a per-path failure (`ALREADY_OPEN`, a path guard) is report
 instead of failing the whole import. Membership travels on the project record itself as optional
 **`Project.projectGroup`** (`ProjectGroupMembership` `{ id, name, root, path }`), so the existing
 `project.updated` push and `project.list` carry it and there is no separate group channel. Older
-clients ignore the field; a newer client hides the import entry below v118.
+clients ignore the field; a newer client hides the import entry below v125.
 
 ## Issues read protocol (v103)
 
@@ -1576,3 +1644,12 @@ asserts that no resources or prompts were created. These additive error codes ch
 
 `WsErrorCode.ISSUE_SUMMARY_RECOVERY_REQUIRED` distinguishes unresolved bound-summary publication
 from generic unavailability; it authorizes no retry and adds no wire method or protocol floor.
+
+## Fork/upstream protocol reconciliation
+
+The merged host advertises v127. Existing fork floors v103–v117 remain unchanged; upstream additions
+are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
+projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
+v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
+joins (v126) and the project group home (v127) sit above them. Clients and host must use the named constants, never the original
+upstream numbers.
