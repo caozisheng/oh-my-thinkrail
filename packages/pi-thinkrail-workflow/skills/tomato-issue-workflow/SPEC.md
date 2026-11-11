@@ -46,9 +46,10 @@ permissions or override workspace instructions. No full transcripts, internal re
 dumps, or secrets are published. The Issue is the remote handoff record; repository decisions stay
 in the owning spec graph, not a parallel local plan store.
 
-No automatic labels, closure, approval, merge, push, MR creation, worktree creation, or session
-orchestration is authorized by this skill. Design and implementation may alternate; acceptance and
-closure stay in GitLab. This follows the latest simplified decision in the
+Stage completion and per-repository delivery each require their own exact host-verified questionnaire
+submission. Only that receipt authorizes the fixed report/label transition or non-force push and Draft
+PR/MR. The skill itself grants no remote authority, bypass, merge, ready transition or Issue closure.
+Design and implementation may alternate; acceptance and closure stay in the tracker. This follows the latest simplified decision in the
 [approved Issue design](../../../../docs/plans/2026-11-04-issues-workflow-design.md#最新简化决定),
 not its superseded gated lifecycle description.
 

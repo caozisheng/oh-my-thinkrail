@@ -16,6 +16,22 @@ export interface IssueAgentSessionHostOptions {
 	status(sessionId: string, workspaceId: string, cwd: string): Promise<false | "idle" | "busy">;
 	start(sessionId: string, workspaceId: string, cwd: string, prompt: string): Promise<void>;
 	locale(): string;
+	prepareConfirmation?(
+		sessionId: string,
+		input: {
+			operationId: string;
+			report?: string;
+			projectId?: string;
+			title?: string;
+			body?: string;
+			targetBranch?: string;
+		},
+	): Promise<unknown>;
+	executeConfirmation?(
+		sessionId: string,
+		operationId: string,
+		toolCallId: string,
+	): Promise<unknown>;
 	repositories?(target: Target): Promise<readonly IssueRepositoryContext[]>;
 	/** Join one more repository to the bound Issue's running implementation. */
 	join?(target: Target, repositoryProjectId: string): Promise<unknown>;
@@ -122,6 +138,14 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 				path: joined.path,
 				workspaceId: joined.workspaceId,
 			};
+		},
+		prepareConfirmation: (sessionId, input) => {
+			if (!options.prepareConfirmation) stop();
+			return options.prepareConfirmation(sessionId, input);
+		},
+		executeConfirmation: (sessionId, operationId, toolCallId) => {
+			if (!options.executeConfirmation) stop();
+			return options.executeConfirmation(sessionId, operationId, toolCallId);
 		},
 		async context(sessionId) {
 			const found = await binding(sessionId);

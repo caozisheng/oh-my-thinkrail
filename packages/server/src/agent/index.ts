@@ -43,6 +43,7 @@ export {
 	setExtensionSettingsResolver,
 	setSpecsEnabledResolver,
 } from "./extensions";
+export { isTrustedQuestionnaireReceipt } from "./issueConfirmation";
 export { type IssueSummaryRecovery, type IssueToolHost, setIssueToolHost } from "./issueTools";
 export {
 	effectiveMcpServerConfig,

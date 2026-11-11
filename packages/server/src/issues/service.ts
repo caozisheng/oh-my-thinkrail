@@ -18,7 +18,7 @@ import { CodedError } from "@thinkrail/shared/codedError";
 import { logger } from "../log";
 import { createGitLabClient, type GitLabClientOptions, type GitLabIssue } from "./client";
 import { createGitHubClient } from "./github";
-import type { IssueRemote, IssueWorkflowRemote } from "./remote";
+import type { IssueDeliveryRemote, IssueRemote, IssueWorkflowRemote } from "./remote";
 
 export type IssueBinding = Omit<IssueConnection, "connected">;
 
@@ -57,6 +57,7 @@ export interface IssuesService {
 	detail(projectId: string, reference: IssueReference): Promise<IssueDetail>;
 	/** Server-only authenticated read capability; never serialize or expose through RPC. */
 	remoteFor(projectId: string, reference: IssueReference): IssueRemote;
+	deliveryFor(projectId: string, reference: IssueReference): IssueDeliveryRemote;
 	/** The GitLab-only workflow capability; a GitHub reference is refused before any request. */
 	workflowFor(projectId: string, reference: IssueReference): IssueWorkflowRemote;
 }
@@ -184,7 +185,12 @@ export async function createIssuesService({
 	const bindings = new Map<string, IssueStoredBinding>();
 	const clients = new Map<
 		string,
-		{ client: IssueRemote; workflow?: IssueWorkflowRemote; path: string; provider: IssueProvider }
+		{
+			client: IssueDeliveryRemote;
+			workflow?: IssueWorkflowRemote;
+			path: string;
+			provider: IssueProvider;
+		}
 	>();
 	type Operation = { cancelled: boolean; done: Promise<unknown> };
 	const pending = new Map<string, Operation>();
@@ -243,14 +249,14 @@ export async function createIssuesService({
 		return done;
 	};
 	/** One provider rule decides the transport; an unknown instance never guesses. */
-	const makeClient = (instanceUrl: string, project: string, token: string): IssueRemote => {
+	const makeClient = (instanceUrl: string, project: string, token: string): IssueDeliveryRemote => {
 		const provider = issueProviderForInstanceUrl(instanceUrl) ?? invalid();
 		const shared = { instanceUrl, project, token, ...(fetch ? { fetch } : {}) };
 		return provider === "github" ? createGitHubClient(shared) : createGitLabClient(shared);
 	};
 	const workflowOf = (client: IssueRemote): IssueWorkflowRemote | undefined =>
 		client.provider === "gitlab" ? (client as IssueWorkflowRemote) : undefined;
-	const connected = (client: IssueRemote, path: string) => {
+	const connected = (client: IssueDeliveryRemote, path: string) => {
 		const workflow = workflowOf(client);
 		return {
 			client,
@@ -427,6 +433,19 @@ export async function createIssuesService({
 			const linked = clients.get(projectId);
 			if (!binding || !linked) return unavailable("Issue project is not connected.");
 			if (
+				reference.instanceUrl !== binding.instanceUrl ||
+				reference.projectId !== binding.remoteProjectId
+			)
+				invalid();
+			return linked.client;
+		},
+		deliveryFor(projectId, reference) {
+			if (!isIssueReference(reference)) invalid();
+			const binding = bindings.get(projectId);
+			const linked = clients.get(projectId);
+			if (!binding || !linked) return unavailable("Issue project is not connected.");
+			if (
+				reference.provider !== linked.provider ||
 				reference.instanceUrl !== binding.instanceUrl ||
 				reference.projectId !== binding.remoteProjectId
 			)

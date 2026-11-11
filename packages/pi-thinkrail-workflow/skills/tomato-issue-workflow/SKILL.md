@@ -121,12 +121,26 @@ enum represents that confirmation. Implementation permission alone is not permis
 
 Without the required confirmation, remain blocked. Never edit/delete journal state or bypass the tool.
 
-## Side-effect limits
+## Stage confirmation and delivery
 
-Do not automatically modify workflow/approval labels, approve a stage, close the Issue, push, create
-an MR, or merge. This skill does not authorize those actions through shell commands or alternate
-APIs either. Acceptance and closure remain in GitLab; implementation intent is not merge consent.
-Standalone PR work remains **shipping-a-pr** work, not a reason to infer an Issue session.
+When `issue_prepare_confirmation` and `issue_execute_confirmation` are advertised, completed design
+or implementation is followed by a separate stage card. Prepare the complete report with a fresh
+operationId, pass the returned questionnaire unchanged to `ask_user_question`, and wait for its real
+`Looks right` submission. Only then execute with that card's toolCallId. Skip, Discuss, Other, a free-form
+reply or a changed preview grant no permission; retain the work and do not automatically ask again.
+Design accepts no workflow label or backlog and moves to in-progress; implementation accepts
+in-progress and moves to in-review. Both GitHub and GitLab preserve unrelated labels and the Issue body.
+An implementation report binds the confirmed design and each repository's clean commit. Confirmation
+of a stage does not start another stage or authorize delivery.
+
+Offer delivery separately per changed repository. Prepare with projectId, exact title/body and, when
+needed, an explicit targetBranch. Use the exact returned card, then execute after its submitted answer.
+It authorizes only non-force push and Draft PR/MR creation or reuse of the displayed existing request.
+No automatic commit, ready transition, merge or closure is included. A changed version invalidates the
+card. Uncertain operations remain fenced: stop and report the original operation, do not create another
+ID to retry or bypass the host through shell/provider APIs. A missing capability is an upgrade blocker.
+Standalone PR work remains **shipping-a-pr** work. These gates govern product operations; this skill
+itself grants no remote mutation authority. The required summary handoff below remains independent.
 
 ## Ending
 

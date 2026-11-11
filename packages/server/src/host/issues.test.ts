@@ -16,9 +16,10 @@ import {
 	implementationVersion,
 	type WorkflowRecord,
 } from "../issues";
-import { saveProjects } from "../persistence";
+import { saveProjects, saveWorkspaces } from "../persistence";
 import { setProjectTrust } from "../projects";
-import { createIssuesHost } from "./issues";
+import { createIssueSessionStore } from "./issueSessions";
+import { createIssuesHost, deliveryPushUrl } from "./issues";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
@@ -140,6 +141,66 @@ test("lazy adapter connects, lists, disconnects and reloads only public bindings
 	expect(
 		await createIssuesHost({ dir, credentials }).connection({ projectId: "one" }),
 	).toMatchObject({ connected: false });
+});
+
+test("a fresh host prepares confirmations from durable session bindings without another launch", async () => {
+	const sessionRoot = join(dir, "issue-sessions");
+	mkdirSync(sessionRoot, { mode: 0o700 });
+	await createIssueSessionStore(sessionRoot).bind({
+		sessionId: "bound-session",
+		workspaceId: "workspace",
+		projectId: "one",
+		reference: {
+			provider: "gitlab",
+			instanceUrl: input.instanceUrl,
+			projectId: "42",
+			number: 1,
+		},
+		stage: "design",
+		locale: "en",
+	});
+	saveWorkspaces([
+		{
+			id: "workspace",
+			projectId: "one",
+			name: "Default",
+			branch: "main",
+			baseBranch: "main",
+			worktreePath: join(dir, "one"),
+		},
+	]);
+	await createIssuesHost({ dir, credentials, fetch: fetcher }).connect({ projectId: "one", input });
+	const host = createIssuesHost({
+		dir,
+		credentials,
+		fetch: (async (url) =>
+			String(url).endsWith("/issues/1")
+				? new Response(
+						JSON.stringify({
+							iid: 1,
+							title: "Task",
+							description: "Design",
+							state: "opened",
+							labels: ["workflow::backlog"],
+							updated_at: "2026-01-01T00:00:00Z",
+						}),
+					)
+				: fetcher(url)) as typeof fetch,
+	});
+	const confirmation = { operationId: "design-review", report: "Reviewed design" };
+	const prepareConfirmation = host.agentSessions.prepareConfirmation;
+	expect(prepareConfirmation).toBeDefined();
+	if (!prepareConfirmation) throw new Error("Missing confirmation action");
+	await expect(prepareConfirmation("bound-session", confirmation)).resolves.toHaveProperty(
+		"digest",
+	);
+	await expect(prepareConfirmation("unbound-session", confirmation)).rejects.toThrow(
+		"Invalid Issue request",
+	);
+	setProjectTrust("one", false);
+	await expect(prepareConfirmation("bound-session", confirmation)).rejects.toThrow(
+		"Issue project requires trust",
+	);
 });
 
 test("unknown params and missing projects fail closed; an untrusted project may still connect", async () => {
@@ -323,6 +384,23 @@ function registered(projects: Record<string, { path: string; trusted?: boolean }
 		})),
 	);
 }
+
+test("delivery URL validation refuses fetch and push rewrites without contacting a remote", async () => {
+	const url = "https://gitlab.example/group/repo.git";
+	const path = repository("delivery", ["origin", url]);
+	expect(await deliveryPushUrl(path, url)).toBe(url);
+	for (const kind of ["insteadOf", "pushInsteadOf"]) {
+		const key = `url.https://private-secret.example/.${kind}`;
+		git(path, "config", "--local", key, "https://gitlab.example/");
+		expect(await deliveryPushUrl(path, url)).toBeNull();
+		git(path, "config", "--local", "--unset-all", key);
+		expect(await deliveryPushUrl(path, url)).toBe(url);
+	}
+	// Even an unrelated rule is refused: delivery does not guess which rewrite wins.
+	git(path, "config", "--local", "url.https://other.example/.pushInsteadOf", "unrelated:");
+	expect(await deliveryPushUrl(path, url)).toBeNull();
+	expect(await deliveryPushUrl(join(dir, "missing"), url)).toBeNull();
+});
 
 test("only a single credential-free HTTP(S) origin becomes a repository address", async () => {
 	const host = createIssuesHost({ dir, credentials });

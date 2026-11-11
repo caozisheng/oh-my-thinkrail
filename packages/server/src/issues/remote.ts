@@ -60,6 +60,7 @@ export interface IssueMergeRequestInput {
 	targetBranch: string;
 	title: string;
 	description: string;
+	draft?: boolean;
 }
 
 /** The read and comment surface the Issue panel, startup context and handoff need. */
@@ -72,17 +73,18 @@ export interface IssueRemote {
 	addNote(iid: number, body: string): Promise<IssueNote>;
 }
 
-/**
- * Merge-request lifecycle and label ownership stay GitLab-only in this protocol. Obtaining one is
- * an explicit service call, so a GitHub reference can never reach these methods by accident.
- */
-export interface IssueWorkflowRemote extends IssueRemote {
-	currentUser(): Promise<{ id: number }>;
-	labelEvents(iid: number): Promise<IssueLabelEvent[]>;
-	member(userId: number): Promise<IssueMember>;
+/** Provider-neutral delivery primitives; obtaining this port does not authorize a workflow. */
+export interface IssueDeliveryRemote extends IssueRemote {
 	updateIssue(iid: number, input: IssueUpdate): Promise<IssueRecord>;
 	mergeRequests(sourceBranch: string): Promise<IssueMergeRequest[]>;
 	createMergeRequest(input: IssueMergeRequestInput): Promise<IssueMergeRequest>;
+}
+
+/** GitLab-only approval evidence and merge/closure primitives. */
+export interface IssueWorkflowRemote extends IssueDeliveryRemote {
+	currentUser(): Promise<{ id: number }>;
+	labelEvents(iid: number): Promise<IssueLabelEvent[]>;
+	member(userId: number): Promise<IssueMember>;
 	mergeRequest(iid: number): Promise<IssueMergeRequest>;
 	mergeMergeRequest(iid: number, sha: string): Promise<IssueMergeRequest>;
 	closeIssue(iid: number): Promise<IssueRecord>;
