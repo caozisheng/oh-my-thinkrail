@@ -13,7 +13,7 @@ writes for GitLab CE and GitHub, pure Tomato version/approval validation, and in
 orchestration and an injected workspace/session coordinator. Host composition supplies the connection/list
 wire handlers, metadata persistence and the OS credential-store adapter; a separate concrete host workflow receipt adapter exists
 and is composed by server-only host actions. The exported workspace coordinator has a concrete host persistence
-seam and is composed by server-only host actions. MR/CI authorization and GitHub write workflows are not implemented. See the
+seam and is composed by server-only host actions. MR/CI authorization and GitHub write workflow orchestration are not implemented. See the
 [approved workflow design](../../../../docs/plans/2026-11-04-issues-workflow-design.md).
 
 ## Public surface
@@ -118,6 +118,21 @@ permission to merge. Provider input/read types are exported through the barrel.
 
 ## Provider write and MR contract
 
+`IssueDeliveryRemote extends IssueRemote` adds partial issue updates, exact-source-branch MR/PR
+listing and MR/PR creation using the shared `IssueMergeRequest` model. `IssueWorkflowRemote`
+extends that delivery port with GitLab-only evidence, merge and closure operations. `GitHubClient`
+exposes the delivery port; `remoteFor` deliberately remains the read/comment port. These types grant
+no workflow authorization. GitHub has no merge or closure primitive.
+
+GitHub updates use PATCH with only supplied fields (`description` maps to `body`), so label-only
+writes never replace the description. PR operations first read verified repository identity/path;
+all-state lists use `head=<verified owner>:<exact source branch>` and bounded complete pagination
+whose next links must preserve the endpoint and filters. Returned PRs must match the verified source
+and target repository, exact source branch (and requested target on creation), and canonical
+`https://github.com/<verified path>/pull/<number>` URL. Fork/deleted-repository heads fail closed.
+Absent optional draft/merge metadata remains unknown; pipelines and squash SHA are unknown.
+Malformed delivery responses fail with sanitized `RESOURCE_UNAVAILABLE`, without retry.
+
 - `updateIssue(iid, { description?, labels? })` replaces only supplied fields; an empty label array
   clears labels. Labels cannot contain commas because GitLab receives a comma-separated string.
   `addNote(iid, body)` publishes a note; `closeIssue(iid)` sends the close state event.
@@ -139,7 +154,10 @@ permission to merge. Provider input/read types are exported through the barrel.
   fetch/body deadlines, byte caps, token-echo rejection and sanitized errors as the provider writes;
   they are single-attempt and never expose a token accessor. These facts are primitives for future
   fail-closed delivery policy: they do not authorize merge or implement MR/CI orchestration.
-- `createMergeRequest({ sourceBranch, targetBranch, title, description })` creates a provider MR.
+- `createMergeRequest({ sourceBranch, targetBranch, title, description, draft? })` creates a provider MR.
+  GitHub sends the native boolean `draft` flag when supplied and validates the returned flag;
+  GitLab uses the CE-compatible `Draft:` title prefix for `draft: true`, preserving existing
+  `Draft:`/`WIP:` prefixes. Omission preserves ordinary creation behavior.
   `mergeMergeRequest(iid, sha)` sends a full SHA as GitLab's merge precondition; it does not schedule
   auto-merge, authorize the workflow, prove approval/CI, or close the issue itself.
 - Writes are single-attempt with bounded response reads and no automatic retries. Non-2xx responses,

@@ -121,6 +121,7 @@ export {
 	setRequestReviewHandler,
 } from "./requestReviewTool";
 export { isHostResourceId, isPiSessionId } from "./resourceIdentity";
+export { isTrustedQuestionnaireReceipt } from "./issueConfirmation";
 export {
 	RESOLVE_COMMENT_TOOL_NAME,
 	type ResolveCommentOutcome,

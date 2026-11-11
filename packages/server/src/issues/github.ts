@@ -1,7 +1,14 @@
 import { issueProviderForInstanceUrl } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { logger } from "../log";
-import type { IssueNote, IssueProject, IssueRecord, IssueRemote } from "./remote";
+import type {
+	IssueDeliveryRemote,
+	IssueMergeRequest,
+	IssueMergeRequestInput,
+	IssueNote,
+	IssueProject,
+	IssueRecord,
+} from "./remote";
 
 export interface GitHubClientOptions {
 	/** Canonical `https://github.com`; any other instance is rejected before a request. */
@@ -15,7 +22,7 @@ export interface GitHubClientOptions {
 	maxPages?: number;
 	maxItems?: number;
 }
-export type GitHubClient = IssueRemote;
+export type GitHubClient = IssueDeliveryRemote;
 
 const log = logger("issues");
 const API_ROOT = "https://api.github.com";
@@ -116,6 +123,84 @@ function note(value: unknown): IssueNote {
 		system: false,
 	};
 }
+function identifier(value: unknown): string {
+	const result = text(value);
+	if (!result || result.trim() !== result || [...result].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) invalid();
+	return result;
+}
+function branchName(value: unknown): string {
+	const result = identifier(value);
+	if (
+		/\s|[~^:?*[\\]/.test(result) ||
+		result.includes("..") ||
+		result.includes("@{") ||
+		result === "@" ||
+		result.startsWith("-") ||
+		result.endsWith(".") ||
+		result.split("/").some((part) => !part || part.startsWith(".") || part.endsWith(".lock"))
+	)
+		invalid();
+	return result;
+}
+function sha(value: unknown): string | null {
+	if (value == null) return null;
+	const result = text(value);
+	if (!/^[a-fA-F0-9]{40}$/.test(result)) invalid();
+	return result;
+}
+function pullRequest(
+	value: unknown,
+	project: IssueProject,
+	source: string,
+	target?: string,
+): IssueMergeRequest {
+	const v = record(value);
+	const head = record(v.head);
+	const base = record(v.base);
+	const sourceRepo = record(head.repo);
+	const targetRepo = record(base.repo);
+	const iid = positive(v.number);
+	const sourceBranch = branchName(head.ref);
+	const targetBranch = branchName(base.ref);
+	if (
+		sourceBranch !== source ||
+		(target !== undefined && targetBranch !== target) ||
+		positive(sourceRepo.id) !== project.id ||
+		positive(targetRepo.id) !== project.id ||
+		pathWithNamespace(sourceRepo.full_name) !== project.pathWithNamespace ||
+		pathWithNamespace(targetRepo.full_name) !== project.pathWithNamespace ||
+		(v.state !== "open" && v.state !== "closed")
+	)
+		invalid();
+	const webUrl = text(v.html_url);
+	if (webUrl !== `https://github.com/${project.pathWithNamespace}/pull/${iid}`) invalid();
+	if (v.draft != null && typeof v.draft !== "boolean") invalid();
+	if (v.merged_at != null) timestamp(v.merged_at);
+	if (v.merged !== undefined && typeof v.merged !== "boolean") invalid();
+	if (v.mergeable_state != null) identifier(v.mergeable_state);
+	return {
+		id: positive(v.id),
+		iid,
+		webUrl,
+		state:
+			v.merged === true || v.merged_at != null
+				? "merged"
+				: v.state === "open"
+					? "opened"
+					: "closed",
+		sourceBranch,
+		targetBranch,
+		sha: sha(head.sha),
+		mergeStatus: v.mergeable_state == null ? "unknown" : identifier(v.mergeable_state),
+		sourceProjectId: project.id,
+		targetProjectId: project.id,
+		draft: v.draft == null ? null : (v.draft as boolean),
+		detailedMergeStatus: nullableText(v.mergeable_state),
+		mergeCommitSha: sha(v.merge_commit_sha),
+		squashCommitSha: null,
+		headPipeline: null,
+	};
+}
 function nextPage(link: string | null): string | null {
 	if (!link) return null;
 	for (const part of link.split(",")) {
@@ -137,12 +222,12 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 	const escapedToken = JSON.stringify(token).slice(1, -1);
 	const encodedToken = encodeURIComponent(token);
 	const { key: projectKey, base } = repository(options.project);
-
 	async function request(
 		path: string,
 		deadline: number,
-		write?: { method: "POST"; body: Record<string, unknown> },
+		write?: { method: "POST" | "PATCH"; body: Record<string, unknown> },
 	): Promise<{ value: unknown; next: string | null }> {
+		if (path.includes(token) || path.includes(encodedToken)) invalid();
 		const payload = write && { body: JSON.stringify(write.body) };
 		if (payload?.body.includes(escapedToken) || payload?.body.includes(encodedToken)) invalid();
 		const remaining = deadline - Date.now();
@@ -229,14 +314,20 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 			if (timer !== undefined) clearTimeout(timer);
 		}
 	}
-
 	function relative(next: string, page: number): string {
 		const url = new URL(next);
-		if (url.origin !== API_ROOT || url.searchParams.get("page") !== String(page + 1)) invalid();
+		if (
+			url.origin !== API_ROOT ||
+			url.username ||
+			url.password ||
+			url.hash ||
+			url.searchParams.getAll("page").length !== 1 ||
+			url.searchParams.get("page") !== String(page + 1)
+		)
+			invalid();
 		return `${url.pathname}${url.search}`;
 	}
-
-	async function list<T>(path: string, parse: (value: unknown) => T): Promise<T[]> {
+	async function list<T>(path: string, parse: (value: unknown) => T, strict = false): Promise<T[]> {
 		const result: T[] = [];
 		const deadline = Date.now() + timeoutMs;
 		let next: string | null = path;
@@ -246,30 +337,113 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 			if (result.length + response.value.length > maxItems) limit();
 			result.push(...response.value.map(parse));
 			next = response.next === null ? null : relative(response.next, page);
+			if (strict && next !== null) {
+				const initial = new URL(path, API_ROOT);
+				const following = new URL(next, API_ROOT);
+				initial.searchParams.delete("page");
+				following.searchParams.delete("page");
+				initial.searchParams.sort();
+				following.searchParams.sort();
+				if (initial.href !== following.href) invalid();
+			}
 		}
 		if (next !== null) limit();
 		return result;
 	}
-
 	async function decoded<T>(path: string, parse: (value: unknown) => T): Promise<T> {
 		return parse((await request(path, Date.now() + timeoutMs)).value);
 	}
-
+	const project = () =>
+		decoded(base, (value) => {
+			const v = record(value);
+			const repositoryId = positive(v.id);
+			const path = pathWithNamespace(v.full_name);
+			if (
+				/^\d+$/.test(projectKey)
+					? repositoryId !== Number(projectKey)
+					: path.toLowerCase() !== projectKey.toLowerCase()
+			)
+				invalid();
+			return {
+				id: repositoryId,
+				pathWithNamespace: path,
+				defaultBranch: nullableText(v.default_branch),
+				httpUrlToRepo: cloneUrl(v.clone_url),
+				sshUrlToRepo: cloneUrl(v.ssh_url),
+			} satisfies IssueProject;
+		});
+	async function delivery<T>(work: () => Promise<T>): Promise<T> {
+		try {
+			return await work();
+		} catch {
+			return unavailable();
+		}
+	}
 	return {
 		provider: "github",
-		project: () =>
-			decoded(base, (value) => {
-				const v = record(value);
-				const repositoryId = positive(v.id);
-				if (/^\d+$/.test(projectKey) && repositoryId !== Number(projectKey)) invalid();
-				return {
-					id: repositoryId,
-					pathWithNamespace: pathWithNamespace(v.full_name),
-					defaultBranch: nullableText(v.default_branch),
-					httpUrlToRepo: cloneUrl(v.clone_url),
-					sshUrlToRepo: cloneUrl(v.ssh_url),
-				} satisfies IssueProject;
-			}),
+		project,
+		updateIssue: async (iid, input) => {
+			positive(iid);
+			record(input);
+			const body: Record<string, unknown> = {};
+			if (input.description !== undefined) body.body = text(input.description);
+			if (input.labels !== undefined) {
+				if (!Array.isArray(input.labels)) invalid();
+				body.labels = input.labels.map(identifier);
+			}
+			if (!Object.keys(body).length) invalid();
+			return delivery(async () => {
+				const response = await request(`${base}/issues/${iid}`, Date.now() + timeoutMs, {
+					method: "PATCH",
+					body,
+				});
+				const result = issue(response.value);
+				if (!result || result.iid !== iid) invalid();
+				return result;
+			});
+		},
+		mergeRequests: async (sourceBranch) => {
+			const source = branchName(sourceBranch);
+			return delivery(async () => {
+				const verified = await project();
+				const owner = verified.pathWithNamespace.split("/")[0];
+				const query = new URLSearchParams({
+					state: "all",
+					head: `${owner}:${source}`,
+					per_page: "100",
+				});
+				return list(
+					`${base}/pulls?${query}`,
+					(value) => pullRequest(value, verified, source),
+					true,
+				);
+			});
+		},
+		createMergeRequest: async (input: IssueMergeRequestInput) => {
+			record(input);
+			const source = branchName(input.sourceBranch);
+			const target = branchName(input.targetBranch);
+			const body: Record<string, unknown> = {
+				head: source,
+				base: target,
+				title: identifier(input.title),
+				body: text(input.description),
+			};
+			if (input.draft !== undefined) {
+				if (typeof input.draft !== "boolean") invalid();
+				body.draft = input.draft;
+			}
+			return delivery(async () => {
+				const verified = await project();
+				const response = await request(`${base}/pulls`, Date.now() + timeoutMs, {
+					method: "POST",
+					body,
+				});
+				const result = pullRequest(response.value, verified, source, target);
+				if (input.draft !== undefined && result.draft !== input.draft) invalid();
+				return result;
+			});
+		},
 		issue: async (iid) => {
 			const value = await decoded(`${base}/issues/${positive(iid)}`, issue);
 			if (value === null) invalid();
@@ -280,13 +454,14 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 				await list(`${base}/issues?state=all&sort=updated&direction=desc`, (value) => issue(value))
 			).filter((entry): entry is IssueRecord => entry !== null),
 		notes: (iid) => list(`${base}/issues/${positive(iid)}/comments`, note),
-		addNote: async (iid, body) => {
-			const written = await request(
-				`${base}/issues/${positive(iid)}/comments`,
-				Date.now() + timeoutMs,
-				{ method: "POST", body: { body: text(body) } },
-			);
-			return note(written.value);
-		},
+		addNote: async (iid, body) =>
+			note(
+				(
+					await request(`${base}/issues/${positive(iid)}/comments`, Date.now() + timeoutMs, {
+						method: "POST",
+						body: { body: text(body) },
+					})
+				).value,
+			),
 	};
 }
