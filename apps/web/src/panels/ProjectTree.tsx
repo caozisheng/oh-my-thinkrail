@@ -18,7 +18,10 @@ import {
 	RiFolderLine,
 	RiFolderOpenFill,
 	RiGitBranchFill,
+	RiGitRepositoryFill,
+	RiGitRepositoryLine,
 	RiHome2Fill,
+	RiStackFill,
 	RiStackLine,
 	RiDeleteBin6Line as Trash2,
 	RiCloseLine as X,
@@ -56,11 +59,13 @@ import {
 	SETTLED_SHELF_MORE,
 	SETTLED_SHELF_PAGE,
 	type SettledReason,
+	selectActiveProjectGroupId,
 	selectActiveWorkspaceProjectId,
 	selectAutoSettledCounts,
 	selectProjectIsRunning,
 	selectProjectNeedsAttention,
 	selectSupportsOnboarding,
+	selectSupportsProjectGroupHome,
 	selectWorkspaceIsRunning,
 	selectWorkspaceNeedsAttention,
 	selectWorkspacePartition,
@@ -78,7 +83,12 @@ import { AddProjectMenu } from "./AddProjectMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExistingWorktreeDialog } from "./ExistingWorktreeDialog";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
-import { projectRailEntries } from "./projectGroups";
+import {
+	groupNodeKey,
+	type ProjectGroupTreeNode,
+	projectRailEntries,
+	treeProjects,
+} from "./projectGroups";
 import { RemoveWorkspaceDialog } from "./RemoveWorkspaceDialog";
 import {
 	announceSettledShelf,
@@ -143,6 +153,9 @@ export function ProjectTree() {
 	const editors = useEditors();
 
 	const expandedProjectIds = useAppStore((s) => s.expandedProjectIds);
+	const collapsedRailNodes = useAppStore((s) => s.collapsedRailNodes);
+	const activeGroupId = useAppStore(selectActiveProjectGroupId);
+	const supportsGroupHome = useAppStore(selectSupportsProjectGroupHome);
 	const [dialogProjectId, setDialogProjectId] = useState<string | null>(null);
 	const [existingDialogProjectId, setExistingDialogProjectId] = useState<string | null>(null);
 	const addProjectButtonRef = useRef<HTMLButtonElement>(null);
@@ -291,14 +304,27 @@ export function ProjectTree() {
 		setExistingDialogProjectId(projectId);
 	};
 
-	const renderProject = (project: Project) => {
+	const stateProjection = { sessionStateByWorkspace };
+	const anyNeedsAttention = (list: readonly Project[]) =>
+		list.some((project) => selectProjectNeedsAttention(stateProjection, project.id));
+
+	const renderProject = (project: Project, inGroup?: { path: string; nested?: ReactNode }) => {
 		const isExpanded = expandedProjectIds[project.id] === true;
 		const list = workspaces[project.id];
-		const stateProjection = { sessionStateByWorkspace };
 		return (
-			<li key={project.id}>
+			<li key={project.id} data-group-path={inGroup?.path}>
 				<ProjectRow
 					project={project}
+					{...(inGroup
+						? {
+								inGroup: true,
+								title:
+									inGroup.path === ""
+										? t("panels.projectTree.groupRootTooltip", { path: project.path })
+										: inGroup.path,
+								...(inGroup.path === "" ? { badge: t("panels.projectTree.groupRootBadge") } : {}),
+							}
+						: {})}
 					isSelected={selectedProjectId === project.id}
 					isExpanded={isExpanded}
 					needsAttention={!isExpanded && selectProjectNeedsAttention(stateProjection, project.id)}
@@ -367,9 +393,45 @@ export function ProjectTree() {
 						))}
 					</ul>
 				)}
+				{inGroup?.nested}
 			</li>
 		);
 	};
+
+	const renderGroupNodes = (groupId: string, nodes: readonly ProjectGroupTreeNode[]) =>
+		nodes.map((node) => {
+			if (node.kind === "repository") {
+				return renderProject(node.project, {
+					path: node.path,
+					...(node.children.length > 0
+						? {
+								nested: (
+									<ul className="ml-12 flex flex-col border-border-muted border-l">
+										{renderGroupNodes(groupId, node.children)}
+									</ul>
+								),
+							}
+						: {}),
+				});
+			}
+			const collapsed = collapsedRailNodes[node.key] === true;
+			return (
+				<li key={node.key} data-testid="project-group-folder" data-group-path={node.path}>
+					<FolderRow
+						label={node.label}
+						title={node.path}
+						collapsed={collapsed}
+						needsAttention={collapsed && anyNeedsAttention(treeProjects(node.children))}
+						onToggle={() => useAppStore.getState().toggleRailNode(node.key)}
+					/>
+					{collapsed ? null : (
+						<ul className="ml-12 flex flex-col border-border-muted border-l">
+							{renderGroupNodes(groupId, node.children)}
+						</ul>
+					)}
+				</li>
+			);
+		});
 
 	return (
 		<nav data-testid="project-tree" className="flex flex-col gap-4">
@@ -401,19 +463,28 @@ export function ProjectTree() {
 						renderProject(entry.project)
 					) : (
 						<li key={`group:${entry.id}`} data-testid="project-group" data-group={entry.id}>
-							<div
-								className="flex h-panel-row min-w-0 items-center gap-4 pr-8 pl-8 text-text-muted"
-								title={entry.root}
-							>
-								<RiStackLine className="size-14 shrink-0" aria-hidden="true" />
-								<span className="truncate tr-text-eyebrow">{entry.name}</span>
-							</div>
-							<ul
-								className="ml-16 flex flex-col border-border-muted border-l"
-								aria-label={t("panels.projectTree.group", { name: entry.name })}
-							>
-								{entry.projects.map(renderProject)}
-							</ul>
+							<GroupHeader
+								name={entry.name}
+								root={entry.root}
+								collapsed={collapsedRailNodes[groupNodeKey(entry.id)] === true}
+								isActive={activeGroupId === entry.id}
+								needsAttention={
+									collapsedRailNodes[groupNodeKey(entry.id)] === true &&
+									anyNeedsAttention(entry.projects)
+								}
+								onToggle={() => useAppStore.getState().toggleRailNode(groupNodeKey(entry.id))}
+								{...(supportsGroupHome
+									? { onOpen: () => useAppStore.getState().selectProjectGroup(entry.id) }
+									: {})}
+							/>
+							{collapsedRailNodes[groupNodeKey(entry.id)] === true ? null : (
+								<ul
+									className="ml-16 flex flex-col border-border-muted border-l"
+									aria-label={t("panels.projectTree.group", { name: entry.name })}
+								>
+									{renderGroupNodes(entry.id, entry.tree)}
+								</ul>
+							)}
 						</li>
 					),
 				)}
@@ -554,7 +625,13 @@ function ProjectRow({
 	onOpenExistingWorktree,
 	onRegisterNameButton,
 	onRestoreFocus,
+	inGroup = false,
+	title,
+	badge,
 }: {
+	inGroup?: boolean;
+	title?: string;
+	badge?: string;
 	project: Project;
 	isSelected: boolean;
 	isExpanded: boolean;
@@ -578,7 +655,13 @@ function ProjectRow({
 		altShortcut: platformShortcutLabel("N", { alt: true }),
 	});
 	const Chevron = isExpanded ? ChevronDown : ChevronRight;
-	const Folder = isSelected ? RiFolderFill : RiFolderLine;
+	const Folder = inGroup
+		? isSelected
+			? RiGitRepositoryFill
+			: RiGitRepositoryLine
+		: isSelected
+			? RiFolderFill
+			: RiFolderLine;
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const openingDialogRef = useRef(false);
@@ -649,10 +732,16 @@ function ProjectRow({
 					type="button"
 					data-testid="project-name"
 					onClick={onSelect}
+					title={title}
 					className="flex min-w-0 flex-1 items-center gap-4 text-left"
 				>
 					{folderIcon}
 					<span className={nameClass}>{project.name}</span>
+					{badge ? (
+						<span className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight">
+							{badge}
+						</span>
+					) : null}
 				</button>
 			)}
 			{needsAttention ? <AttentionDot /> : null}
@@ -765,6 +854,119 @@ function ProjectRow({
 				}}
 			/>
 		</>
+	);
+}
+
+function GroupHeader({
+	name,
+	root,
+	collapsed,
+	isActive,
+	needsAttention,
+	onToggle,
+	onOpen,
+}: {
+	name: string;
+	root: string;
+	collapsed: boolean;
+	isActive: boolean;
+	needsAttention: boolean;
+	onToggle: () => void;
+	onOpen?: () => void;
+}) {
+	const t = useT();
+	const Chevron = collapsed ? ChevronRight : ChevronDown;
+	const Icon = isActive ? RiStackFill : RiStackLine;
+	const label = (
+		<>
+			<Icon
+				className={cn("size-14 shrink-0", isActive ? "text-primary" : "text-text-muted")}
+				aria-hidden="true"
+			/>
+			<span className="truncate tr-text-eyebrow">{name}</span>
+		</>
+	);
+	return (
+		<div
+			data-testid="project-group-header"
+			data-active={isActive || undefined}
+			className={cn(
+				"flex h-panel-row min-w-0 items-center gap-4 rounded-sm pr-8 pl-4 text-text-muted transition-colors",
+				isActive ? "bg-control-bg-selected" : "hover:bg-control-bg-hovered",
+			)}
+		>
+			<button
+				type="button"
+				data-testid="project-group-toggle"
+				aria-expanded={!collapsed}
+				aria-label={t(
+					collapsed ? "panels.projectTree.expandGroup" : "panels.projectTree.collapseGroup",
+					{ name },
+				)}
+				onClick={onToggle}
+				className="flex size-16 shrink-0 items-center justify-center rounded-sm transition-colors hover:text-text-default focus-visible:text-text-default"
+			>
+				<Chevron className="size-16" />
+			</button>
+			{onOpen ? (
+				<button
+					type="button"
+					data-testid="project-group-open"
+					title={t("panels.projectTree.openGroupHome", { root })}
+					onClick={onOpen}
+					className={cn(
+						"flex min-w-0 flex-1 items-center gap-4 text-left hover:text-text-default",
+						isActive && "text-text-default",
+					)}
+				>
+					{label}
+				</button>
+			) : (
+				<span className="flex min-w-0 flex-1 items-center gap-4" title={root}>
+					{label}
+				</span>
+			)}
+			{needsAttention ? <AttentionDot /> : null}
+		</div>
+	);
+}
+
+function FolderRow({
+	label,
+	title,
+	collapsed,
+	needsAttention,
+	onToggle,
+}: {
+	label: string;
+	title: string;
+	collapsed: boolean;
+	needsAttention: boolean;
+	onToggle: () => void;
+}) {
+	const t = useT();
+	const Chevron = collapsed ? ChevronRight : ChevronDown;
+	const Icon = collapsed ? RiFolderLine : FolderOpen;
+	return (
+		<div className="flex h-panel-row min-w-0 items-center gap-4 rounded-sm pr-4 pl-4 text-text-subtle hover:bg-control-bg-hovered">
+			<button
+				type="button"
+				data-testid="project-group-folder-toggle"
+				aria-expanded={!collapsed}
+				aria-label={t(
+					collapsed ? "panels.projectTree.expandFolder" : "panels.projectTree.collapseFolder",
+					{ path: title },
+				)}
+				title={title}
+				onClick={onToggle}
+				className="flex min-w-0 flex-1 items-center gap-4 text-left hover:text-text-muted focus-visible:text-text-muted"
+			>
+				<Chevron className="size-16 shrink-0" />
+				<Icon className="size-14 shrink-0" aria-hidden="true" />
+				<span className="truncate tr-text-metadata">{label}</span>
+			</button>
+			{needsAttention ? <AttentionDot /> : null}
+		</div>
 	);
 }
 

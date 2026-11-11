@@ -18,6 +18,7 @@ import { platformShortcutLabel } from "../lib";
 import { NotificationPermissionPrompt, useAttentionNotifications } from "../notifications";
 import { AnalyticsConsentDialog } from "../panels/AnalyticsConsentDialog";
 import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
+import { ProjectGroupHome } from "../panels/ProjectGroupHome";
 import { SettingsDialog } from "../panels/SettingsDialog";
 import { SurveyInvitationDialog } from "../panels/SurveyInvitationDialog";
 import { SurveyWindow } from "../panels/SurveyWindow";
@@ -27,6 +28,7 @@ import { useCreationChatHandoff, WorkspaceCreationView } from "../panels/Workspa
 import { SearchSettings } from "../search";
 import {
 	SettingsSection,
+	selectActiveProjectGroupId,
 	selectActiveWorkspace,
 	selectAnalyticsConsentPromptOpen,
 	selectContextProject,
@@ -110,6 +112,7 @@ export function Shell() {
 		s.activeCreationId ? s.workspaceCreations[s.activeCreationId] : undefined,
 	);
 	const workspaceRetryDraft = useAppStore((s) => s.workspaceRetryDraft);
+	const activeGroupId = useAppStore(selectActiveProjectGroupId);
 	useCreationChatHandoff();
 
 	const homeProjects = useCollapsibleRegion<HTMLDivElement>(PROJECT_HOME_PROJECTS_REGION_ID);
@@ -301,7 +304,11 @@ export function Shell() {
 			) : (
 				<ProjectHome
 					projects={homeProjects}
-					{...(activeCreation ? { main: <WorkspaceCreationView creation={activeCreation} /> } : {})}
+					{...(activeCreation
+						? { main: <WorkspaceCreationView creation={activeCreation} /> }
+						: activeGroupId
+							? { main: <ProjectGroupHome groupId={activeGroupId} /> }
+							: {})}
 				/>
 			)}
 			{onboardingActive ? null : analyticsConsentOpen ? (

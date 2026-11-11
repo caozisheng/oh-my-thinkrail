@@ -37,14 +37,18 @@ token. It includes:
   across repositories are not atomic, so a failure keeps the successful ones and is reported. Build
   and integration paths between the worktrees are the agent's normal reviewed work, not automatic.
 - **Project groups**: "Import folder as project group…" scans a folder (the folder itself may be a
-  repository or not) for nested Git repositories up to four levels deep, skipping hidden, dependency
-  and build folders and never following symlinks, lets you untick any, and opens the rest as projects
-  shown together under the group name in the project rail. An issue started from a group member links
-  the group's other open, trusted members by default (change the selection as before). When every
-  linked repository is in the group and the group's root repository (if any) takes part, implementation
-  places the worktrees in one `.worktrees/issue-<n>…/` folder under the group root that mirrors the
-  original layout, so relative paths between repositories keep working; the agent still starts in the
-  issue's own repository. Submodules are not imported as separate repositories.
+  repository or not) for nested Git repositories up to six levels deep, skipping hidden, dependency
+  and build folders and never following symlinks, lets you untick any, and opens the rest as projects.
+  The project rail shows them as a tree that mirrors the folder (nested repositories under the one that
+  holds them, plain folders in between, single-child folder chains folded into one row). Clicking the
+  group name opens the group home: every member's branch, clean or changed state and ahead/behind its
+  upstream, the group's Issues with the repositories they joined, and Rescan, Fetch all and Remove
+  group (which only ungroups or closes the projects; nothing on disk changes). An Issue started from a
+  group member begins with only its own repository; the other members are read-only references until
+  you or the agent (with your confirmation) join one, which creates its worktree from a fresh
+  `origin/<default>` in the same `.worktrees/issue-<n>…/` folder that mirrors the original layout, so
+  relative paths between repositories keep working. Unchanged joined repositories can be cleaned up in
+  one step. Submodules are not imported as separate repositories.
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.

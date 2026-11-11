@@ -13,6 +13,7 @@ import {
 	MODEL_PICKER_PROTOCOL_VERSION,
 	ONBOARDING_PROTOCOL_VERSION,
 	PROJECT_CLONE_PROTOCOL_VERSION,
+	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	PROJECT_GROUPS_PROTOCOL_VERSION,
 	PROJECT_TRUST_PROTOCOL_VERSION,
 	type Project,
@@ -156,6 +157,34 @@ export function selectSupportsProjectTrust(state: ProtocolState): boolean {
 
 export function selectSupportsProjectGroups(state: ProtocolState): boolean {
 	return state.protocolVersion !== null && state.protocolVersion >= PROJECT_GROUPS_PROTOCOL_VERSION;
+}
+
+export function selectSupportsProjectGroupHome(state: ProtocolState): boolean {
+	return (
+		state.protocolVersion !== null && state.protocolVersion >= PROJECT_GROUP_HOME_PROTOCOL_VERSION
+	);
+}
+
+/**
+ * The project group whose home Project Home shows: only while nothing narrower (a project, a
+ * workspace or a creation) is selected and an open project still carries the group.
+ */
+export function selectActiveProjectGroupId(state: {
+	activeProjectGroupId: string | null;
+	selectedProjectId: string | null;
+	activeWorkspaceId: string | null;
+	activeCreationId: string | null;
+	projects: readonly Project[];
+}): string | null {
+	const id = state.activeProjectGroupId;
+	if (
+		id === null ||
+		state.selectedProjectId !== null ||
+		state.activeWorkspaceId !== null ||
+		state.activeCreationId !== null
+	)
+		return null;
+	return state.projects.some((project) => project.projectGroup?.id === id) ? id : null;
 }
 
 export function selectSupportsProjectClone(state: ProtocolState): boolean {

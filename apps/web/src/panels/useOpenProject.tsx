@@ -42,6 +42,8 @@ export function useOpenProject(
 	startNewProject: () => void;
 	cloneRepository: (() => void) | undefined;
 	importGroup: (() => void) | undefined;
+	/** Re-scan a group's root and offer the import dialog again, staying where the user is. */
+	rescanGroup: ((root: string) => void) | undefined;
 	dialogs: ReactNode;
 } {
 	const t = useT();
@@ -60,6 +62,7 @@ export function useOpenProject(
 	const [groupScan, setGroupScan] = useState<{
 		scan: ProjectGroupScan;
 		isCurrent: () => boolean;
+		adopt: boolean;
 	} | null>(null);
 
 	useEffect(() => {
@@ -171,12 +174,12 @@ export function useOpenProject(
 		setPathEntry({ reason: null, purpose: "open" });
 	};
 
-	const scanGroupForIntent = async (rawPath: string, isCurrent: () => boolean) => {
+	const scanGroupForIntent = async (rawPath: string, isCurrent: () => boolean, adopt = true) => {
 		const path = rawPath.trim();
 		if (!path || !isCurrent()) return;
 		try {
 			const scan = await getTransport().request("project.scanGroup", { path });
-			if (isCurrent()) setGroupScan({ scan, isCurrent });
+			if (isCurrent()) setGroupScan({ scan, isCurrent, adopt });
 		} catch (err) {
 			if (isCurrent()) setOpenError(errorText(err, t("panels.importGroup.scanFailed", { path })));
 		}
@@ -268,7 +271,8 @@ export function useOpenProject(
 						const store = useAppStore.getState();
 						for (const project of projects) store.applyProjectUpdated(project);
 						const [first] = projects;
-						if (first) void adopt(first, groupScan.isCurrent, { setup: false }, "open");
+						if (first && groupScan.adopt)
+							void adopt(first, groupScan.isCurrent, { setup: false }, "open");
 					}}
 				/>
 			) : null}
@@ -311,6 +315,9 @@ export function useOpenProject(
 		startNewProject,
 		cloneRepository,
 		importGroup: importGroup ? () => void importGroup() : undefined,
+		rescanGroup: supportsGroups
+			? (root: string) => void scanGroupForIntent(root, beginIntent(), false)
+			: undefined,
 		dialogs,
 	};
 }

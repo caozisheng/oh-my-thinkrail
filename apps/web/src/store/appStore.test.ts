@@ -39,6 +39,7 @@ import {
 } from "./appStore";
 import {
 	selectActiveFilePath,
+	selectActiveProjectGroupId,
 	selectChatAttended,
 	selectCompactionTurnIds,
 	selectCurrentRouteChatTarget,
@@ -5067,4 +5068,42 @@ test("openSearch starts a fresh palette session even when the palette is already
 	useAppStore.getState().closeSearch();
 	useAppStore.getState().closeSearch();
 	expect(useAppStore.getState()).toMatchObject({ searchOpen: false, searchSession: 2 });
+});
+
+test("a project group home is shown only while nothing narrower is selected and the group is open", () => {
+	const member = {
+		id: "p1",
+		name: "app",
+		path: "/w/app",
+		slug: "app",
+		lastOpened: 1,
+		projectGroup: { id: "g", name: "suite", root: "/w", path: "app" },
+	};
+	useAppStore.setState({ projects: [member], selectedProjectId: "p1", activeWorkspaceId: "ws1" });
+	const store = useAppStore.getState();
+	store.selectProjectGroup("g");
+	let state = useAppStore.getState();
+	expect(state.selectedProjectId).toBeNull();
+	expect(state.activeWorkspaceId).toBeNull();
+	expect(selectActiveProjectGroupId(state)).toBe("g");
+	const { projectGroup: _dropped, ...ungrouped } = member;
+	useAppStore.setState({ projects: [ungrouped] });
+	expect(selectActiveProjectGroupId(useAppStore.getState())).toBeNull();
+	useAppStore.setState({ projects: [member] });
+	store.selectProject("p1");
+	state = useAppStore.getState();
+	expect(state.activeProjectGroupId).toBeNull();
+	expect(selectActiveProjectGroupId(state)).toBeNull();
+	store.selectProjectGroup("g");
+	store.selectMain();
+	expect(useAppStore.getState().activeProjectGroupId).toBeNull();
+});
+
+test("rail group and folder collapse toggles and hydrates by node key", () => {
+	const store = useAppStore.getState();
+	store.hydrateCollapsedRailNodes(["group:g"]);
+	expect(useAppStore.getState().collapsedRailNodes).toEqual({ "group:g": true });
+	store.toggleRailNode("folder:g:services");
+	store.toggleRailNode("group:g");
+	expect(useAppStore.getState().collapsedRailNodes).toEqual({ "folder:g:services": true });
 });
