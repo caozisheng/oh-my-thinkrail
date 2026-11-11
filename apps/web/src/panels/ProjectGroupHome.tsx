@@ -36,8 +36,7 @@ import { type ProjectGroupTreeNode, projectGroupTree } from "./projectGroups";
 import { useOpenProject } from "./useOpenProject";
 import { goToProjectHome, loadProjectWorkspaces } from "./workspaceActions";
 
-const CHIP_CLASS =
-	"shrink-0 rounded-full border px-4 tr-text-caption leading-tight whitespace-nowrap";
+const CHIP_CLASS = "shrink-0 rounded-full border px-4 leading-tight whitespace-nowrap";
 
 async function openIssueWorkspace(projectId: string, workspaceId: string): Promise<void> {
 	const rows = await loadProjectWorkspaces(projectId);
@@ -341,7 +340,7 @@ function RepositoryRow({
 			<RiGitRepositoryLine className="size-14 shrink-0 text-text-muted" aria-hidden="true" />
 			<span className="min-w-0 truncate tr-text-ui text-text-default">{project.name}</span>
 			{path === "" ? (
-				<span className={cn(CHIP_CLASS, "border-border-default text-text-subtle")}>
+				<span className={cn(CHIP_CLASS, "border-border-default text-text-subtle tr-text-caption")}>
 					{t("panels.projectTree.groupRootBadge")}
 				</span>
 			) : null}
@@ -349,7 +348,7 @@ function RepositoryRow({
 			{status ? (
 				<RepositoryStatusChips status={status} />
 			) : loading ? (
-				<span className="tr-text-caption text-text-subtle">{t("panels.groupHome.loading")}</span>
+				<span className="tr-text-metadata text-text-subtle">{t("panels.groupHome.loading")}</span>
 			) : null}
 		</button>
 	);
@@ -367,7 +366,7 @@ function RepositoryStatusChips({ status }: { status: ProjectGroupRepositoryStatu
 						ahead: status.ahead,
 						behind: status.behind,
 					})}
-					className="flex items-center gap-2 tr-text-caption text-text-subtle"
+					className="flex items-center gap-2 tr-text-metadata text-text-subtle"
 				>
 					<RiArrowUpLine className="size-12" aria-hidden="true" />
 					{status.ahead}
@@ -375,11 +374,14 @@ function RepositoryStatusChips({ status }: { status: ProjectGroupRepositoryStatu
 					{status.behind}
 				</span>
 			) : (
-				<span className="tr-text-caption text-text-subtle">{t("panels.groupHome.noUpstream")}</span>
+				<span className="tr-text-metadata text-text-subtle">
+					{t("panels.groupHome.noUpstream")}
+				</span>
 			)}
 			<span
 				className={cn(
 					CHIP_CLASS,
+					"tr-text-caption",
 					status.dirty === null
 						? "border-border-default text-text-subtle"
 						: status.dirty
@@ -393,7 +395,7 @@ function RepositoryStatusChips({ status }: { status: ProjectGroupRepositoryStatu
 						? t("panels.groupHome.dirty")
 						: t("panels.groupHome.clean")}
 			</span>
-			<span className="flex max-w-[160px] items-center gap-2 tr-text-caption text-text-muted">
+			<span className="flex max-w-[160px] items-center gap-2 tr-code-text-small text-text-muted">
 				<RiGitBranchLine className="size-12 shrink-0" aria-hidden="true" />
 				<span className="truncate">{status.branch ?? t("panels.groupHome.detached")}</span>
 			</span>
@@ -438,7 +440,7 @@ function IssueRow({
 						primary: place(issue.projectId),
 					})}
 				</button>
-				<span className="truncate tr-text-caption text-text-subtle">{issue.instanceUrl}</span>
+				<span className="truncate tr-text-metadata text-text-subtle">{issue.instanceUrl}</span>
 			</div>
 			<ul className="flex flex-wrap gap-4">
 				{issue.repositories.map((repository) => (
@@ -455,7 +457,7 @@ function IssueRow({
 							}
 							className={cn(
 								CHIP_CLASS,
-								"py-2",
+								"py-2 tr-text-metadata",
 								repository.changed
 									? "border-feedback-info-muted text-feedback-info"
 									: "border-border-default text-text-muted",
