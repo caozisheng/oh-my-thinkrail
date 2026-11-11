@@ -666,7 +666,11 @@ test("issue groups show stages while cards preserve labels without a duplicate s
 	}
 	expect(html).toContain("No labels");
 	expect(html).toContain('rel="noopener noreferrer"');
-	expect(html.match(/<p class="text-text-subtle">/g)).toBeNull();
+	const cards = [...html.matchAll(/<article\b[^>]*>(.*?)<\/article>/g)];
+	expect(cards).toHaveLength(5);
+	for (const [index, card] of cards.entries()) {
+		expect(card[1]?.match(/<p\b/g)?.length ?? 0).toBe(index === 1 ? 0 : 1);
+	}
 	expect(html).not.toContain("Implement");
 });
 
