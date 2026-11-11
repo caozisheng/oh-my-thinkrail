@@ -39,7 +39,11 @@ import {
 import { createIssueConfirmationStore } from "./issueConfirmations";
 import { createIssueCredentials } from "./issueCredentials";
 import { createIssueDeliveryActions, deliveryQuestions } from "./issueDeliveryActions";
-import { createIssueSessionStore, type IssueSessionStore } from "./issueSessions";
+import {
+	createIssueSessionStore,
+	type IssueSessionAssociation,
+	type IssueSessionStore,
+} from "./issueSessions";
 import { createIssueStageActions, stageQuestions } from "./issueStageActions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
@@ -321,6 +325,15 @@ export function createIssuesHost(
 		if (!head.ok || !branch.ok || !status.ok) invalid();
 		return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
 	}
+	async function participatingRepositories(binding: IssueSessionAssociation) {
+		const contexts = await actions.implementationContexts({
+			projectId: binding.projectId,
+			reference: binding.reference,
+		});
+		return contexts.flatMap((repository) =>
+			repository.role === "reference" ? [] : [{ ...repository, role: repository.role }],
+		);
+	}
 	function stages() {
 		return createIssueStageActions({
 			binding: confirmationBinding,
@@ -337,11 +350,7 @@ export function createIssuesHost(
 					},
 				};
 			},
-			repositories: (binding) =>
-				actions.implementationContexts({
-					projectId: binding.projectId,
-					reference: binding.reference,
-				}),
+			repositories: participatingRepositories,
 			checkout: trustedCheckout,
 			verifyAnswer: async (sessionId, payload, toolCallId) => {
 				const binding = await confirmationBinding(sessionId);
@@ -361,11 +370,7 @@ export function createIssuesHost(
 			binding: confirmationBinding,
 			journal: journal(),
 			checkout: trustedCheckout,
-			repositories: (binding) =>
-				actions.implementationContexts({
-					projectId: binding.projectId,
-					reference: binding.reference,
-				}),
+			repositories: participatingRepositories,
 			access: async (binding) => {
 				await restore(binding.projectId, true);
 				const issues = await service();
