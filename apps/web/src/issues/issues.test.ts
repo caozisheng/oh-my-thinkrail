@@ -646,11 +646,27 @@ test("a stored association offers reconnect with read-only coordinates", () => {
 	expect(html).not.toContain('data-testid="issues-address"');
 });
 
-test("read-only summaries expose links and status but no fake stage actions", () => {
-	const html = renderIssues({ issues: [summary] });
+test("issue groups show stages while cards preserve labels without a duplicate stage row", () => {
+	const issues: IssueSummary[] = [
+		...(["backlog", "in-progress", "in-review", "closed"] as const).map((stage) => ({
+			...summary,
+			reference: { ...summary.reference, number: stage.length },
+			title: stage,
+			stage,
+			labels: [`workflow::${stage}`, "blocked"],
+		})),
+		{ ...summary, reference: { ...summary.reference, number: 99 }, title: "No labels", labels: [] },
+	];
+	const html = renderIssues({ issues });
+	for (const stage of ["backlog", "in-progress", "in-review", "closed"] as const) {
+		const label = text(`issues.stage.${stage}`);
+		expect(html).toContain(`aria-label="${label}"`);
+		expect(html).toContain(`>${label} · ${stage === "backlog" ? 2 : 1}</h3>`);
+		expect(html).toContain(`workflow::${stage} · blocked`);
+	}
+	expect(html).toContain("No labels");
 	expect(html).toContain('rel="noopener noreferrer"');
-	expect(html).toContain("First issue");
-	expect(html).toContain("blocked");
+	expect(html.match(/<p class="text-text-subtle">/g)).toBeNull();
 	expect(html).not.toContain("Implement");
 });
 
