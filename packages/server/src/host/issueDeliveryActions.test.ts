@@ -97,20 +97,6 @@ async function fixture() {
 			return { ...request(), ...createdOverrides };
 		},
 	};
-	const stagePayload = {
-		stage: "implementation",
-		reference,
-		report: "Exact completed implementation report",
-		commits: [{ ...repository, ...state, target: "" }],
-	};
-	const stage = await journal.prepare("implementation-session", "implementation", stagePayload);
-	await journal.execute(
-		"implementation-session",
-		"implementation",
-		stage.digest,
-		"implementation-answer",
-		async () => ({ stage: "implementation", noteId: 7 }),
-	);
 	const actions = createIssueDeliveryActions({
 		binding: async () => structuredClone(binding),
 		access: async () => ({ remote, guard: () => {} }),
@@ -166,7 +152,7 @@ async function fixture() {
 	};
 }
 
-test("associated repository delivery requires the verified answer and pushes exact SHA before draft creation", async () => {
+test("delivery needs no prior implementation receipt and pushes the reviewed current SHA", async () => {
 	const f = await fixture();
 	const card = await f.prepare();
 	expect(card.questions.questions[0]?.options).toEqual([
@@ -174,7 +160,6 @@ test("associated repository delivery requires the verified answer and pushes exa
 	]);
 	const preview = card.questions.questions[0]?.preview;
 	for (const text of [
-		"Exact completed implementation report",
 		"Exact draft body",
 		f.state.sha,
 		f.host.url,
@@ -219,11 +204,8 @@ test("one exact existing PR is reused without push or modification", async () =>
 	expect(f.effects).toEqual([]);
 });
 
-test("prepare refuses missing completion, design stage, dirty checkout, invalid SHA and missing default", async () => {
+test("prepare refuses design stage, dirty checkout, invalid SHA and missing default", async () => {
 	for (const mutate of [
-		(f: Awaited<ReturnType<typeof fixture>>) => {
-			f.state.sha = "b".repeat(40);
-		},
 		(f: Awaited<ReturnType<typeof fixture>>) => {
 			f.binding.stage = "design";
 		},

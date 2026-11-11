@@ -613,6 +613,8 @@ re-opened transcripts provider-valid.
       additions (notes may only be absent or empty). Duplicate tool-call ids, altered arguments,
       error results, and a user message before the receipt invalidate it; later user messages do not.
       Pending acknowledgements are not receipts, but may precede a valid restart custom response.
+      Restart response content includes the host-correlated opaque toolCallId for model callers of
+      Issue execution; this informational text never replaces structured receipt validation.
 
     An eligible live call is **sequential and blocking**: after validation its `execute` waits for
     `session.respondToTool`, then returns the person's real response through the tool's own envelope as
