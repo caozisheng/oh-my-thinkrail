@@ -50,6 +50,15 @@ retain upstream context where platform assignments differ from this fork's activ
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 
+### Temporary Ubuntu dependency outage
+
+Source no-agent shards and Linux Desktop smoke/E2E shards are temporarily disabled in `ci.yml`.
+The Desktop jobs fail before tests while apt fetches WebKit system dependencies (`libsoup-3.0`):
+run 43054002496 records DNS failures for `azure.archive.ubuntu.com`. Restore the source job's
+`app` condition and Desktop job's `artifacts` condition when dependency installation recovers.
+Linux binary browser jobs and Windows smoke checks retain their existing conditions.
+This pause does not account for local Chromium test failures.
+
 ### Suspended cross-platform coverage
 
 Workflow Bun setup reads the root `package.json` `packageManager` pin through `bun-version-file`.
