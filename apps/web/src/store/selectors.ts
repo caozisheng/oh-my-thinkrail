@@ -932,6 +932,13 @@ export function selectRepoProjects(state: Pick<ProjectContextState, "projects">)
 	return state.projects.filter((project) => !isChatsContainer(project));
 }
 
+/** Repositories eligible to associate with an Issue; trust must be granted in the owning project. */
+export function selectIssueRepositoryProjects(
+	state: Pick<ProjectContextState, "projects">,
+): Project[] {
+	return selectRepoProjects(state).filter((project) => project.trusted === true && !project.closed);
+}
+
 export function selectChatsContainer(state: Pick<ProjectContextState, "projects">): Project | null {
 	return state.projects.find(isChatsContainer) ?? null;
 }

@@ -617,6 +617,7 @@ export interface IssueSnapshotCall {
 	connection: () => Promise<IssueConnection | null>;
 	connect?: (() => Promise<IssueConnection>) | undefined;
 	list: () => Promise<IssueList>;
+	trusted?: boolean | undefined;
 }
 
 export async function loadIssueSnapshot(
@@ -632,7 +633,8 @@ export async function loadIssueSnapshot(
 		return { connection: null, issues: [], error: connect ? "connect" : "read" };
 	}
 	if (!isCurrent()) return null;
-	if (!connection?.connected) return { connection, issues: [], error: null };
+	if (!connection?.connected || call.trusted === false)
+		return { connection, issues: [], error: null };
 	try {
 		const list = await call.list();
 		return isCurrent() ? { connection, issues: list.issues, error: null } : null;

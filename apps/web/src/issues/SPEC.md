@@ -57,7 +57,7 @@ provider issue URL. Browser image requests carry no PAT and use no proxy; privat
 ## Behavior
 
 Host protocol v103 gates the read/connection RPCs (`issues.connection`, `issues.list`,
-`issues.disconnect`); `issues.connect` — the only token-bearing call — is gated at the v105 Issues auth
+`issues.disconnect`); connection and credential configuration remain available while the local project is untrusted, but `issues.list`, preview, stage actions and repository-selection reads/writes remain gated until the shell reports a successful trust grant. Trust revocation hides loaded issue content and invalidates in-flight replies. `issues.connect` — the only token-bearing call — is gated at the v105 Issues auth
 protocol and `supportsIssueAuth` is that floor. On a v103/v104 host the panel still reads and displays
 existing connection metadata, but the connect/reconnect form is disabled and labelled as needing a newer
 host, so no submission is dispatched from a form that cannot create a durable association and none is
@@ -66,7 +66,7 @@ reconnect invitation; `issues.authUnsupported` is the only copy it adds. Offline
 connection, then list only when connected; connect refreshes the list. Refresh is explicit; no polling or
 stage mutations.
 
-**Associated repositories (v115).** Each issue row carries an icon-only trigger on the title row,
+**Associated repositories (v115).** Candidates are open, explicitly trusted repository projects other than the Issue's own project; a browser filter is only convenience because the host revalidates trust/open state under its lock. `issues.repositories` and `issues.setRepositories` release only their own operation fence when settled, including validation or read failures; other Issue operations retain their uncertainty policy. A server-classified active/unverifiable lock is shown as a lock glyph immediately after the Issue title, with an accessible keyed explanation and no unlock action; a normal read/network/trust error never implies a lock, and a successful read clears the marker. Each issue row carries an icon-only trigger on the title row,
 right after the body-preview eye toggle: `RiLinkUnlink` with no repository linked and `RiLink`
 (soft-primary) once one is, opening a popover multi-select listbox of the open
 repository projects beside the issue's own project (`selectRepoProjects`, never the synthetic Chats container). That project always participates and is never listed as a

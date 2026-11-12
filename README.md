@@ -22,7 +22,7 @@ Issues integration is experimental and covers GitLab and GitHub repositories. Th
 repository address — only `github.com` is GitHub, every other host is GitLab — and both use an access
 token. It includes:
 
-- HTTP(S) project association from the Issues panel or after opening or cloning a repository.
+- HTTP(S) project association from the Issues panel or after opening or cloning a repository. Configure the source address and token first, then trust the project to load Issues. Only open, trusted repositories are offered for linking; operation-lock contention appears beside the Issue title without granting unlock authority.
 - Personal access tokens stored in the host's OS credential vault, with explicit consent for non-local
   HTTP connections and no plaintext storage fallback.
 - An issue list with **Design** and **Implement** actions. Sessions use the Issue title; implementation

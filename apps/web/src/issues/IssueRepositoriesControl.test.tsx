@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import type { IssueRepositories, IssueSummary, Project } from "@thinkrail/contracts";
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { renderToStaticMarkup } from "react-dom/server";
-import { selectRepoProjects } from "../store/selectors";
+import { selectIssueRepositoryProjects } from "../store/selectors";
 import {
 	IssueRepositoriesControl,
 	IssueRepositoriesPanel,
@@ -108,23 +108,43 @@ test("a running implementation offers the other repositories to join and a clean
 
 test("Issue repository choices use the repository selector and exclude the Chats container", () => {
 	const projects: Project[] = [
-		{ id: primaryProjectId, name: "frontend", path: "/frontend", slug: "frontend", lastOpened: 1 },
+		{
+			id: primaryProjectId,
+			name: "frontend",
+			path: "/frontend",
+			slug: "frontend",
+			lastOpened: 1,
+			trusted: true,
+		},
 		{ id: "chats", name: "Chats", path: "/chats", slug: "chats", lastOpened: 1, kind: "chats" },
 		{
 			id: "api-local",
 			name: "backend",
+			trusted: true,
 			path: "/backend",
 			slug: "backend",
 			lastOpened: 1,
 		},
 	];
-	expect(selectRepoProjects({ projects }).map((project) => project.id)).toEqual([
+	expect(selectIssueRepositoryProjects({ projects }).map((project) => project.id)).toEqual([
 		primaryProjectId,
 		"api-local",
 	]);
 	const source = readFileSync(new URL("./IssuesTool.tsx", import.meta.url), "utf8");
-	expect(source).toContain("useAppStore(useShallow(selectRepoProjects))");
+	expect(source).toContain("useAppStore(useShallow(selectIssueRepositoryProjects))");
 	expect(source).toContain("repositoryProjects={projects}");
+});
+
+test("a classified lock is not presented as an empty editable selection", () => {
+	const html = renderToStaticMarkup(
+		<IssueRepositoriesPanel
+			candidates={[{ id: "api-local", name: "backend" }]}
+			view="blocked"
+			onToggle={() => {}}
+		/>,
+	);
+	expect(html).toContain('role="alert"');
+	expect(html).not.toContain('role="listbox"');
 });
 
 test("pending and failed refreshes keep the last confirmed linked indicator", () => {

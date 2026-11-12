@@ -654,6 +654,8 @@ export function createIssuesActions(
 			guard,
 			[
 				"addRepository",
+				"repositories",
+				"setRepositories",
 				"beginDesign",
 				"beginImplementation",
 				"cleanupRepositories",

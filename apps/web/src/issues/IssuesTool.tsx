@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
-import { selectRepoProjects, useAppStore } from "../store";
+import { selectIssueRepositoryProjects, useAppStore } from "../store";
 import { getTransport, wsErrorCode } from "../transport";
 import type { IssuePreview } from "./IssueBody";
 import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
@@ -48,6 +48,13 @@ import {
 import { loadIssueRepositories } from "./repositoryReads";
 
 type SnapshotPatch = Partial<Omit<IssueToolSnapshot, "identity">>;
+
+function failedRepositorySelection(
+	selection: IssueRepositoriesView & object,
+	blocked: boolean,
+): IssueRepositoriesView {
+	return { ...selection, pending: false, blocked: selection.blocked || blocked };
+}
 
 async function readIssueContent(
 	projectId: string,
@@ -82,7 +89,7 @@ export function IssuesTool({
 	onOpenIssue?: (reference: IssueReference) => Promise<void> | void;
 	onLaunchSession?: (launch: IssueSessionLaunch, isCurrent: () => boolean) => Promise<void> | void;
 	/** Host refuses stage actions for an untrusted project; the shell performs the grant. */
-	onTrustProject?: () => void;
+	onTrustProject?: () => Promise<void> | void;
 }) {
 	const t = useT();
 	const localLocales = useAppStore((s) => s.localLocales);
@@ -94,7 +101,7 @@ export function IssuesTool({
 	const authSupported = supportsIssueAuth(version);
 	const githubSupported = supportsIssueGithub(version);
 	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
-	const projects = useAppStore(useShallow(selectRepoProjects));
+	const projects = useAppStore(useShallow(selectIssueRepositoryProjects));
 	const repositoriesSupported = supportsIssueRepositories(version);
 	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
@@ -114,7 +121,7 @@ export function IssuesTool({
 	} | null>(null);
 	const actionSequence = useRef(0);
 	const actionLock = useRef(false);
-	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}`;
+	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}:${trusted}`;
 	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
 	const requestSequence = useRef(0);
 	const previewSequence = useRef(0);
@@ -126,7 +133,7 @@ export function IssuesTool({
 		setPreview(null);
 	}, []);
 	const togglePreview = async (issue: IssueSummary, retry = false) => {
-		if (!previewSupported || status !== "connected") return;
+		if (!trusted || !previewSupported || status !== "connected") return;
 		const key = issueKey(issue);
 		const close = activePreview?.key === key && !retry;
 		clearPreview();
@@ -154,7 +161,7 @@ export function IssuesTool({
 	);
 	const loadRepositories = useCallback(
 		async (issues: readonly IssueSummary[], current: () => boolean) => {
-			if (!repositoriesSupported || status !== "connected") return;
+			if (!trusted || !repositoriesSupported || status !== "connected") return;
 			const sequences = new Map<string, number>();
 			for (const issue of issues) {
 				const key = repositoryKey(issue);
@@ -184,13 +191,20 @@ export function IssuesTool({
 						const next =
 							value === "error" && typeof saved === "object"
 								? { ...saved, pending: false, failed: true }
-								: value;
+								: value === "blocked"
+									? {
+											...(typeof saved === "object" ? saved : { projectIds: [], locked: false }),
+											blocked: true,
+											pending: false,
+											failed: true,
+										}
+									: value;
 						return { ...state, [key]: next };
 					});
 				},
 			);
 		},
-		[projectId, repositoriesSupported, status, repositoryKey],
+		[trusted, projectId, repositoriesSupported, status, repositoryKey],
 	);
 
 	const refresh = useCallback(
@@ -201,7 +215,12 @@ export function IssuesTool({
 			actionLock.current = false;
 			setActionState(null);
 			const sequence = ++requestSequence.current;
-			const current = () => sequence === requestSequence.current;
+			const current = () =>
+				sequence === requestSequence.current &&
+				useAppStore.getState().connectionGeneration === generation &&
+				useAppStore.getState().status === "connected" &&
+				(useAppStore.getState().projects.find((p) => p.id === projectId)?.trusted === true) ===
+					trusted;
 			setSnapshot((previous) => update(previous, { pending: true, error: null }));
 			const transport = getTransport();
 			const result = await loadIssueSnapshot(
@@ -211,6 +230,7 @@ export function IssuesTool({
 						? { connect: () => transport.request("issues.connect", { projectId, input }) }
 						: {}),
 					list: () => transport.request("issues.list", { projectId }),
+					trusted,
 				},
 				current,
 			);
@@ -219,7 +239,17 @@ export function IssuesTool({
 			if (!result.error) void loadRepositories(result.issues, current);
 			return result.error === "connect" ? { ok: false, error: "connect" } : { ok: true };
 		},
-		[identity, projectId, status, supported, update, clearPreview, loadRepositories],
+		[
+			identity,
+			trusted,
+			generation,
+			projectId,
+			status,
+			supported,
+			update,
+			clearPreview,
+			loadRepositories,
+		],
 	);
 
 	const disconnect = useCallback(async () => {
@@ -257,10 +287,15 @@ export function IssuesTool({
 
 	const runAction = useCallback(
 		async (issue: IssueSummary, action: IssueActionId): Promise<IssueActionResult> => {
-			if (actionLock.current) return { ok: false, error: "launch-blocked" };
+			if (!trusted || status !== "connected" || actionLock.current)
+				return { ok: false, error: "launch-blocked" };
 			actionLock.current = true;
 			const sequence = ++actionSequence.current;
-			const current = () => sequence === actionSequence.current;
+			const current = () =>
+				sequence === actionSequence.current &&
+				useAppStore.getState().connectionGeneration === generation &&
+				useAppStore.getState().status === "connected" &&
+				useAppStore.getState().projects.find((p) => p.id === projectId)?.trusted === true;
 			const progress: IssueActionProgress = { issue: issueKey(issue), action, phase: "starting" };
 			const { reference } = issue;
 			const transport = getTransport();
@@ -296,7 +331,7 @@ export function IssuesTool({
 			if (action === "implement") void refresh();
 			return result;
 		},
-		[identity, onLaunchSession, projectId, refresh, locale, version],
+		[identity, trusted, generation, status, onLaunchSession, projectId, refresh, locale, version],
 	);
 
 	useEffect(
@@ -310,33 +345,46 @@ export function IssuesTool({
 	const toggleRepository = useCallback(
 		async (issue: IssueSummary, projectIdToToggle: string): Promise<IssueRepositories | null> => {
 			const key = repositoryKey(issue);
-			const current = repositories[key];
+			const selection = repositories[key];
 			if (
-				!current ||
-				typeof current !== "object" ||
-				current.locked ||
-				current.pending ||
-				current.failed
+				!trusted ||
+				status !== "connected" ||
+				!selection ||
+				typeof selection !== "object" ||
+				selection.locked ||
+				selection.pending ||
+				selection.failed
 			)
 				return null;
-			const next = current.projectIds.includes(projectIdToToggle)
-				? current.projectIds.filter((id) => id !== projectIdToToggle)
-				: [...current.projectIds, projectIdToToggle];
-			repositorySequences.current.set(key, (repositorySequences.current.get(key) ?? 0) + 1);
+			const next = selection.projectIds.includes(projectIdToToggle)
+				? selection.projectIds.filter((id) => id !== projectIdToToggle)
+				: [...selection.projectIds, projectIdToToggle];
+			const sequence = (repositorySequences.current.get(key) ?? 0) + 1;
+			repositorySequences.current.set(key, sequence);
+			const request = requestSequence.current;
+			setRepositories((state) => ({ ...state, [key]: { ...selection, pending: true } }));
 			try {
 				const saved = await getTransport().request("issues.setRepositories", {
 					projectId,
 					reference: issue.reference,
 					projectIds: next,
 				});
+				if (request !== requestSequence.current) return null;
+				if (repositorySequences.current.get(key) !== sequence) return null;
 				setRepositories((state) => ({ ...state, [key]: saved }));
 				return saved;
-			} catch {
-				// A rejected write keeps the last confirmed selection instead of pretending it saved.
+			} catch (error) {
+				const locked = wsErrorCode(error) === "ISSUE_LAUNCH_BLOCKED";
+				if (request !== requestSequence.current) return null;
+				if (repositorySequences.current.get(key) !== sequence) return null;
+				setRepositories((state) => ({
+					...state,
+					[key]: failedRepositorySelection(selection, locked),
+				}));
 				return null;
 			}
 		},
-		[projectId, repositories, repositoryKey],
+		[trusted, status, projectId, repositories, repositoryKey],
 	);
 
 	const joinRepository = useCallback(
@@ -344,7 +392,9 @@ export function IssuesTool({
 			issue: IssueSummary,
 			repositoryProjectId: string,
 		): Promise<IssueRepositoriesNotice | null> => {
+			if (!trusted || status !== "connected") return { kind: "joinFailed" };
 			const key = repositoryKey(issue);
+			const request = requestSequence.current;
 			repositorySequences.current.set(key, (repositorySequences.current.get(key) ?? 0) + 1);
 			try {
 				const saved = await getTransport().request(
@@ -352,7 +402,8 @@ export function IssuesTool({
 					{ projectId, reference: issue.reference, repositoryProjectId },
 					{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
 				);
-				setRepositories((state) => ({ ...state, [key]: saved }));
+				if (request === requestSequence.current)
+					setRepositories((state) => ({ ...state, [key]: saved }));
 				return null;
 			} catch (error) {
 				// Only a host refusal (nesting, limit) carries a reason worth showing beside the key.
@@ -361,11 +412,13 @@ export function IssuesTool({
 					: { kind: "joinFailed" };
 			}
 		},
-		[projectId, repositoryKey],
+		[trusted, status, projectId, repositoryKey],
 	);
 	const cleanupRepositories = useCallback(
 		async (issue: IssueSummary): Promise<IssueRepositoriesNotice> => {
+			if (!trusted || status !== "connected") return { kind: "cleanupFailed" };
 			const key = repositoryKey(issue);
+			const request = requestSequence.current;
 			repositorySequences.current.set(key, (repositorySequences.current.get(key) ?? 0) + 1);
 			try {
 				const result = await getTransport().request(
@@ -373,16 +426,17 @@ export function IssuesTool({
 					{ projectId, reference: issue.reference },
 					{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
 				);
-				setRepositories((state) => ({
-					...state,
-					[key]: { projectIds: result.projectIds, locked: result.locked },
-				}));
+				if (request === requestSequence.current)
+					setRepositories((state) => ({
+						...state,
+						[key]: { projectIds: result.projectIds, locked: result.locked },
+					}));
 				return { kind: "cleaned", count: result.removed.length };
 			} catch {
 				return { kind: "cleanupFailed" };
 			}
 		},
-		[projectId, repositoryKey],
+		[trusted, status, projectId, repositoryKey],
 	);
 
 	const active = snapshot?.identity === identity ? snapshot : null;

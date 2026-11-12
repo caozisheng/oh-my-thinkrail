@@ -41,6 +41,7 @@ import {
 	selectHostReachable,
 	selectHostSearchAvailable,
 	selectHostSearchReady,
+	selectIssueRepositoryProjects,
 	selectKnownChatLocation,
 	selectKnownChatTitle,
 	selectLayoutResourcePlacement,
@@ -71,6 +72,32 @@ const workspace: Workspace = {
 	baseBranch: "main",
 };
 const workspaces = { p1: [], p2: [workspace] };
+
+test("repository candidates exclude closed, untrusted and Chats projects", () => {
+	const projects: Project[] = [
+		{ ...projectOne, trusted: true },
+		{ ...projectTwo, trusted: false },
+		{
+			id: "closed",
+			name: "Closed",
+			path: "/closed",
+			slug: "closed",
+			lastOpened: 3,
+			trusted: true,
+			closed: true,
+		},
+		{
+			id: "chats",
+			name: "Chats",
+			path: "/chats",
+			slug: "chats",
+			lastOpened: 4,
+			trusted: true,
+			kind: "chats" as const,
+		},
+	];
+	expect(selectIssueRepositoryProjects({ projects }).map((project) => project.id)).toEqual(["p1"]);
+});
 
 test("connection generations reject stale or disconnected read settlements", () => {
 	expect(isConnectedGeneration({ status: "connected", connectionGeneration: 4 }, 4)).toBe(true);
