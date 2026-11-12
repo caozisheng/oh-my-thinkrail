@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { IssueSummary } from "@thinkrail/contracts";
+import { RequestError } from "../transport";
 import { loadIssueRepositories } from "./repositoryReads";
 
 const issues = [1, 2].map((number) => ({
@@ -21,6 +22,25 @@ test("loads saved selections independently for every listed issue", async () => 
 		[1, { projectIds: ["api"], locked: true }],
 		[2, "error"],
 	]);
+});
+
+test("only explicit lock contention is classified as locked", async () => {
+	for (const [error, expected] of [
+		[new RequestError("ISSUE_LAUNCH_BLOCKED", "private"), "blocked"],
+		[new RequestError("RESOURCE_UNAVAILABLE", "locked"), "error"],
+		[new Error("locked"), "error"],
+	] as const) {
+		const results: unknown[] = [];
+		await loadIssueRepositories(
+			issues.slice(0, 1),
+			async () => {
+				throw error;
+			},
+			() => true,
+			(_issue, value) => results.push(value),
+		);
+		expect(results).toEqual([expected]);
+	}
 });
 
 test("drops replies after the owning refresh becomes stale", async () => {

@@ -1180,7 +1180,7 @@ provable death of that owner (`ESRCH`), never by waiting, timeout or a guess: a 
 older build without a `pid` records no owner that could still be running and is reconciled the same
 way. A live owner, an unreadable or foreign fence, and a fence describing another key keep blocking.
 The default `retain-on-failure` policy preserves the fence on callback, storage or guard errors for
-non-launch operations, including approval and publication. Design/implementation launches explicitly
+non-launch operations, including approval and publication. Design/implementation launches and the low-side-effect `repositories` / `setRepositories` operations explicitly
 use `release-on-settle`: once their awaited operation actually settles, success or failure releases
 only the fence that call acquired, without clearing ownership, session-pending or startup records.
 A release failure reports `ISSUE_LAUNCH_RELEASE_FAILED`, never a safe-to-retry claim. Contention reports

@@ -676,10 +676,12 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	const projectId = workspace?.projectId;
 	const trustProject = useCallback(() => {
 		if (projectId === undefined) return;
-		void getTransport()
+		return getTransport()
 			.request("project.setTrust", { id: projectId, trusted: true, resources: true })
 			.then((project) => useAppStore.getState().applyProjectUpdated(project))
-			.catch((error: unknown) => toast.error(errorText(error), t("issues.trustAction")));
+			.catch((error: unknown) => {
+				toast.error(errorText(error), t("issues.trustAction"));
+			});
 	}, [projectId, t]);
 	const launchIssueSession = useCallback(
 		(launch: IssueSessionLaunch, isCurrent: () => boolean) => {

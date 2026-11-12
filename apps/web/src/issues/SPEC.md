@@ -57,19 +57,19 @@ provider issue URL. Browser image requests carry no PAT and use no proxy; privat
 ## Behavior
 
 Host protocol v103 gates the read/connection RPCs (`issues.connection`, `issues.list`,
-`issues.disconnect`); `issues.connect` — the only token-bearing call — is gated at the v105 Issues auth
+`issues.disconnect`); connection and credential configuration remain available while the local project is untrusted, but `issues.list`, preview, stage actions and repository-selection reads/writes remain gated until the shell reports a successful trust grant. Trust revocation hides loaded issue content and invalidates in-flight replies. `issues.connect` — the only token-bearing call — is gated at the v105 Issues auth
 protocol and `supportsIssueAuth` is that floor. On a v103/v104 host the panel still reads and displays
 existing connection metadata, but the connect/reconnect form is disabled and labelled as needing a newer
 host, so no submission is dispatched from a form that cannot create a durable association and none is
 reported as successful. That metadata-only view also omits the credential-vault guarantee and the
 reconnect invitation; `issues.authUnsupported` is the only copy it adds. Offline/unsupported hosts render explanatory copy without requesting. Read
-connection, then list only when connected; connect refreshes the list. Refresh is explicit; no polling or
+connection, then list only when connected and trusted; connect refreshes the list only when trusted. Refresh is explicit; no polling or
 stage mutations.
 
-**Associated repositories (v115).** Each issue row carries an icon-only trigger on the title row,
+**Associated repositories (v115).** Candidates are open, explicitly trusted repository projects other than the Issue's own project; a browser filter is only convenience because the host revalidates trust/open state under its lock. A server-classified active/unverifiable lock is shown as a lock glyph immediately after the Issue title, with an accessible keyed explanation and no unlock action; a normal read/network/trust error never implies a lock, and a successful read clears the marker. Each issue row carries an icon-only trigger on the title row,
 right after the body-preview eye toggle: `RiLinkUnlink` with no repository linked and `RiLink`
 (soft-primary) once one is, opening a popover multi-select listbox of the open
-repository projects beside the issue's own project (`selectRepoProjects`, never the synthetic Chats container). That project always participates and is never listed as a
+repository projects beside the issue's own project (`selectIssueRepositoryProjects`, never the synthetic Chats container). That project always participates and is never listed as a
 candidate — exclusion compares **local** project ids, since `reference.projectId` is the remote provider
 id and never matches a project id. Saved selections are read automatically after initial list loading
 and every refresh (`issues.repositories`), and re-read on popover open for retry and fresh lock state.
@@ -194,10 +194,7 @@ rendered with the shared `soft-primary` button variant and `data-done`. A pendin
 `onRunAction(issue, action)` prop, whose keyed result the tool turns into the `actionPending`/`actionError`
 props the panel renders.
 
-Stage actions also need an explicitly trusted project: the host refuses every launch otherwise, and a plain
-repository has no other trust affordance, so an untrusted project disables both controls with `needs-trust`
-and the panel offers a one-click "Trust project" (`project.setTrust` via the shell, then a store update and
-refresh). `needs-trust` yields to `needs-newer-host` when the host is also too old.
+Stage actions also need an explicitly trusted project: the host refuses every launch otherwise. A connected untrusted project shows one panel-level "Trust project" entry (`project.setTrust` via the shell, then a store update and refresh), never stale cards or per-card trust controls. The pending grant disables repeated clicks; missing callbacks cannot bypass the gate. The pure action availability rule retains `needs-trust` for callers, yielding to `needs-newer-host` when the host is also too old.
 
 At v109 (`ISSUES_SESSION_STARTUP_PROTOCOL_VERSION`), design calls `issues.beginDesign` and
 implementation calls `issues.beginImplementation`, each with exactly `{projectId, reference, locale}`.

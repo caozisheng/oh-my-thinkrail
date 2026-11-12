@@ -7,6 +7,8 @@ test("linked repositories hydrate before opening the control and rehydrate on re
 }) => {
 	let reads = 0;
 	let linked = true;
+	let blocked = false;
+	let listReads = 0;
 	let release: (() => void) | undefined;
 	const issue: IssueSummary = {
 		reference: { provider: "github", instanceUrl: "https://github.com", projectId: "7", number: 1 },
@@ -29,10 +31,22 @@ test("linked repositories hydrate before opening the control and rehydrate on re
 					remoteProjectId: "7",
 					connected: true,
 				});
-			else if (frame.method === "issues.list")
+			else if (frame.method === "issues.list") {
+				listReads++;
 				reply({ issues: [issue], fetchedAt: "2026-01-01T00:00:00Z" });
-			else if (frame.method === "issues.repositories") {
+			} else if (frame.method === "issues.repositories") {
 				reads++;
+				if (blocked) {
+					browser.send(
+						JSON.stringify({
+							id: frame.id,
+							ok: false,
+							errorCode: "ISSUE_LAUNCH_BLOCKED",
+							error: "fixture",
+						}),
+					);
+					return;
+				}
 				const selection = { projectIds: linked ? ["api-local"] : [], locked: false };
 				if (reads === 2) release = () => reply(selection);
 				else reply(selection);
@@ -44,6 +58,11 @@ test("linked repositories hydrate before opening the control and rehydrate on re
 	await enterDefaultWorkspace(page);
 	const rail = page.getByTestId("tool-rail-issues");
 	if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+	await expect(page.getByTestId("issues-trust")).toBeVisible();
+	expect(listReads).toBe(0);
+	expect(reads).toBe(0);
+	await expect(page.getByText(issue.title, { exact: false })).toHaveCount(0);
+	await page.getByTestId("issues-trust").click();
 	const control = page.getByTestId("issue-repositories");
 	await expect(control).toHaveAttribute("data-variant", "soft-primary");
 	expect(reads).toBe(1);
@@ -59,4 +78,22 @@ test("linked repositories hydrate before opening the control and rehydrate on re
 	release?.();
 	await expect(page.getByRole("listbox")).toBeVisible();
 	await expect(control).toHaveAttribute("data-variant", "ghost");
+	blocked = true;
+	await page.keyboard.press("Escape");
+	await page.getByRole("button", { name: "Refresh issues", exact: true }).click();
+	const lock = page.getByTestId("issue-lock");
+	await expect(lock).toBeVisible();
+	const title = page.getByRole("link", { name: "#1 Repository fixture" });
+	expect(
+		await title.evaluate((element) =>
+			element.parentElement?.contains(document.querySelector('[data-testid="issue-lock"]')),
+		),
+	).toBe(true);
+	await title.focus();
+	await page.keyboard.press("Tab");
+	await expect(lock).toBeFocused();
+	await expect(page.getByRole("tooltip")).toBeVisible();
+	blocked = false;
+	await page.getByRole("button", { name: "Refresh issues", exact: true }).click();
+	await expect(lock).toHaveCount(0);
 });

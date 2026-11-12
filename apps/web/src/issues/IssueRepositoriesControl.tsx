@@ -15,9 +15,10 @@ import { issueKey } from "./model";
 
 /** `loading`/`error` describe the read of this issue's selection, never an empty saved list. */
 export type IssueRepositoriesView =
-	| (IssueRepositories & { pending?: boolean; failed?: boolean })
+	| (IssueRepositories & { pending?: boolean; failed?: boolean; blocked?: boolean })
 	| "loading"
-	| "error";
+	| "error"
+	| "blocked";
 
 /** A join/cleanup outcome the popover reports inline; `detail` is the host's refusal text. */
 export type IssueRepositoriesNotice =
@@ -54,6 +55,7 @@ export function IssueRepositoriesControl({
 	const locked = selection?.locked === true;
 	const joinable = locked && onJoin !== undefined;
 	const count = selection?.projectIds.length ?? 0;
+	const blocked = selection?.blocked === true;
 	const candidates = projects.filter((project) => project.id !== primaryProjectId);
 	return (
 		<Popover
@@ -86,7 +88,15 @@ export function IssueRepositoriesControl({
 			<PopoverContent className="flex w-320 flex-col gap-8 p-12" align="end">
 				<IssueRepositoriesPanel
 					candidates={candidates}
-					view={selection?.pending ? "loading" : selection?.failed ? "error" : view}
+					view={
+						blocked
+							? "blocked"
+							: selection?.pending
+								? "loading"
+								: selection?.failed
+									? "error"
+									: view
+					}
 					onToggle={onToggle}
 					onJoin={onJoin}
 					onCleanup={onCleanup}
@@ -138,6 +148,11 @@ export function IssueRepositoriesPanel({
 			{view === "loading" && (
 				<p className="tr-text-metadata text-text-muted">{t("common.loading")}</p>
 			)}
+			{view === "blocked" && (
+				<p role="alert" className="tr-text-metadata text-feedback-error">
+					{t("issues.error.launchBlocked")}
+				</p>
+			)}
 			{view === "error" && (
 				<p role="alert" className="tr-text-metadata text-feedback-error">
 					{t("issues.repositoriesFailed")}
@@ -148,7 +163,7 @@ export function IssueRepositoriesPanel({
 					{t("issues.repositoriesLocked")}
 				</p>
 			)}
-			{(!locked || joinable) && (
+			{selection && (!locked || joinable) && (
 				<div
 					role="listbox"
 					aria-multiselectable="true"

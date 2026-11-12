@@ -4,6 +4,7 @@ import {
 	RiEyeLine,
 	RiEyeOffLine,
 	RiLoader4Line,
+	RiLockLine,
 	RiQuillPenLine,
 } from "@remixicon/react";
 import type {
@@ -18,7 +19,7 @@ import type { MessageKey } from "@thinkrail/locales";
 import { useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
-import { useEffect, useId, useReducer } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { IssueAssociationForm } from "./IssueAssociationForm";
 import { IssueBody, type IssuePreview } from "./IssueBody";
 import {
@@ -70,7 +71,7 @@ export interface IssuesPanelProps {
 	/** The issue whose last action failed; its row carries the message inline. */
 	actionErrorIssue?: string | undefined;
 	/** Grants project trust so the host stops refusing stage actions. */
-	onTrustProject?: (() => void) | undefined;
+	onTrustProject?: (() => Promise<void> | void) | undefined;
 	/** Associated-repository candidates: the open projects, beside the issue's own project. */
 	repositoryProjects?: readonly { id: string; name: string }[];
 	/** The local project this panel belongs to; excluded from the candidate list. */
@@ -191,6 +192,8 @@ export function IssuesPanel({
 	const previewId = useId();
 	const [state, dispatch] = useReducer(reconnectOutcome, error ?? null, associationPanelState);
 	const { reconnecting, snapshotError } = state;
+	const trustLock = useRef(false);
+	const [trustPending, setTrustPending] = useState(false);
 	const showForm = !connection?.connected || reconnecting;
 	const provider = connection ? issueProviderOf(connection.instanceUrl) : null;
 	const failure = actionError ?? state.actionError ?? snapshotError;
@@ -304,153 +307,184 @@ export function IssuesPanel({
 						: {})}
 				/>
 			)}
-			{!pending && !failure && connection?.connected && issues.length === 0 && (
-				<p className="text-text-muted">{t("issues.empty")}</p>
+			{connection?.connected && !capabilities.trusted && (
+				<Button
+					size="s"
+					variant="outline"
+					data-testid="issues-trust"
+					disabled={pending || trustPending || !onTrustProject}
+					onClick={() => {
+						if (trustLock.current || !onTrustProject) return;
+						trustLock.current = true;
+						setTrustPending(true);
+						void Promise.resolve()
+							.then(onTrustProject)
+							.catch(() => {})
+							.finally(() => {
+								trustLock.current = false;
+								setTrustPending(false);
+							});
+					}}
+				>
+					{t("issues.trustAction")}
+				</Button>
 			)}
-			{stages.map((stage) => (
-				<section key={stage} className="flex flex-col gap-8" aria-label={t(STAGE_KEY[stage])}>
-					<h3 className="text-text-muted tr-text-ui">
-						{t(STAGE_KEY[stage])} · {issues.filter((issue) => issue.stage === stage).length}
-					</h3>
-					{issues
-						.filter((issue) => issue.stage === stage)
-						.map((issue) => (
-							<article
-								key={issueKey(issue)}
-								className="flex flex-col gap-4 rounded-sm border border-border-muted p-8"
-							>
-								<div className="flex items-start gap-6">
-									<a
-										href={safeIssueUrl(issue.url)}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="min-w-0 flex-1 break-words text-primary"
+			{capabilities.trusted &&
+				!pending &&
+				!failure &&
+				connection?.connected &&
+				issues.length === 0 && <p className="text-text-muted">{t("issues.empty")}</p>}
+			{capabilities.trusted &&
+				stages.map((stage) => (
+					<section key={stage} className="flex flex-col gap-8" aria-label={t(STAGE_KEY[stage])}>
+						<h3 className="text-text-muted tr-text-ui">
+							{t(STAGE_KEY[stage])} · {issues.filter((issue) => issue.stage === stage).length}
+						</h3>
+						{issues
+							.filter((issue) => issue.stage === stage)
+							.map((issue) => {
+								const repositoryView = repositoriesFor?.(issue);
+								return (
+									<article
+										key={issueKey(issue)}
+										className="flex flex-col gap-4 rounded-sm border border-border-muted p-8"
 									>
-										#{issue.reference.number} {issue.title}
-									</a>
-									{onTogglePreview && (
-										<TooltipProvider>
-											<IconButton
-												size="s"
-												icon={preview?.key === issueKey(issue) ? RiEyeOffLine : RiEyeLine}
-												variant={preview?.key === issueKey(issue) ? "soft-primary" : "ghost"}
-												label={t(
-													preview?.key === issueKey(issue)
-														? "issues.previewClose"
-														: "issues.previewOpen",
+										<div className="flex items-start gap-6">
+											<div className="min-w-0 flex-1 break-words">
+												<a
+													href={safeIssueUrl(issue.url)}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="text-primary"
+												>
+													#{issue.reference.number} {issue.title}
+												</a>
+												{typeof repositoryView === "object" && repositoryView.blocked && (
+													<TooltipProvider>
+														<IconButton
+															icon={RiLockLine}
+															size="s"
+															variant="ghost"
+															label={t("issues.error.launchBlocked")}
+															data-testid="issue-lock"
+															className="ml-4 align-middle"
+														/>
+													</TooltipProvider>
 												)}
-												tooltip={t(
-													previewSupported
-														? preview?.key === issueKey(issue)
-															? "issues.previewClose"
-															: "issues.previewOpen"
-														: "issues.previewUnsupported",
+											</div>
+											{onTogglePreview && (
+												<TooltipProvider>
+													<IconButton
+														size="s"
+														icon={preview?.key === issueKey(issue) ? RiEyeOffLine : RiEyeLine}
+														variant={preview?.key === issueKey(issue) ? "soft-primary" : "ghost"}
+														label={t(
+															preview?.key === issueKey(issue)
+																? "issues.previewClose"
+																: "issues.previewOpen",
+														)}
+														tooltip={t(
+															previewSupported
+																? preview?.key === issueKey(issue)
+																	? "issues.previewClose"
+																	: "issues.previewOpen"
+																: "issues.previewUnsupported",
+														)}
+														disabled={!previewSupported || pending}
+														aria-expanded={preview?.key === issueKey(issue)}
+														aria-controls={preview?.key === issueKey(issue) ? previewId : undefined}
+														data-testid="issue-preview-toggle"
+														onClick={() => onTogglePreview(issue)}
+													/>
+												</TooltipProvider>
+											)}
+											{repositoriesSupported &&
+												primaryProjectId &&
+												repositoryProjects &&
+												onToggleRepository && (
+													<TooltipProvider>
+														<IssueRepositoriesControl
+															issue={issue}
+															primaryProjectId={primaryProjectId}
+															projects={repositoryProjects}
+															view={repositoriesFor?.(issue)}
+															disabled={pending || actionPending === true}
+															onOpen={() => onLoadRepositories?.(issue)}
+															onToggle={(projectId) => {
+																void onToggleRepository(issue, projectId);
+															}}
+															onJoin={
+																onJoinRepository
+																	? (projectId) => onJoinRepository(issue, projectId)
+																	: undefined
+															}
+															onCleanup={
+																onCleanupRepositories
+																	? () => onCleanupRepositories(issue)
+																	: undefined
+															}
+														/>
+													</TooltipProvider>
 												)}
-												disabled={!previewSupported || pending}
-												aria-expanded={preview?.key === issueKey(issue)}
-												aria-controls={preview?.key === issueKey(issue) ? previewId : undefined}
-												data-testid="issue-preview-toggle"
-												onClick={() => onTogglePreview(issue)}
-											/>
-										</TooltipProvider>
-									)}
-									{repositoriesSupported &&
-										primaryProjectId &&
-										repositoryProjects &&
-										onToggleRepository && (
-											<TooltipProvider>
-												<IssueRepositoriesControl
+											{onRunAction && (
+												<IssueActionRow
 													issue={issue}
-													primaryProjectId={primaryProjectId}
-													projects={repositoryProjects}
-													view={repositoriesFor?.(issue)}
-													disabled={pending || actionPending === true}
-													onOpen={() => onLoadRepositories?.(issue)}
-													onToggle={(projectId) => {
-														void onToggleRepository(issue, projectId);
-													}}
-													onJoin={
-														onJoinRepository
-															? (projectId) => onJoinRepository(issue, projectId)
-															: undefined
-													}
-													onCleanup={
-														onCleanupRepositories ? () => onCleanupRepositories(issue) : undefined
-													}
+													capabilities={capabilities}
+													pending={actionPending === true}
+													error={actionErrorIssue === issueKey(issue) ? actionError : null}
+													onRun={(action) => run(issue, action)}
 												/>
-											</TooltipProvider>
+											)}
+										</div>
+										{actionProgress?.issue === issueKey(issue) && (
+											<p
+												role="status"
+												data-testid="issue-action-progress"
+												className="flex items-center gap-4 text-text-muted"
+											>
+												<RiLoader4Line
+													aria-hidden="true"
+													className="size-14 shrink-0 motion-safe:animate-spin"
+												/>
+												{t(
+													actionProgress.phase === "opening"
+														? "issues.progress.opening"
+														: actionProgress.action === "design"
+															? "issues.progress.design"
+															: "issues.progress.implement",
+												)}
+											</p>
 										)}
-									{onRunAction && (
-										<IssueActionRow
-											issue={issue}
-											capabilities={capabilities}
-											pending={actionPending === true}
-											error={actionErrorIssue === issueKey(issue) ? actionError : null}
-											onRun={(action) => run(issue, action)}
-										/>
-									)}
-								</div>
-								{actionProgress?.issue === issueKey(issue) && (
-									<p
-										role="status"
-										data-testid="issue-action-progress"
-										className="flex items-center gap-4 text-text-muted"
-									>
-										<RiLoader4Line
-											aria-hidden="true"
-											className="size-14 shrink-0 motion-safe:animate-spin"
-										/>
-										{t(
-											actionProgress.phase === "opening"
-												? "issues.progress.opening"
-												: actionProgress.action === "design"
-													? "issues.progress.design"
-													: "issues.progress.implement",
+										{preview?.key === issueKey(issue) && onTogglePreview && (
+											<IssueBody
+												id={previewId}
+												preview={preview}
+												onRetry={() => onRetryPreview?.(issue)}
+											/>
 										)}
-									</p>
-								)}
-								{preview?.key === issueKey(issue) && onTogglePreview && (
-									<IssueBody
-										id={previewId}
-										preview={preview}
-										onRetry={() => onRetryPreview?.(issue)}
-									/>
-								)}
-								{issue.labels.length > 0 && (
-									<p className="break-words text-text-muted">{issue.labels.join(" · ")}</p>
-								)}
-								{onTrustProject && capabilities.trusted === false && (
-									<Button
-										size="s"
-										variant="outline"
-										disabled={pending}
-										onClick={() => {
-											dispatch({ type: "clearActionError" });
-											onTrustProject();
-										}}
-									>
-										{t("issues.trustAction")}
-									</Button>
-								)}
-								{onOpenIssue && (
-									<Button
-										size="s"
-										variant="ghost"
-										disabled={pending}
-										onClick={() => {
-											dispatch({ type: "clearActionError" });
-											void Promise.resolve()
-												.then(() => onOpenIssue(issue.reference))
-												.catch(() => dispatch({ type: "actionFailed", error: "open" }));
-										}}
-									>
-										{t("issues.open")}
-									</Button>
-								)}
-							</article>
-						))}
-				</section>
-			))}
+										{issue.labels.length > 0 && (
+											<p className="break-words text-text-muted">{issue.labels.join(" · ")}</p>
+										)}
+										{onOpenIssue && (
+											<Button
+												size="s"
+												variant="ghost"
+												disabled={pending}
+												onClick={() => {
+													dispatch({ type: "clearActionError" });
+													void Promise.resolve()
+														.then(() => onOpenIssue(issue.reference))
+														.catch(() => dispatch({ type: "actionFailed", error: "open" }));
+												}}
+											>
+												{t("issues.open")}
+											</Button>
+										)}
+									</article>
+								);
+							})}
+					</section>
+				))}
 		</div>
 	);
 }

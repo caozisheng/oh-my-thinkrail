@@ -120,6 +120,68 @@ function renderIssues(
 	return renderToStaticMarkup(createElement(IssuesPanel, full));
 }
 
+test("untrusted connection succeeds without listing Issue content", async () => {
+	let lists = 0;
+	const result = await loadIssueSnapshot({
+		connection: async () => connected,
+		connect: async () => connected,
+		trusted: false,
+		list: async () => {
+			lists++;
+			return { issues: [summary], fetchedAt: "" };
+		},
+	});
+	expect(result).toEqual({ connection: connected, issues: [], error: null });
+	expect(lists).toBe(0);
+});
+
+test("only explicit operation contention adds a lock beside the title", () => {
+	for (const [view, locked] of [
+		[{ projectIds: [], locked: false, blocked: true }, true],
+		[{ projectIds: [], locked: true }, false],
+		["error", false],
+	] as const) {
+		const html = renderToStaticMarkup(
+			createElement(IssuesPanel, {
+				connection: connected,
+				issues: [summary],
+				pending: false,
+				authSupported: true,
+				githubSupported: true,
+				capabilities: capable,
+				onConnect: async (): Promise<ConnectResult> => ({ ok: true }),
+				onDisconnect: async () => {},
+				onRefresh: () => {},
+				repositoriesFor: () => (view === "error" ? view : { ...view, projectIds: [] }),
+			}),
+		);
+		expect(html.includes('data-testid="issue-lock"')).toBe(locked);
+		if (locked)
+			expect(html.indexOf('data-testid="issue-lock"')).toBeGreaterThan(html.indexOf(summary.title));
+	}
+});
+
+test("connected untrusted panel has one trust entry and hides stale Issue content", () => {
+	const html = renderToStaticMarkup(
+		createElement(IssuesPanel, {
+			connection: connected,
+			issues: [summary],
+			pending: false,
+			authSupported: true,
+			githubSupported: true,
+			capabilities: { ...capable, trusted: false },
+			onConnect: async (): Promise<ConnectResult> => ({ ok: true }),
+			onDisconnect: async () => {},
+			onRefresh: () => {},
+			onTrustProject: async () => {},
+		}),
+	);
+	expect(html).not.toContain(summary.title);
+	expect(html).toContain('data-testid="issues-trust"');
+	expect(html.split(text("issues.trustAction"))).toHaveLength(2);
+	expect(html).toContain('data-testid="issues-reconnect"');
+});
+
 function renderForm(
 	props: {
 		connection?: IssueConnection | null;

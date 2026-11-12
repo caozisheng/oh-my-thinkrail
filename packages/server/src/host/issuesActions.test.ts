@@ -242,6 +242,40 @@ function fixture(provider: "gitlab" | "github" = "gitlab") {
 	};
 }
 
+test("rejected repository selection releases its fence and permits a later read and save", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{
+			id: "api",
+			name: "api",
+			slug: "api",
+			path: join(f.dir, "api"),
+			lastOpened: 1,
+			trusted: false,
+		},
+	]);
+	await expect(f.host.setRepositories({ ...f.target, projectIds: ["api"] })).rejects.toThrow();
+	expect(
+		readdirSync(join(f.dir, "issue-workspaces")).filter((name) => name.endsWith(".lock")),
+	).toHaveLength(0);
+	expect(await f.host.repositories(f.target)).toEqual({ projectIds: [], locked: false });
+	setProjectTrust("api", true);
+	expect(await f.host.setRepositories({ ...f.target, projectIds: ["api"] })).toEqual({
+		projectIds: ["api"],
+		locked: false,
+	});
+	setProjectTrust("api", false);
+	await expect(f.host.repositories(f.target)).rejects.toThrow();
+	expect(
+		readdirSync(join(f.dir, "issue-workspaces")).filter((name) => name.endsWith(".lock")),
+	).toHaveLength(0);
+	setProjectTrust("api", true);
+	expect(await f.host.repositories(f.target)).toEqual({ projectIds: ["api"], locked: false });
+	expect(f.created).toBe(0);
+});
+
 test("actions validate exact envelopes before connection, filesystem or session side effects", async () => {
 	const f = fixture();
 	for (const action of [
