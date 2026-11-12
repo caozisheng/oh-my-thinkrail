@@ -479,7 +479,11 @@ export function IssuesTool({
 				key={`${identity}:${active?.connection?.connected === true}`}
 				previewSupported={previewSupported}
 				preview={activePreview}
-				initialDisclosure={disclosure}
+				initialDisclosure={
+					loadedDisclosureKey.current === disclosureIdentity
+						? disclosure
+						: expandedIssueDisclosure()
+				}
 				onDisclosureChange={(value) => {
 					setDisclosure(value);
 					if (disclosureIdentity && loadedDisclosureKey.current === disclosureIdentity)
