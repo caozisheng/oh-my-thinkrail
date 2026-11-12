@@ -4,7 +4,11 @@ import type { IssueRepositories, IssueSummary, Project } from "@thinkrail/contra
 import { TooltipProvider } from "@thinkrail/ui/tooltip";
 import { renderToStaticMarkup } from "react-dom/server";
 import { selectRepoProjects } from "../store/selectors";
-import { IssueRepositoriesControl } from "./IssueRepositoriesControl";
+import {
+	IssueRepositoriesControl,
+	IssueRepositoriesPanel,
+	type IssueRepositoriesView,
+} from "./IssueRepositoriesControl";
 
 /** `reference.projectId` is the remote id; the local primary project is identified separately. */
 const issue: IssueSummary = {
@@ -26,7 +30,7 @@ const projects = [
 	{ id: "api-local", name: "backend" },
 ];
 
-function render(view: IssueRepositories | "loading" | "error" | undefined, disabled = false) {
+function render(view: IssueRepositoriesView | undefined, disabled = false) {
 	return renderToStaticMarkup(
 		<TooltipProvider>
 			<IssueRepositoriesControl
@@ -72,6 +76,36 @@ test("a locked selection renders its reason instead of a stale candidate list", 
 	expect(markup).not.toContain("backend");
 });
 
+function panel(view: IssueRepositories, join: boolean) {
+	return renderToStaticMarkup(
+		<IssueRepositoriesPanel
+			candidates={projects.filter((project) => project.id !== primaryProjectId)}
+			view={view}
+			onToggle={() => {}}
+			{...(join
+				? {
+						onJoin: async () => null,
+						onCleanup: async () => ({ kind: "cleaned", count: 0 }) as const,
+					}
+				: {})}
+		/>,
+	);
+}
+
+test("a running implementation offers the other repositories to join and a cleanup", () => {
+	const joinable = panel({ projectIds: [], locked: true }, true);
+	expect(joinable).toContain("backend");
+	expect(joinable).not.toContain('data-testid="issue-repositories-locked"');
+	expect(joinable).not.toContain('data-testid="issue-repositories-cleanup"');
+	const joined = panel({ projectIds: ["api-local"], locked: true }, true);
+	expect(joined).toContain('data-joined="true"');
+	expect(joined).toContain('data-testid="issue-repositories-cleanup"');
+	// An older host keeps the fixed selection and its reason.
+	const fixed = panel({ projectIds: ["api-local"], locked: true }, false);
+	expect(fixed).toContain('data-testid="issue-repositories-locked"');
+	expect(fixed).not.toContain("backend");
+});
+
 test("Issue repository choices use the repository selector and exclude the Chats container", () => {
 	const projects: Project[] = [
 		{ id: primaryProjectId, name: "frontend", path: "/frontend", slug: "frontend", lastOpened: 1 },
@@ -91,4 +125,12 @@ test("Issue repository choices use the repository selector and exclude the Chats
 	const source = readFileSync(new URL("./IssuesTool.tsx", import.meta.url), "utf8");
 	expect(source).toContain("useAppStore(useShallow(selectRepoProjects))");
 	expect(source).toContain("repositoryProjects={projects}");
+});
+
+test("pending and failed refreshes keep the last confirmed linked indicator", () => {
+	for (const flags of [{ pending: true }, { failed: true }]) {
+		expect(render({ projectIds: ["api-local"], locked: false, ...flags })).toContain(
+			'data-variant="soft-primary"',
+		);
+	}
 });

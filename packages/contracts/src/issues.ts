@@ -238,6 +238,22 @@ export interface IssueRepositories {
 	projectIds: string[];
 	locked: boolean;
 }
+/** Join one more repository to an Issue (v126); after implementation starts this is add-only. */
+export interface IssueRepositoryJoinInput extends IssueTarget {
+	repositoryProjectId: string;
+}
+/** The joined repositories after cleanup plus the ids it removed (unchanged members only). */
+export interface IssueRepositoriesCleanup extends IssueRepositories {
+	removed: string[];
+}
+export function isIssueRepositoryJoinInput(value: unknown): value is IssueRepositoryJoinInput {
+	return (
+		exact(value, ["projectId", "reference", "repositoryProjectId"]) &&
+		actionTarget(value) &&
+		localProjectIds([value.repositoryProjectId]) &&
+		value.repositoryProjectId !== value.projectId
+	);
+}
 export function isIssueRepositories(value: unknown): value is IssueRepositories {
 	return (
 		exact(value, ["projectIds", "locked"]) &&

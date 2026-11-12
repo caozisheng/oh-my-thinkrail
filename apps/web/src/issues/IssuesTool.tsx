@@ -16,9 +16,9 @@ import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
 import { selectRepoProjects, useAppStore } from "../store";
-import { getTransport } from "../transport";
+import { getTransport, wsErrorCode } from "../transport";
 import type { IssuePreview } from "./IssueBody";
-import type { IssueRepositoriesView } from "./IssueRepositoriesControl";
+import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
 import { IssuesPanel } from "./IssuesPanel";
 import {
 	type ConnectResult,
@@ -41,9 +41,11 @@ import {
 	supportsIssueGithub,
 	supportsIssueImplementation,
 	supportsIssueRepositories,
+	supportsIssueRepositoryJoin,
 	supportsIssueSessionStartup,
 	supportsIssues,
 } from "./model";
+import { loadIssueRepositories } from "./repositoryReads";
 
 type SnapshotPatch = Partial<Omit<IssueToolSnapshot, "identity">>;
 
@@ -66,6 +68,9 @@ async function readIssueContent(
 		return null;
 	}
 }
+
+/** A join or cleanup may fetch each repository first and create or remove worktrees. */
+const REPOSITORY_JOIN_TIMEOUT_MS = 120_000;
 
 export function IssuesTool({
 	projectId,
@@ -91,6 +96,7 @@ export function IssuesTool({
 	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
 	const projects = useAppStore(useShallow(selectRepoProjects));
 	const repositoriesSupported = supportsIssueRepositories(version);
+	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
 		() => ({
 			actionsSupported: supportsIssueActions(version),
@@ -140,6 +146,53 @@ export function IssuesTool({
 		[identity],
 	);
 
+	const [repositories, setRepositories] = useState<Record<string, IssueRepositoriesView>>({});
+	const repositorySequences = useRef(new Map<string, number>());
+	const repositoryKey = useCallback(
+		(issue: IssueSummary) => `${identity}:${issueKey(issue)}`,
+		[identity],
+	);
+	const loadRepositories = useCallback(
+		async (issues: readonly IssueSummary[], current: () => boolean) => {
+			if (!repositoriesSupported || status !== "connected") return;
+			const sequences = new Map<string, number>();
+			for (const issue of issues) {
+				const key = repositoryKey(issue);
+				const sequence = (repositorySequences.current.get(key) ?? 0) + 1;
+				repositorySequences.current.set(key, sequence);
+				sequences.set(key, sequence);
+			}
+			setRepositories((state) => {
+				const next = { ...state };
+				for (const key of sequences.keys()) {
+					const saved = next[key];
+					next[key] =
+						typeof saved === "object" ? { ...saved, pending: true, failed: false } : "loading";
+				}
+				return next;
+			});
+			await loadIssueRepositories(
+				issues,
+				(issue) =>
+					getTransport().request("issues.repositories", { projectId, reference: issue.reference }),
+				current,
+				(issue, value) => {
+					const key = repositoryKey(issue);
+					if (repositorySequences.current.get(key) !== sequences.get(key)) return;
+					setRepositories((state) => {
+						const saved = state[key];
+						const next =
+							value === "error" && typeof saved === "object"
+								? { ...saved, pending: false, failed: true }
+								: value;
+						return { ...state, [key]: next };
+					});
+				},
+			);
+		},
+		[projectId, repositoriesSupported, status, repositoryKey],
+	);
+
 	const refresh = useCallback(
 		async (input?: IssueConnectionInput): Promise<ConnectResult> => {
 			if (!supported || status !== "connected") return { ok: false, error: "connect" };
@@ -163,9 +216,10 @@ export function IssuesTool({
 			);
 			if (!result || !current()) return { ok: false, error: "connect" };
 			setSnapshot((previous) => issueSnapshotAfterLoad(previous, identity, result));
+			if (!result.error) void loadRepositories(result.issues, current);
 			return result.error === "connect" ? { ok: false, error: "connect" } : { ok: true };
 		},
-		[identity, projectId, status, supported, update, clearPreview],
+		[identity, projectId, status, supported, update, clearPreview, loadRepositories],
 	);
 
 	const disconnect = useCallback(async () => {
@@ -253,32 +307,22 @@ export function IssuesTool({
 		[projectId, refresh],
 	);
 
-	const [repositories, setRepositories] = useState<Record<string, IssueRepositoriesView>>({});
-	const loadRepositories = useCallback(
-		async (issue: IssueSummary) => {
-			if (!repositoriesSupported || status !== "connected") return;
-			const key = issueKey(issue);
-			setRepositories((current) => ({ ...current, [key]: "loading" }));
-			try {
-				const value = await getTransport().request("issues.repositories", {
-					projectId,
-					reference: issue.reference,
-				});
-				setRepositories((current) => ({ ...current, [key]: value }));
-			} catch {
-				setRepositories((current) => ({ ...current, [key]: "error" }));
-			}
-		},
-		[projectId, repositoriesSupported, status],
-	);
 	const toggleRepository = useCallback(
 		async (issue: IssueSummary, projectIdToToggle: string): Promise<IssueRepositories | null> => {
-			const key = issueKey(issue);
+			const key = repositoryKey(issue);
 			const current = repositories[key];
-			if (!current || typeof current !== "object" || current.locked) return null;
+			if (
+				!current ||
+				typeof current !== "object" ||
+				current.locked ||
+				current.pending ||
+				current.failed
+			)
+				return null;
 			const next = current.projectIds.includes(projectIdToToggle)
 				? current.projectIds.filter((id) => id !== projectIdToToggle)
 				: [...current.projectIds, projectIdToToggle];
+			repositorySequences.current.set(key, (repositorySequences.current.get(key) ?? 0) + 1);
 			try {
 				const saved = await getTransport().request("issues.setRepositories", {
 					projectId,
@@ -292,7 +336,53 @@ export function IssuesTool({
 				return null;
 			}
 		},
-		[projectId, repositories],
+		[projectId, repositories, repositoryKey],
+	);
+
+	const joinRepository = useCallback(
+		async (
+			issue: IssueSummary,
+			repositoryProjectId: string,
+		): Promise<IssueRepositoriesNotice | null> => {
+			const key = repositoryKey(issue);
+			repositorySequences.current.set(key, (repositorySequences.current.get(key) ?? 0) + 1);
+			try {
+				const saved = await getTransport().request(
+					"issues.addRepository",
+					{ projectId, reference: issue.reference, repositoryProjectId },
+					{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
+				);
+				setRepositories((state) => ({ ...state, [key]: saved }));
+				return null;
+			} catch (error) {
+				// Only a host refusal (nesting, limit) carries a reason worth showing beside the key.
+				return wsErrorCode(error) === "ISSUE_REPOSITORY_REFUSED" && error instanceof Error
+					? { kind: "joinFailed", detail: error.message }
+					: { kind: "joinFailed" };
+			}
+		},
+		[projectId, repositoryKey],
+	);
+	const cleanupRepositories = useCallback(
+		async (issue: IssueSummary): Promise<IssueRepositoriesNotice> => {
+			const key = repositoryKey(issue);
+			repositorySequences.current.set(key, (repositorySequences.current.get(key) ?? 0) + 1);
+			try {
+				const result = await getTransport().request(
+					"issues.cleanupRepositories",
+					{ projectId, reference: issue.reference },
+					{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
+				);
+				setRepositories((state) => ({
+					...state,
+					[key]: { projectIds: result.projectIds, locked: result.locked },
+				}));
+				return { kind: "cleaned", count: result.removed.length };
+			} catch {
+				return { kind: "cleanupFailed" };
+			}
+		},
+		[projectId, repositoryKey],
 	);
 
 	const active = snapshot?.identity === identity ? snapshot : null;
@@ -335,11 +425,14 @@ export function IssuesTool({
 				repositoryProjects={projects}
 				primaryProjectId={projectId}
 				repositoriesSupported={repositoriesSupported}
-				repositoriesFor={(issue) => repositories[issueKey(issue)]}
+				repositoriesFor={(issue) => repositories[repositoryKey(issue)]}
 				onLoadRepositories={(issue) => {
-					void loadRepositories(issue);
+					const sequence = requestSequence.current;
+					void loadRepositories([issue], () => sequence === requestSequence.current);
 				}}
 				onToggleRepository={toggleRepository}
+				onJoinRepository={joinSupported ? joinRepository : undefined}
+				onCleanupRepositories={joinSupported ? cleanupRepositories : undefined}
 			/>
 		</QuietScrollArea>
 	);

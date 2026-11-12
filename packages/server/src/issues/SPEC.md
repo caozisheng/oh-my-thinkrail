@@ -13,7 +13,7 @@ writes for GitLab CE and GitHub, pure Tomato version/approval validation, and in
 orchestration and an injected workspace/session coordinator. Host composition supplies the connection/list
 wire handlers, metadata persistence and the OS credential-store adapter; a separate concrete host workflow receipt adapter exists
 and is composed by server-only host actions. The exported workspace coordinator has a concrete host persistence
-seam and is composed by server-only host actions. MR/CI authorization and GitHub write workflows are not implemented. See the
+seam and is composed by server-only host actions. Stage publication and draft delivery use independently confirmed host operations; CI and merge authorization remain outside them. See the
 [approved workflow design](../../../../docs/plans/2026-11-04-issues-workflow-design.md).
 
 ## Public surface
@@ -46,6 +46,8 @@ Pagination limits and failures fail the whole read rather than returning partial
 
 `connection`, `connect`, async `disconnect`, and `list` expose the lifecycle; `restore(projectId)` is
 a server-only lazy asynchronous seam, not a wire contract. Host composition supplies both adapters.
+
+`deliveryFor` returns the provider-neutral Issue write and draft-request surface for an exact live binding, checking provider identity as well as instance/project. The barrel exports its `IssueDeliveryRemote`, `IssueRecord` and `IssueMergeRequest` types. It grants no user authorization.
 
 `remoteFor(localProjectId, reference)` is a synchronous server-only capability lookup, not an RPC
 or workflow action. It validates the full reference and requires a live client plus exact canonical
@@ -118,6 +120,21 @@ permission to merge. Provider input/read types are exported through the barrel.
 
 ## Provider write and MR contract
 
+`IssueDeliveryRemote extends IssueRemote` adds partial issue updates, exact-source-branch MR/PR
+listing and MR/PR creation using the shared `IssueMergeRequest` model. `IssueWorkflowRemote`
+extends that delivery port with GitLab-only evidence, merge and closure operations. `GitHubClient`
+exposes the delivery port; `remoteFor` deliberately remains the read/comment port. These types grant
+no workflow authorization. GitHub has no merge or closure primitive.
+
+GitHub updates use PATCH with only supplied fields (`description` maps to `body`), so label-only
+writes never replace the description. PR operations first read verified repository identity/path;
+all-state lists use `head=<verified owner>:<exact source branch>` and bounded complete pagination
+whose next links must preserve the endpoint and filters. Returned PRs must match the verified source
+and target repository, exact source branch (and requested target on creation), and canonical
+`https://github.com/<verified path>/pull/<number>` URL. Fork/deleted-repository heads fail closed.
+Absent optional draft/merge metadata remains unknown; pipelines and squash SHA are unknown.
+Malformed delivery responses fail with sanitized `RESOURCE_UNAVAILABLE`, without retry.
+
 - `updateIssue(iid, { description?, labels? })` replaces only supplied fields; an empty label array
   clears labels. Labels cannot contain commas because GitLab receives a comma-separated string.
   `addNote(iid, body)` publishes a note; `closeIssue(iid)` sends the close state event.
@@ -139,7 +156,10 @@ permission to merge. Provider input/read types are exported through the barrel.
   fetch/body deadlines, byte caps, token-echo rejection and sanitized errors as the provider writes;
   they are single-attempt and never expose a token accessor. These facts are primitives for future
   fail-closed delivery policy: they do not authorize merge or implement MR/CI orchestration.
-- `createMergeRequest({ sourceBranch, targetBranch, title, description })` creates a provider MR.
+- `createMergeRequest({ sourceBranch, targetBranch, title, description, draft? })` creates a provider MR.
+  GitHub sends the native boolean `draft` flag when supplied and validates the returned flag;
+  GitLab uses the CE-compatible `Draft:` title prefix for `draft: true`, preserving existing
+  `Draft:`/`WIP:` prefixes. Omission preserves ordinary creation behavior.
   `mergeMergeRequest(iid, sha)` sends a full SHA as GitLab's merge precondition; it does not schedule
   auto-merge, authorize the workflow, prove approval/CI, or close the issue itself.
 - Writes are single-attempt with bounded response reads and no automatic retries. Non-2xx responses,
@@ -225,6 +245,26 @@ version, approval and pending-operation metadata, never credentials or client ob
 - These checks do not provide remote compare-and-swap: GitLab can still change after a read. No merge,
   push, MR or CI orchestration is supplied or authorized by these local receipts.
 
+## Confirmed stage and delivery operations
+
+The host binds a complete sanitized report and fresh Issue revision to an immutable session operation.
+Only the exact questionnaire and its submitted `Looks right` receipt authorize execution. Skip, discuss,
+custom text, superseding messages and changed previews grant no authority. Durable intents precede any
+mutation; completed operations return the same receipt, while unresolved ones stop without replay.
+Design confirmation accepts only an absent workflow label or `workflow::backlog`, publishes the report,
+and moves that label to `workflow::in-progress`. Implementation confirmation accepts only
+`workflow::in-progress`, binds a completed design and each selected clean checkout SHA, then moves
+the label to `workflow::in-review`. This source-to-target transition is identical on GitHub and GitLab.
+Comment and resulting labels are re-read; unrelated labels and the Issue body are preserved. Unknown,
+conflicting, closed or concurrent state is refused. This new confirmation path does not use the legacy
+GitLab approval labels or grant permission to start another stage.
+
+Delivery is separately confirmed per repository, fixing the commit, authenticated repository identity,
+canonical push URL, source/target branches and complete draft text. Non-force push uses the exact SHA;
+one matching existing PR/MR is reused without editing. Otherwise only a Draft PR/MR is created.
+Automatic commits, force push, merge and Issue closure are outside this surface. Post-write uncertainty
+retains its intent and blocks replay for reconciliation.
+
 ## Workspace/session coordination
 
 Repository selection is stored on the provider-qualified workspace ownership record as optional
@@ -238,8 +278,53 @@ ordered auxiliary project ids at preparation start and stores each pending/compl
 separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
 number and a stable digest of the full primary binding; reserved branches remain unpredictable.
 Every auxiliary member is verified before a primary session may be created or reused. Missing completed
-members stop instead of being recreated; partial preparation retains successful worktrees. Host wiring
+members stop instead of being recreated; partial preparation retains successful worktrees.
+
+**Project groups.** Nothing is selected by default: an Issue starts with only its primary worktree, and
+the other repositories it may touch are offered as read-only references (below) that join on demand.
+Optional `layout(projectIds)` may return `{ root, paths }` — a shared folder and the `/`-relative place
+of every participant **plus every other open group member found where it belongs** — when preparation
+freezes the members (even with an empty selection, so later joins share the slot); it is stored on the
+record as `layout`, its places are never moved, and a join only appends the place of a member imported
+after the freeze. A project outside the layout (a non-group project, or a member whose place drifted)
+joins with an ordinary per-repository path. A record without a layout and without selection keeps the
+exact single-repository shape (no `members`). With a layout every checkout, primary included, lives at
+`<root>/.worktrees/<slot>/<place>`, so repositories keep their relative layout. The slot name is
+uniform — `issue-<IID>-<binding digest>` whichever member is primary (no member is special for sitting at
+the group folder; the folder is usually a plain non-Git folder) — and is frozen into `layout.slot` with the
+layout. A record frozen before `slot` existed keeps its original name (`issue-<IID>` when its primary sat at
+the group folder itself, else the same digest form). Creation runs shallow-first, so an outer checkout exists before a
+nested one is placed inside it, and the `layoutRoot` is passed to `createWorkspaceAtPath`. Lookups
+(`ownedImplementation`, `contexts`) derive paths from the frozen layout. The session cwd stays the
+primary's own worktree — never a group folder no workspace owns — so one cwd keeps one identity. Host wiring
 must supply project-aware lookup ports before exposing this coordinator capability to clients.
+
+**On-demand joins.** `addRepository(reference, id)` before preparation appends to the saved selection;
+after it, the add-only join reserves the member (same pending/completed ownership, appended to both
+`members` and `repositoryProjectIds`) and creates its worktree at once in the frozen slot. A member whose
+place would contain an already joined checkout (an ancestor joined after its descendant — including a
+repository at the group folder itself, which is a member only when that folder is a repository) is refused with `ISSUE_REPOSITORY_REFUSED` — Git cannot add a worktree over a non-empty folder —
+as is one whose place a joined checkout already tracks, and a 33rd member; an empty folder left at the
+place is cleared first. A refusal passes the coordinator's and the launch fence's catch-alls unchanged
+(and the fence is released), so it never leaves the Issue needing reconciliation. Every new **member**
+worktree — initial or joined — branches from the optional `baseRef(id)` port (a freshly fetched remote
+default branch, or undefined for local HEAD); the primary uses it only when the record has a layout, so a
+non-group single repository keeps branching from its local HEAD. The optional `headCommit` port records
+the started commit as the member's `base`.
+
+**References.** The optional `references()` port lists the other repositories' main checkouts;
+`contexts` appends every one that is not joined (nor mid-removal) with `role: "reference"`, after the
+primary and joined entries, in both stages. References are readable context only: they are not
+editable session members, and the startup prompt names `issue_join_repository` as the way to ask.
+
+**Cleanup.** `cleanupRepositories(reference)` walks joined members deepest first and removes one only
+when it has a recorded `base`, no other joined checkout inside it, a verified worktree, and the
+`memberUnchanged` port says it has no commit beyond `base` and no tracked or untracked change. It first
+persists `removing: true`, then calls `removeMember` (which re-checks, archives and deletes the
+unchanged reserved branch), then drops the member and the empty folders it left inside the slot.
+`implementation`, `addRepository` and `cleanupRepositories` first settle any recorded removal —
+finishing it, or clearing the mark when the member changed meanwhile — so a crash mid-removal is
+recoverable. The primary is never removed. A removed member reads as a reference again and can rejoin.
 
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second
 store or runtime. It reserves a provider-qualified ownership record before creating exactly
@@ -278,7 +363,7 @@ factory and association/context types are exported through the Issues barrel for
 `BoundIssueSession` records `sessionId`, `workspaceId`, local `projectId`, provider-qualified
 `reference`, explicit `stage: "design" | "implementation"`, and effective `locale`. It contains no
 client, binding, credential or approval state. `IssueStartupContext` optionally includes host-projected repository entries with local project/workspace
-ids, display name, actual path and primary/associated role. They are data, not executable configuration;
+ids, display name, actual path and primary/associated/reference role. They are data, not executable configuration;
 the prompt requires per-repository instruction lookup, forbids combining project configuration, and
 states that membership is not a shell sandbox or proof that cross-repository builds work.
 `contexts(reference, stage)` verifies source Default directories for design and every recorded completed
@@ -295,8 +380,13 @@ response locale, and instructs reading the entire context. Design delegates to t
 brainstorming process without implementation; implementation uses existing plans/TODOs, verification
 and review without a design approval gate. Both require confirmed `issue_record_summary` publication
 to the bound Issue comments before conclusions or yielding, including blocked/partial work, with key
-decisions, results, validation and next steps only. Missing/uncertain context or publication blocks
-success; transcripts, internal reasoning, raw tool output and secrets must not be published.
+decisions, results, validation and next steps only. Failed context reads, mismatched Issue identity,
+and failed/uncertain publication block success. The prompt adds no agent-side completeness gate;
+[[submodule-tomato-issue-workflow]] owns how the agent uses returned context and relevant references.
+The startup reminder requires full referenced design/plan artifacts with ordered, confirmed parts;
+[[submodule-tomato-issue-workflow]] owns the detailed publication rules. This is an agent instruction,
+not host file access or completeness enforcement. Transcripts, internal reasoning, raw tool output
+and secrets must not be published.
 
 The reference uses the shared strict action identity guard. Links must be canonical credential-free
 HTTP(S), on that instance beneath its base path, ending in `/<project path>/-/issues/<bound IID>`;

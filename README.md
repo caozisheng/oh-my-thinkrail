@@ -32,14 +32,34 @@ token. It includes:
 - **Linked repositories**: an issue can name other open projects it also touches. Design reads their
   own checkouts; implementation then prepares a worktree in each of those repositories under its own
   `.worktrees/`, starts a single session only when every one is ready, and tags each worktree in the
-  project rail with the issue number (`#23`, and `#23(master)` for the issue's primary worktree once
-  it has linked repositories). Changes, review and commits stay attributed per repository; commits
+  project rail with the issue number (`#23`, and `#23(master)` for the issue's primary worktree).
+  Single-repository workspaces show no issue tag. The Issues list reads linked-repository indicators
+  automatically on initial load and refresh. Changes, review and commits stay attributed per repository; commits
   across repositories are not atomic, so a failure keeps the successful ones and is reported. Build
   and integration paths between the worktrees are the agent's normal reviewed work, not automatic.
+- **Project groups**: "Import folder as project group…" scans a folder (the folder itself may be a
+  repository or not) for nested Git repositories up to six levels deep, skipping hidden, dependency
+  and build folders and never following symlinks, lets you untick any, and opens the rest as projects.
+  The outer folder is usually a plain folder (as with Google `repo` or `west`) and never has to be a
+  repository. The project rail lists the members flat under the group header, sorted and labelled by
+  relative path (a folder that is itself a repository is just another member, `.`). Clicking the
+  group name opens the group home: the group's Issues as a collapsed-by-default list (each row shows
+  how many repositories the Issue touches, how many changed, its commits and uncommitted files; expand
+  it for every repository's Issue branch, commits since its start, commits behind the default branch
+  and uncommitted files), a warning only when a repository's main directory has uncommitted changes or
+  is far behind, and Rescan, Fetch all and Remove
+  group (which only ungroups or closes the projects; nothing on disk changes). An Issue started from a
+  group member begins with only its own repository; the other members are read-only references until
+  you or the agent (with your confirmation) join one, which creates its worktree from a fresh
+  `origin/<default>` in the same `.worktrees/issue-<n>…/` folder that mirrors the original layout, so
+  relative paths between repositories keep working. Unchanged joined repositories can be cleaned up in
+  one step. Submodules are not imported as separate repositories.
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.
   The skill requires confirmed summary publication before handoff; automatic turn-end posting is not enforced.
+  Referenced design documents and implementation plans are included in full as Issue comments; long documents
+  use ordered, individually confirmed parts. Background specs are not attached merely because they were read.
   If publication is uncertain, reuse the original operation ID and exact summary with
   `issue_record_summary`'s `recovery: "reconcile"` to recover a unique matching published comment.
   Both recovery modes require explicit **human confirmation**; selecting the recovery enum represents
@@ -55,15 +75,21 @@ and Issue closure remain in the tracker. Automated push/MR/CI/merge delivery is 
 
 - **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. You can also attach existing git worktrees or explicitly work in the project folder.
 
-Reads, listing, Issue sessions and summary publication work on both providers with identical issue and
-label presentation. Approval receipts, design/implementation publication and merge stay GitLab-only for
-now and are refused on GitHub; GitHub Enterprise Server and complete cross-machine handoffs remain
-project goals. Existing upstream GitHub pull-request features are separate from Issues integration.
+Issue listing, confirmed stage reports and per-repository Draft PR/MR delivery are available on GitHub
+and GitLab with the same label transitions. Provider-specific approval receipts and merge remain outside
+this confirmation workflow. GitHub Enterprise Server and complete cross-machine handoffs remain project
+goals. Existing upstream GitHub pull-request features are separate from Issues integration.
 
 ## GitHub and GitLab Issues
 
 Both providers support listing Issues, reading their descriptions and comments, starting **Design**
 and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
+After each stage, a separate question card confirms the complete report before it is published. Design
+moves an Issue with no workflow label or `workflow::backlog` to `workflow::in-progress`; implementation
+moves `workflow::in-progress` to `workflow::in-review`, preserving unrelated labels. Delivery is another
+separate confirmation per repository and creates only Draft PRs/MRs after a non-force push. Delivery
+reviews the current clean commit and PR/MR content directly; it does not require historical design or
+implementation stage-confirmation records.
 With host protocol v114 or newer, the existing eye-button preview shows the complete Issue:
 its description followed by all ordinary comments, authors, timestamps and Markdown attachments.
 The title remains an external link, and the preview keeps its original expand/collapse layout.
@@ -86,9 +112,8 @@ To connect, enter a **Repository address** and a personal access token in the Is
   association before switching trackers in the UI.
 
 The connection token remains in the host OS credential vault, never in agent prompts. GitHub Enterprise
-Server and SSH/SCP repository addresses are not supported by this association flow. Approval and
-publication workflow APIs remain GitLab-only as described above; ordinary Design/Implement startup does
-not require those APIs on either provider.
+Server and SSH/SCP repository addresses are not supported by this association flow. Stage confirmation
+and draft delivery require the current host capability; older hosts do not perform these writes.
 
 ## Inherited IDE capabilities
 

@@ -24,6 +24,7 @@ export type {
 	GitLabProject,
 } from "./client";
 export { createGitLabClient } from "./client";
+export type { IssueDeliveryRemote, IssueMergeRequest, IssueRecord } from "./remote";
 export type {
 	IssueBinding,
 	IssueBindingPersistence,
@@ -43,5 +44,10 @@ export type {
 	WorkflowRemote,
 } from "./workflow";
 export { createIssueWorkflow } from "./workflow";
-export type { IssueWorkspaceOptions, IssueWorkspaceRecord, WorkspaceHandle } from "./workspace";
+export type {
+	IssueWorkspaceLayout,
+	IssueWorkspaceOptions,
+	IssueWorkspaceRecord,
+	WorkspaceHandle,
+} from "./workspace";
 export { createIssueWorkspaceCoordinator } from "./workspace";

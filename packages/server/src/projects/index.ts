@@ -5,6 +5,15 @@ export {
 	startProjectClone,
 } from "./clone";
 export {
+	importProjectGroup,
+	PROJECT_GROUP_SCAN_DEPTH,
+	type ProjectGroupScanOptions,
+	projectGroupMembers,
+	projectGroupProjects,
+	removeProjectGroup,
+	scanProjectGroup,
+} from "./groups";
+export {
 	acknowledgeProjectSkills,
 	approveProjectMcpServer,
 	assertOutsideChatsRoot,
@@ -22,6 +31,7 @@ export {
 	revokeProjectMcpTool,
 	setPiTrustSeed,
 	setProjectGroupEnabled,
+	setProjectGroupMembership,
 	setProjectMcpOverride,
 	setProjectPathGuard,
 	setProjectPublisher,

@@ -606,7 +606,15 @@ re-opened transcripts provider-valid.
       ([[submodule-server-extensions]], registered in [[pi-compatibility]]). That keeps the structured
       card and its answer channel paired: an installed terminal questionnaire must not replace execution
       with `ui.input` while the web client renders our card. Its other tools, commands and hooks stay
-      available.
+      available. `isTrustedQuestionnaireReceipt` validates a host-trusted Issue confirmation transcript:
+      exactly one executable `ask_user_question` call must match the host's expected arguments deeply, and
+      exactly one successful native tool result or parsed custom tool response must contain the sole
+      non-cancelled `{questionIndex: 0, question, kind: "option", answer: "Looks right"}` answer with no
+      additions (notes may only be absent or empty). Duplicate tool-call ids, altered arguments,
+      error results, and a user message before the receipt invalidate it; later user messages do not.
+      Pending acknowledgements are not receipts, but may precede a valid restart custom response.
+      Restart response content includes the host-correlated opaque toolCallId for model callers of
+      Issue execution; this informational text never replaces structured receipt validation.
 
     An eligible live call is **sequential and blocking**: after validation its `execute` waits for
     `session.respondToTool`, then returns the person's real response through the tool's own envelope as
@@ -945,7 +953,11 @@ re-opened transcripts provider-valid.
     composes `agent` + `workspaces`.
     The bound Issue tools (`issueTools.ts`) are always registered for top-level sessions by the named
     `issue-tools` inline extension in `sharedFactories`, shared by source/dev and bundled CLI/desktop
-    loaders, never by the curated child extension set. `issue_context` accepts exactly `{}`;
+    loaders, never by the curated child extension set. `issue_join_repository` accepts exactly
+    `{ projectId }` (a local project id): it asks the host's optional `joinCandidate`, then the user through
+    `ctx.ui.confirm` (refusing without a UI), and only on confirmation calls `joinRepository`; a decline
+    returns `{ joined: false }` with an instruction not to change that repository, and a host
+    `ISSUE_REPOSITORY_REFUSED` passes through with its reason. `issue_context` accepts exactly `{}`;
     `issue_record_summary` accepts `{ operationId, summary, recovery? }`. Both schemas forbid additional
     properties and execute-time validation enforces the same keys. Operation IDs are 1–128 ASCII
     characters, starting with an alphanumeric and otherwise allowing alphanumerics, `.`, `_`, `:`, `-`;
@@ -960,6 +972,14 @@ re-opened transcripts provider-valid.
     failures collapse to a fresh static `RESOURCE_UNAVAILABLE` CodedError, except
     `ISSUE_SUMMARY_RECOVERY_REQUIRED` retains a static actionable message. Neither has a cause, raw message
     or log. Context returns host text, summary returns the host receipt as JSON text and details.
+
+    `issue_prepare_confirmation` freezes a stage report or per-repository delivery preview through the
+    injected host, and `issue_execute_confirmation` supplies only its operation and questionnaire call
+    IDs. These tools are top-level only, use SDK session identity, and do not grant authority through
+    caller assertions. The trusted questionnaire verifier matches exact host arguments against one
+    executable call and one submitted `Looks right` response, including the restart custom-response
+    path. Skip, custom/multi/discuss, nonempty notes and superseding user replies are refused. Pending
+    acknowledgements are not answers. Host composition owns durable one-time consumption and effects.
 
     Summary `recovery` is exactly `reconcile` or `retry-confirmed-unpublished`. Both require explicit
     HUMAN confirmation in tool instructions and the Tomato skill; selecting the enum represents that

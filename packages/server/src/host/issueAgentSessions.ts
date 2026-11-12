@@ -16,7 +16,25 @@ export interface IssueAgentSessionHostOptions {
 	status(sessionId: string, workspaceId: string, cwd: string): Promise<false | "idle" | "busy">;
 	start(sessionId: string, workspaceId: string, cwd: string, prompt: string): Promise<void>;
 	locale(): string;
+	prepareConfirmation?(
+		sessionId: string,
+		input: {
+			operationId: string;
+			report?: string;
+			projectId?: string;
+			title?: string;
+			body?: string;
+			targetBranch?: string;
+		},
+	): Promise<unknown>;
+	executeConfirmation?(
+		sessionId: string,
+		operationId: string,
+		toolCallId: string,
+	): Promise<unknown>;
 	repositories?(target: Target): Promise<readonly IssueRepositoryContext[]>;
+	/** Join one more repository to the bound Issue's running implementation. */
+	join?(target: Target, repositoryProjectId: string): Promise<unknown>;
 }
 
 type Target = Pick<IssueSessionAssociation, "projectId" | "reference" | "stage" | "locale">;
@@ -89,7 +107,46 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 		if (!found) stop();
 		return found;
 	}
+	/** Only an implementation binding may ask, and only for a repository it was shown as `reference`. */
+	async function joinable(sessionId: string, repositoryProjectId: string) {
+		const found = await binding(sessionId);
+		if (found.stage !== "implementation" || !options.repositories || !options.join) stop();
+		const { checked } = await access(found, found);
+		const contexts = await checked(async () => (await options.repositories?.(found)) ?? []);
+		const candidate = contexts.find(
+			(context) => context.projectId === repositoryProjectId && context.role === "reference",
+		);
+		if (!candidate) stop();
+		return { found, checked, candidate };
+	}
 	const tools: IssueToolHost = {
+		async joinCandidate(sessionId, repositoryProjectId) {
+			const { candidate } = await joinable(sessionId, repositoryProjectId);
+			return { projectId: candidate.projectId, name: candidate.name, path: candidate.path };
+		},
+		async joinRepository(sessionId, repositoryProjectId) {
+			const { found, checked } = await joinable(sessionId, repositoryProjectId);
+			await checked(async () => options.join?.(found, repositoryProjectId));
+			const contexts = await checked(async () => (await options.repositories?.(found)) ?? []);
+			const joined = contexts.find(
+				(context) => context.projectId === repositoryProjectId && context.role === "associated",
+			);
+			if (!joined) stop();
+			return {
+				projectId: joined.projectId,
+				name: joined.name,
+				path: joined.path,
+				workspaceId: joined.workspaceId,
+			};
+		},
+		prepareConfirmation: (sessionId, input) => {
+			if (!options.prepareConfirmation) stop();
+			return options.prepareConfirmation(sessionId, input);
+		},
+		executeConfirmation: (sessionId, operationId, toolCallId) => {
+			if (!options.executeConfirmation) stop();
+			return options.executeConfirmation(sessionId, operationId, toolCallId);
+		},
 		async context(sessionId) {
 			const found = await binding(sessionId);
 			const { guard } = await access(found, found);

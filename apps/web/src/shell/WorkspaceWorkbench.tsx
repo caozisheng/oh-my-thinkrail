@@ -3,7 +3,7 @@ import {
 	RiChatNewLine as MessageSquarePlus,
 	RiTerminalBoxLine as SquareTerminal,
 } from "@remixicon/react";
-import type { IssueSessionLaunch, Workspace } from "@thinkrail/contracts";
+import type { IssueSessionLaunch } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { t, useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
@@ -29,7 +29,8 @@ import { chatDisplayName, type LayoutAttention, layoutResourceIdentity } from ".
 import { DiffPane } from "../panels/DiffPane";
 import { FilePane } from "../panels/FilePane";
 import { FilesPanel } from "../panels/FilesPanel";
-import { openChatInTab, startChatInTab } from "../panels/openChat";
+import { openIssueSession } from "../panels/issueSession";
+import { startChatInTab } from "../panels/openChat";
 import { fileComparisonTab, openFileInTab } from "../panels/openTabs";
 import { ProjectTree } from "../panels/ProjectTree";
 import { ReviewPanel, selectActiveReviewedPath } from "../panels/ReviewPanel";
@@ -39,7 +40,6 @@ import { TerminalWorkbenchBody, useTerminalClose } from "../panels/TerminalWorkb
 import { useWorkspaceReview } from "../panels/useWorkspaceReview";
 import { useWorkspaceSpecs } from "../panels/useWorkspaceSpecs";
 import { useLoadWorkspaceTurns } from "../panels/useWorkspaceTurns";
-import { loadProjectWorkspaces } from "../panels/workspaceActions";
 import {
 	createChangesTab,
 	type EditorTab,
@@ -101,37 +101,8 @@ import { useTerminalPlacementReconciliation } from "./terminalReconciliation";
 import { useIdleEditorPreload } from "./useIdleEditorPreload";
 import { WorkspaceChatHistory } from "./WorkspaceChatHistory";
 
-/**
- * Opens a host-launched issue session: refresh this project's workspaces so the new or reused
- * worktree is in the store, activate the route onto it, then land its chat in a tab. The host
- * already created the session; this never creates one, prompts one or writes issue state.
- */
-export async function openIssueSession(
-	projectId: string,
-	launch: IssueSessionLaunch,
-	isCurrent: () => boolean = () => true,
-): Promise<void> {
-	let rows: Workspace[];
-	try {
-		rows = await loadProjectWorkspaces(projectId);
-	} catch (error) {
-		if (!isCurrent()) return;
-		toast.error(t("shell.workbench.issueLaunchFailed"));
-		throw error;
-	}
-	if (!isCurrent()) return;
-	const workspace = rows.find((row) => row.id === launch.workspaceId) ?? {
-		id: launch.workspaceId,
-		projectId,
-	};
-	useAppStore.getState().activateWorkspaceFromRoute(workspace, launch.sessionId);
-	await openChatInTab(launch.workspaceId, launch.sessionId);
-	if (!isCurrent()) return;
-	const opened = (useAppStore.getState().tabsByWorkspace[launch.workspaceId] ?? []).some(
-		(tab) => tab.kind === "chat" && tab.sessionId === launch.sessionId,
-	);
-	if (!opened) throw new Error("Issue chat navigation failed");
-}
+/** Re-exported for callers that open a host-launched Issue session from the workbench. */
+export { openIssueSession };
 
 function PlanSummaryAutoDraft({
 	workspaceId,

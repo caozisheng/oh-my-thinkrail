@@ -117,7 +117,13 @@ export function createAskUserQuestionExtension(
 					if (problem) return textResult(problem, { answers: [], cancelled: true });
 				}
 				const outcome = await ask({ toolCallId, args, signal, ctx });
-				return outcomeResult(outcome, args);
+				const result = outcomeResult(outcome, args);
+				if (outcome.kind === "answered" && !outcome.result.cancelled)
+					result.content.push({
+						type: "text",
+						text: `\ntoolCallId: ${JSON.stringify(toolCallId)}`,
+					});
+				return result;
 			},
 			renderCall: renderAskCall,
 			renderResult: renderAskResult,

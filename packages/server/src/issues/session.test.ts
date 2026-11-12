@@ -32,6 +32,11 @@ function context(): IssueStartupContext {
 	};
 }
 
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error("Missing fixture value");
+	return value;
+}
+
 function payload(prompt: string) {
 	return JSON.parse(
 		prompt
@@ -55,6 +60,42 @@ test("startup projects explicit repository identities without executable configu
 	expect(payload(prompt).repositories).toEqual(repositories);
 	expect(prompt).toContain("not a shell sandbox");
 	expect(prompt).toContain("Do not merge or execute repository configuration");
+});
+
+test("reference repositories are read-only context, joinable only through the join tool in implementation", () => {
+	const repositories = [
+		{
+			projectId: "local",
+			workspaceId: "w",
+			name: "api",
+			path: "/g/.wt/api",
+			role: "primary" as const,
+		},
+		{
+			projectId: "core",
+			workspaceId: "d",
+			name: "core",
+			path: "/g/core",
+			role: "reference" as const,
+		},
+	];
+	const implementation = createIssueStartupPrompt({
+		...context(),
+		stage: "implementation",
+		locale: "en",
+		repositories,
+	});
+	expect(payload(implementation).repositories[1].role).toBe("reference");
+	expect(implementation).toContain("readable for context only");
+	expect(implementation).toContain("issue_join_repository");
+	const design = createIssueStartupPrompt({ ...context(), repositories });
+	expect(design).toContain("readable for context only");
+	expect(design).not.toContain("issue_join_repository");
+	const plain = createIssueStartupPrompt({
+		...context(),
+		repositories: [required(repositories[0])],
+	});
+	expect(plain).not.toContain("readable for context only");
 });
 
 test("design startup is explicit, Chinese, pure and preserves the whole Issue and every comment", () => {
@@ -141,6 +182,57 @@ test("English implementation reuses the existing process without an approval gat
 		"Do not claim success",
 	])
 		expect(prompt).toContain(text);
+});
+
+test("workflow publishes only referenced handoff artifacts with bounded confirmed parts", () => {
+	const skill = readFileSync(
+		join(import.meta.dir, "../../../pi-thinkrail-workflow/skills/tomato-issue-workflow/SKILL.md"),
+		"utf8",
+	);
+	for (const rule of [
+		"both design and implementation",
+		"local design documents and implementation plans",
+		"not background SPECs or READMEs",
+		"one complete read snapshot",
+		"repository, relative path, and SHA-256",
+		"32,000 UTF-8 bytes including all headers",
+		"without splitting a Unicode character",
+		"document identity and part number/total",
+		"distinct operationId for each comment",
+		"confirm its noteId before sending the next",
+		"Do not resend confirmed parts",
+		"Never substitute a path or excerpt",
+		"Never use a new operation ID to bypass uncertainty",
+	])
+		expect(skill).toContain(rule);
+});
+
+test("both startup stages require full referenced artifacts with confirmed ordered parts", () => {
+	for (const stage of ["design", "implementation"] as const) {
+		const prompt = createIssueStartupPrompt({ ...context(), stage });
+		expect(prompt).toContain("referenced local design documents and implementation plans in full");
+		expect(prompt).toContain("ordered parts and confirm each comment");
+	}
+});
+
+test("both stages avoid an agent-side context completeness gate", () => {
+	const skill = readFileSync(
+		join(import.meta.dir, "../../../pi-thinkrail-workflow/skills/tomato-issue-workflow/SKILL.md"),
+		"utf8",
+	);
+	expect(skill).not.toContain("incomplete context, conflicting requirements, or uncertain");
+	expect(skill).toContain(
+		"Do not require completeness markers, comment totals, or pagination receipts",
+	);
+	expect(skill).toContain("multiple comments or Issues");
+	for (const stage of ["design", "implementation"] as const) {
+		const prompt = createIssueStartupPrompt({ ...context(), stage });
+		expect(prompt).not.toContain(
+			"Missing, incomplete, conflicting or mismatched context blocks work",
+		);
+		expect(prompt).toContain("Do not add a context completeness gate");
+		expect(prompt).toContain("clarify only gaps or conflicts that affect the requested work");
+	}
 });
 
 test("other effective BCP-47 locales get explicit response instructions", () => {

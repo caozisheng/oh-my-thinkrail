@@ -50,10 +50,14 @@ answer mailbox.
 
     | Outcome | `content` | `details` | `terminate` |
     | --- | --- | --- | --- |
-    | `answered` (including partial and Skip) | `buildQuestionnaireResponse` | that builder's details | no |
+    | `answered` (including partial and Skip) | `buildQuestionnaireResponse`; non-cancelled answers also carry executing toolCallId | that builder's details | no |
     | `deferred` | the canonical ack, or the chat text for "Chat about this" | `{kind: "ack"}` | yes |
     | `abandoned` | the stopped text | cancelled | yes |
     | asker rejects | thrown, so pi records a tool error | — | — |
+
+  Non-cancelled answered execution appends the real opaque toolCallId as JSON-quoted model-visible text.
+  Skip retains its canonical decline text so terminal rendering continues to show Skipped. It is
+  correlation metadata, not user answer data or authority; structured details remain unchanged.
 
   The argument and result types are the one definition of the questionnaire shape: ThinkRail's card
   type-imports them from `./core`, and the deferral ack `{kind: "ack"}` doubles as the host's generic

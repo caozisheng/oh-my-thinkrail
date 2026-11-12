@@ -24,9 +24,11 @@ import {
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
+	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	isControlMessage,
 	isSpeechModel,
+	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
@@ -171,12 +173,15 @@ import {
 	cancelProjectClone,
 	closeProject,
 	createProject,
+	importProjectGroup,
 	initProject,
 	inspectCloneDestination,
 	inspectProjectPath,
 	listProjects,
 	openProject,
+	removeProjectGroup,
 	renameProject,
+	scanProjectGroup,
 	setProjectGroupEnabled,
 	setProjectSkillEnabled,
 	setProjectTrust,
@@ -253,6 +258,7 @@ import {
 	listWorkspaceCreations,
 	listWorkspaceRecords,
 	listWorkspaces,
+	nestedWorkspaces,
 	openExistingWorktree,
 	reclaimWorktree,
 	recordWorkspaceActivity,
@@ -286,10 +292,12 @@ import { nudgeBaseRefWorkspaces } from "./fsNudge";
 import { buildHistoryScope } from "./historyScope";
 import { provisionInitialTerminal } from "./initialTerminal";
 import {
+	issuesAddRepository,
 	issuesApproveDesign,
 	issuesApproveImplementation,
 	issuesBeginDesign,
 	issuesBeginImplementation,
+	issuesCleanupRepositories,
 	issuesConnect,
 	issuesConnection,
 	issuesContent,
@@ -308,6 +316,7 @@ import {
 	issuesStartImplementation,
 	issuesValidateDesign,
 	issuesValidateImplementation,
+	setIssueWorkspaceArchiver,
 } from "./issues";
 import { dropLogin, recordLoginStart } from "./loginAnalytics";
 import {
@@ -351,6 +360,7 @@ import {
 	observeSetupRead,
 	providerAvailability,
 } from "./productAnalytics";
+import { fetchProjectGroup, projectGroupStatus } from "./projectGroupHome";
 import { startPlanReview } from "./requestReview";
 import { withChangeLock, withReviewLock } from "./reviewLock";
 import { runObservation } from "./runAnalytics";
@@ -485,6 +495,36 @@ function withIssuesRepositoriesProtocol<P, R>(handler: (params: P) => R) {
 	};
 }
 
+function withIssuesRepositoryJoinProtocol<P, R>(handler: (params: P) => R) {
+	return (params: P, ctx: RequestContext): R => {
+		if (
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION
+		) {
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Joining Issue repositories is unavailable for this protocol version.",
+			);
+		}
+		return handler(params);
+	};
+}
+
+function withProjectGroupHomeProtocol<P, R>(handler: (params: P) => R) {
+	return (params: P, ctx: RequestContext): R => {
+		if (
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < PROJECT_GROUP_HOME_PROTOCOL_VERSION
+		) {
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"The project group home is unavailable for this protocol version.",
+			);
+		}
+		return handler(params);
+	};
+}
+
 function withIssuesActionsProtocol<P, R>(handler: (params: P) => R) {
 	return (params: P, ctx: RequestContext): R => {
 		if (
@@ -499,6 +539,29 @@ function withIssuesActionsProtocol<P, R>(handler: (params: P) => R) {
 		return handler(params);
 	};
 }
+
+/**
+ * Forget the workspace and drop its host state synchronously; the returned promise settles when the
+ * session/artifact/worktree teardown finishes (Issue cleanup awaits it, `workspace.remove` does not).
+ */
+function archiveWorkspace(id: string): Promise<void> {
+	if (nestedWorkspaces(id).length > 0)
+		throw new CodedError(
+			"WORKSPACE_HAS_NESTED_WORKSPACES",
+			"Archive the workspaces nested inside this one first.",
+		);
+	const ws = forgetWorkspace(id);
+	if (!ws) return Promise.resolve();
+	evictSpecIndex(ws.id);
+	evictSpecRoot(ws.worktreePath);
+	removeWorkspaceReviews(ws.id);
+	forgetWorkspaceChanges(ws.id);
+	forgetWorkspaceTurns(ws.id);
+	stopWatch(ws.id);
+	closeWorkspaceTerminals(ws.id);
+	return archiveTeardown(ws);
+}
+setIssueWorkspaceArchiver(archiveWorkspace);
 
 async function archiveTeardown(ws: Workspace): Promise<void> {
 	try {
@@ -802,6 +865,13 @@ const handlers: WsHandlers = {
 		cancelProjectClone(params.operationId, ctx.clientKey);
 		return { ok: true };
 	},
+	"project.scanGroup": (params) => scanProjectGroup(params.path),
+	"project.importGroup": (params) => importProjectGroup(params),
+	"project.groupStatus": withProjectGroupHomeProtocol((params) =>
+		projectGroupStatus(params, issuesHost.groupIssueRecords),
+	),
+	"project.fetchGroup": withProjectGroupHomeProtocol((params) => fetchProjectGroup(params)),
+	"project.removeGroup": withProjectGroupHomeProtocol((params) => removeProjectGroup(params)),
 	"project.list": (_params, ctx) =>
 		observeSetupRead(
 			() =>
@@ -975,18 +1045,7 @@ const handlers: WsHandlers = {
 		records: await markWorkspaceRead(sessionStateWorkspace(getWorkspace(params.id))),
 	}),
 	"workspace.remove": (params) => {
-		const id = params.id;
-		const ws = forgetWorkspace(id);
-		if (ws) {
-			evictSpecIndex(ws.id);
-			evictSpecRoot(ws.worktreePath);
-			removeWorkspaceReviews(ws.id);
-			forgetWorkspaceChanges(ws.id);
-			forgetWorkspaceTurns(ws.id);
-			stopWatch(ws.id);
-			closeWorkspaceTerminals(ws.id);
-			void archiveTeardown(ws);
-		}
+		void archiveWorkspace(params.id);
 		return { ok: true } as const;
 	},
 	"workspace.diffStats": (params) => workspaceDiffStats(params.id),
@@ -1309,6 +1368,10 @@ const handlers: WsHandlers = {
 	"issues.repositoryAddress": withIssuesAuthProtocol((p) => issuesRepositoryAddress(p)),
 	"issues.repositories": withIssuesRepositoriesProtocol((p) => issuesRepositories(p)),
 	"issues.setRepositories": withIssuesRepositoriesProtocol((p) => issuesSetRepositories(p)),
+	"issues.addRepository": withIssuesRepositoryJoinProtocol((p) => issuesAddRepository(p)),
+	"issues.cleanupRepositories": withIssuesRepositoryJoinProtocol((p) =>
+		issuesCleanupRepositories(p),
+	),
 	"issues.startImplementation": withIssuesImplementationProtocol((p) =>
 		issuesStartImplementation(p),
 	),

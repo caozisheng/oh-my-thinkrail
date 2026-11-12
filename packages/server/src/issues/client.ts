@@ -420,12 +420,14 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 		},
 		createMergeRequest: async (input) => {
 			record(input);
+			if (input.draft !== undefined) boolean(input.draft);
+			const title = identifier(input.title);
 			return decoded("/merge_requests", mergeRequest, {
 				method: "POST",
 				body: {
 					source_branch: identifier(input.sourceBranch),
 					target_branch: identifier(input.targetBranch),
-					title: identifier(input.title),
+					title: input.draft && !/^(?:Draft|WIP):/i.test(title) ? `Draft: ${title}` : title,
 					description: text(input.description),
 				},
 			});

@@ -7,6 +7,7 @@ import type {
 	McpProjectOverride,
 	McpToolGrant,
 	Project,
+	ProjectGroupMembership,
 	ProjectPathStatus,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
@@ -224,6 +225,20 @@ export function renameProject(id: string, requestedName: string): Project {
 	if (!project) throw new Error(`Unknown project: ${id}`);
 	if (project.name === name) return project;
 	project.name = name;
+	saveProjects(projects);
+	emit(project);
+	return project;
+}
+
+export function setProjectGroupMembership(
+	id: string,
+	membership: ProjectGroupMembership | null,
+): Project {
+	const projects = getProjects();
+	const project = projects.find((candidate) => candidate.id === id);
+	if (!project) throw new Error(`Unknown project: ${id}`);
+	if (membership) project.projectGroup = { ...membership };
+	else delete project.projectGroup;
 	saveProjects(projects);
 	emit(project);
 	return project;

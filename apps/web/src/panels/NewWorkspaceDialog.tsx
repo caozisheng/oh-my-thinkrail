@@ -857,7 +857,7 @@ function TargetOption({
 	);
 }
 
-function ProjectPicker({
+export function ProjectPicker({
 	projects,
 	current,
 	container,

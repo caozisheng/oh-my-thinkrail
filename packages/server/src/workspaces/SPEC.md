@@ -231,7 +231,10 @@ registered under the chats root is neither offered by `listExistingWorktrees` no
   fan-out for cold navigation — an automatic reload on a shared host must not diff every worktree),
   `listWorkspaceRecords`
   (raw registry records without Default ensure, folder-truth reconciliation, or per-workspace git diffStats —
-  for internal read-only paths like history scope mapping that must not block on git spawns) and its
+  for internal read-only paths like history scope mapping that must not block on git spawns),
+  `defaultWorkspaceOf` (the stored Default record, registering it with one folder-truth read only when
+  missing, null for an unknown or unreadable project — Issue reference contexts use it so members never
+  opened in the UI still appear) and its
   project-free sibling `listAllWorkspaceRecords` (every record, for host reads that must span workspaces
   without knowing which projects are open — the all-workspace `session.stateList` read),
   `workspaceDiffStats`, **`setWorkspaceSubagentsOverride(id, override)`** — persist `"on"` / `"off"`,
@@ -399,7 +402,17 @@ registered under the chats root is neither offered by `listExistingWorktrees` no
   Both share managed registration (project ownership, scratch seeding, persistence,
   terminal marker and lifecycle events). It has no feature-specific identifiers or concepts. The target
   must be an absolute, direct child of the real project root's `.worktrees` directory; the project must
-  be the main working tree. Reject existing entries (including files, empty directories and dangling
+  be the main working tree. The optional `ExplicitPlacement.layoutRoot` (last argument of
+  `createWorkspaceAtPathWithBranch`) is the one widening: given a real ancestor-or-self `L` of the
+  project folder, the target must be exactly `L/.worktrees/<one slot segment>/<project path relative to
+  L>`, which lets a project group's members keep their relative layout inside one slot. Every existing
+  component from `L/.worktrees` down to the target's parent must be a real directory (no symlinks or
+  canonical escapes); missing ones are created and re-checked as before. A member nested this way may
+  sit inside another member's worktree, which `nestedWorkspaces` exposes for the remove guard below.
+  When `L` happens to be a repository's top level (a group folder that is itself a repository, whether or not
+  it participates — usually `L` is a plain folder and nothing is written there but `.worktrees`),
+  the same idempotent `/.worktrees/` rule is also seeded in `L`'s local exclude, so the shared slot never
+  shows as untracked in that repository's main working tree. Reject existing entries (including files, empty directories and dangling
   symlinks), Git registrations (including prunable ones), persisted workspace paths and in-flight creation paths. Never suffix
   the target, overwrite it, or reclaim anything on creation failure. Reject symlink/junction parents
   and canonical parent escapes, revalidating after asynchronous reads/fetches before creation.
@@ -417,6 +430,9 @@ registered under the chats root is neither offered by `listExistingWorktrees` no
   This is a server barrel capability only: `createWorkspace`
   keeps its three-argument interface and data-dir placement; no public wire target-path field exists.
   These remain managed workspaces: intentional lifecycle deletion still reclaims their checkout.
+  **`nestedWorkspaces(id)`** lists the persisted workspaces whose folder lies strictly inside a managed
+  workspace's folder (empty for Default/external): `worktree remove --force` on the outer one would
+  delete them with their uncommitted work, so host refuses that removal until they are archived.
   Failure can leave the local exclude rule, a branch/checkout or a Git registration (e.g. Git,
   scratch seeding, persistence or publishing fails); no destructive rollback is attempted. Callers
   own record-based recovery, not this generic module.
@@ -427,8 +443,8 @@ registered under the chats root is neither offered by `listExistingWorktrees` no
   `setWorkspaceCreationHandoff`, `CreationHandoff`,
   `setWorkspaceCreationPublisher`, `WorkspaceCreationEvent`, `creationOwnsPath`, `listExistingWorktrees`,
   `openExistingWorktree`,
-  `listWorkspaces`, `listWorkspaceRecords`, `listAllWorkspaceRecords`, `forgetWorkspace`,
-  `reclaimWorktree`, `removeWorkspace`,
+  `listWorkspaces`, `listWorkspaceRecords`, `defaultWorkspaceOf`, `listAllWorkspaceRecords`, `forgetWorkspace`,
+  `reclaimWorktree`, `removeWorkspace`, `nestedWorkspaces`, `ExplicitPlacement`,
   `workspaceDiffStats`, `workspaceDiffKey`, `getWorkspace`, `renameWorkspace`, `syncWorkspaceBranch`, `branchMoveOwed`,
   `completeInitialTerminalReservation`, `ensureWorkspaceScratchDir`, `setWorkspacePublisher`,
   `WorkspaceLifecycleEvent`, `setWorkspaceDiffBase`, `setWorkspaceSkillOverride`,

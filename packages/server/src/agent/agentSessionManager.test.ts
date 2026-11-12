@@ -3078,6 +3078,7 @@ test("restart repair leaves a dangling question answerable through the custom-me
 		expect(responseMessage.customType).toBe(TOOL_RESPONSE_CUSTOM_TYPE);
 		expect(responseMessage.content).toContain("User has answered your questions");
 		expect(responseMessage.content).toContain('"Which runtime?"="Bun"');
+		expect(responseMessage.content).toContain(`toolCallId: ${JSON.stringify(toolCallId)}`);
 		expect(seen(fixture.id)).toContain("RESTART_QUESTION_CONTINUED");
 	} finally {
 		if (hasSession(fixture.id)) await removeSession(fixture.id);

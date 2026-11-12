@@ -1486,14 +1486,61 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 124`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 127`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
-hosts (through v115). Issues content/detail/repositories retain their v113/v114/v115 floors.
+hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 125`, on-demand Issue joins v126 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` (below), allocated above upstream's v118–v124 floors. Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
 `WORKSPACE_CREATION_PROTOCOL_VERSION = 111`; extension settings and Discuss answers share
 `EXTENSION_SETTINGS_PROTOCOL_VERSION = 112` and `ASK_DISCUSS_PROTOCOL_VERSION = 112`.
 The existing Issues feature floors v103–v110 remain unchanged; the historical sections below
 record their introduction, not the current wire version.
+
+## Project group home (v127)
+
+`PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` adds three read-mostly methods over one group
+(`ProjectGroupTarget` `{ groupId }`): **`project.groupStatus`** → `ProjectGroupStatus` (`{ id, name,
+root, repositories, issues }`; each open member's `ProjectGroupRepositoryStatus` `{ projectId, path,
+branch | null, dirty | null, upstream?, ahead?, behind? }` from local refs only, and each started Issue
+implementation whose primary is a member as `ProjectGroupIssue` (`title?` when the host has seen the
+Issue in a list or detail read since it started) with its `repositories` `{ projectId, role,
+workspaceId?, changed?, path?, branch?, baseSource?, ahead?, behind?, defaultBranch?, changedFiles?,
+upstream?, upstreamAhead?, upstreamBehind? }` measured in the Issue worktree: `ahead` counts commits
+beyond the start commit (`baseSource` `recorded` at join, `created` from the branch's reflog creation
+entry, or `mergeBase` with the default branch), `behind` the `defaultBranch` commits the branch lacks,
+`changedFiles` the worktree's changed paths minus the Issue's nested worktrees, and `upstream*` the
+branch's own pushed upstream; every addition is optional, so a v127 client of the first shape still
+reads it); **`project.fetchGroup`** → `ProjectGroupFetch`
+(`results: { projectId, path, outcome: "fetched" | "noRemote" | "failed", error? }[]`, one per open
+member, never failing the whole call for one repository); and **`project.removeGroup`**
+(`ProjectGroupRemoveInput` `{ groupId, close }` → `{ projects }`), which only rewrites project records.
+A client hides the group home below v127; the rail tree needs no wire change.
+
+## On-demand Issue repositories (v126)
+
+`ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126` adds **`issues.addRepository`**
+(`IssueRepositoryJoinInput` `{ projectId, reference, repositoryProjectId }` → `IssueRepositories`; strict
+`isIssueRepositoryJoinInput`, the joining id never the primary) and **`issues.cleanupRepositories`**
+(`IssueTarget` → `IssueRepositoriesCleanup` `{ projectIds, locked, removed }`). Before implementation
+the join extends the saved selection; afterwards it is add-only and creates the repository's Issue
+worktree at once. Cleanup removes only joined repositories without commits or changes. An expected
+refusal (nesting, member limit, implementation not started) carries the new
+**`ISSUE_REPOSITORY_REFUSED`** code with a readable reason. A newer client hides join/cleanup below v126
+and keeps the v115 read-only locked list.
+
+## Project groups (v125)
+
+`PROJECT_GROUPS_PROTOCOL_VERSION = 125` adds **`project.scanGroup`** (`{ path }` → `ProjectGroupScan`:
+the resolved real `root`, a default `name`, and the nested repositories found below it as
+`{ path, name }` with `/`-separated `path` relative to the root — `""` is the root itself — shallow
+first, at most `PROJECT_GROUP_MAX_REPOSITORIES` (500; 64 before the scan rework, a host-only limit — clients never enforce it), plus `truncated` when a scan budget stopped the
+walk) and **`project.importGroup`** (`ProjectGroupImportInput` `{ root, paths, name? }` →
+`ProjectGroupImport` `{ projects, failed: { path, reason }[] }`). Import re-scans and refuses
+(`RANGE_INVALID`) any path the fresh scan no longer finds; each kept repository is opened as an
+ordinary project and a per-path failure (`ALREADY_OPEN`, a path guard) is reported in `failed`
+instead of failing the whole import. Membership travels on the project record itself as optional
+**`Project.projectGroup`** (`ProjectGroupMembership` `{ id, name, root, path }`), so the existing
+`project.updated` push and `project.list` carry it and there is no separate group channel. Older
+clients ignore the field; a newer client hides the import entry below v125.
 
 ## Issues read protocol (v103)
 
@@ -1600,8 +1647,9 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v124. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v127. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
-v123 and question panel height v124. Clients and host must use the named constants, never the original
+v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
+joins (v126) and the project group home (v127) sit above them. Clients and host must use the named constants, never the original
 upstream numbers.

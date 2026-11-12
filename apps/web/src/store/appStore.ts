@@ -1075,6 +1075,10 @@ interface AppState {
 	chatStartsByWorkspace: Record<string, number>;
 	workspaceCreations: Record<string, WorkspaceCreation>;
 	activeCreationId: string | null;
+	/** The project group whose home fills Project Home's main pane; see `selectActiveProjectGroupId`. */
+	activeProjectGroupId: string | null;
+	/** Collapsed project-group headers in the rail, by `groupNodeKey`. */
+	collapsedRailNodes: Record<string, true>;
 	creationChatToOpen: CreationChatHandoff | null;
 	sentCreationPrompts: Record<string, { text: string; attachments: ChatAttachment[] }>;
 	workspaceRetryDraft: WorkspaceRetryDraft | null;
@@ -1217,6 +1221,9 @@ interface AppState {
 	showMoreSettled: (projectId: string, count: number) => void;
 	expandProject: (projectId: string) => void;
 	hydrateExpandedProjects: (projectIds: readonly string[]) => void;
+	selectProjectGroup: (groupId: string) => void;
+	toggleRailNode: (key: string) => void;
+	hydrateCollapsedRailNodes: (keys: readonly string[]) => void;
 	selectMain: () => void;
 	activateWorkspace: (workspace: Pick<Workspace, "id" | "projectId">) => void;
 	activateWorkspaceFromRoute: (
@@ -2452,6 +2459,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 	chatStartsByWorkspace: {},
 	workspaceCreations: {},
 	activeCreationId: null,
+	activeProjectGroupId: null,
+	collapsedRailNodes: nullProto<Record<string, true>>(),
 	creationChatToOpen: null,
 	sentCreationPrompts: {},
 	workspaceRetryDraft: null,
@@ -2895,6 +2904,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 			selectedProjectId,
 			activeWorkspaceId: null,
 			activeCreationId: null,
+			activeProjectGroupId: null,
 			...(opts?.reveal
 				? { expandedProjectIds: withExpandedProject(state.expandedProjectIds, selectedProjectId) }
 				: {}),
@@ -2930,11 +2940,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 		set(() => ({
 			expandedProjectIds: Object.fromEntries(projectIds.map((id) => [id, true as const])),
 		})),
+	selectProjectGroup: (groupId) =>
+		set({
+			selectedProjectId: null,
+			activeWorkspaceId: null,
+			activeCreationId: null,
+			activeProjectGroupId: groupId,
+			routeChatTarget: null,
+		}),
+	toggleRailNode: (key) =>
+		set((state) => ({
+			collapsedRailNodes: state.collapsedRailNodes[key]
+				? omitKey(state.collapsedRailNodes, key)
+				: { ...state.collapsedRailNodes, [key]: true as const },
+		})),
+	hydrateCollapsedRailNodes: (keys) =>
+		set(() => ({
+			collapsedRailNodes: Object.fromEntries(keys.map((key) => [key, true as const])),
+		})),
 	selectMain: () =>
 		set({
 			selectedProjectId: null,
 			activeWorkspaceId: null,
 			activeCreationId: null,
+			activeProjectGroupId: null,
 			routeChatTarget: null,
 		}),
 	activateWorkspace: (workspace) => {
@@ -3891,6 +3920,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 				selectedProjectId: creation.projectId,
 				activeWorkspaceId: null,
 				activeCreationId: id,
+				activeProjectGroupId: null,
 				routeChatTarget: null,
 			};
 		}),

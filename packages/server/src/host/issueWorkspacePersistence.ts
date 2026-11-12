@@ -17,12 +17,13 @@ import {
 	type IssueReference,
 	isIssueReference,
 	isIssueRepositoriesInput,
+	PROJECT_GROUP_MAX_REPOSITORIES,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import type { IssueWorkspaceRecord } from "../issues";
 import { logger } from "../log";
 
-const maxBytes = 16384;
+const maxBytes = 65536;
 const log = logger("issues");
 function stop(): never {
 	throw new CodedError("RESOURCE_UNAVAILABLE", "Issue workspace requires reconciliation.");
@@ -77,7 +78,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		!shape(
 			value,
 			["projectId", "reference"],
-			["design", "implementation", "sessionPending", "repositoryProjectIds", "members"],
+			["design", "implementation", "sessionPending", "repositoryProjectIds", "members", "layout"],
 		) ||
 		!id(value.projectId) ||
 		keyFor(value.projectId, reference(value.reference)) !== expected
@@ -102,9 +103,14 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		for (const [index, member] of value.members.entries()) {
 			if (
 				!object(member) ||
-				!shape(member, ["projectId"], ["ownership"]) ||
+				!shape(member, ["projectId"], ["ownership", "base", "removing"]) ||
 				member.projectId !== value.repositoryProjectIds[index] ||
-				!id(member.projectId)
+				!id(member.projectId) ||
+				(Object.hasOwn(member, "base") &&
+					(typeof member.base !== "string" ||
+						!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(member.base))) ||
+				(Object.hasOwn(member, "removing") &&
+					(member.removing !== true || !Object.hasOwn(member, "base")))
 			)
 				stop();
 			if (Object.hasOwn(member, "ownership")) {
@@ -118,6 +124,39 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 					keyFor(member.projectId, reference(value.reference)),
 				);
 			}
+		}
+	}
+	if (Object.hasOwn(value, "layout")) {
+		const layout = value.layout;
+		if (
+			!Object.hasOwn(value, "members") ||
+			!object(layout) ||
+			!shape(layout, ["root", "paths"], ["slot"]) ||
+			(Object.hasOwn(layout, "slot") &&
+				(typeof layout.slot !== "string" || !/^issue-\d+-[a-f0-9]{16}$/.test(layout.slot))) ||
+			typeof layout.root !== "string" ||
+			!isAbsolute(layout.root) ||
+			layout.root.length > 4096 ||
+			!Array.isArray(layout.paths) ||
+			layout.paths.length > PROJECT_GROUP_MAX_REPOSITORIES + 1 ||
+			layout.paths[0]?.projectId !== value.projectId ||
+			new Set(layout.paths.map((entry) => (object(entry) ? entry.projectId : undefined))).size !==
+				layout.paths.length
+		)
+			stop();
+		for (const entry of layout.paths) {
+			if (
+				!object(entry) ||
+				!shape(entry, ["projectId", "path"]) ||
+				!id(entry.projectId) ||
+				typeof entry.path !== "string" ||
+				entry.path.length > 1024 ||
+				/[\\\0]/.test(entry.path) ||
+				entry.path.startsWith("/") ||
+				(entry.path !== "" &&
+					entry.path.split("/").some((part) => !part || part === "." || part === ".."))
+			)
+				stop();
 		}
 	}
 	if (Object.hasOwn(value, "design")) {
@@ -416,7 +455,11 @@ export function createIssueWorkspacePersistence(root: string) {
 						);
 					}
 				}
-				if (error instanceof CodedError && error.code === "ISSUE_LAUNCH_BLOCKED") throw error;
+				if (
+					error instanceof CodedError &&
+					(error.code === "ISSUE_LAUNCH_BLOCKED" || error.code === "ISSUE_REPOSITORY_REFUSED")
+				)
+					throw error;
 				return stop();
 			} finally {
 				active = false;

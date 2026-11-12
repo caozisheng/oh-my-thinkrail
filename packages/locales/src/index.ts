@@ -14,6 +14,17 @@ export type MessageKey = keyof EnglishCatalog extends infer K
 
 export const EN: Catalog = en;
 
+export const ISSUE_CONFIRMATION_KEYS = {
+	designQuestion: "issue.confirm.design.question",
+	implementationQuestion: "issue.confirm.implementation.question",
+	designHeader: "issue.confirm.design.header",
+	implementationHeader: "issue.confirm.implementation.header",
+	stageOption: "issue.confirm.stage.option",
+	deliveryQuestion: "issue.confirm.delivery.question",
+	deliveryHeader: "issue.confirm.delivery.header",
+	deliveryOption: "issue.confirm.delivery.option",
+} as const;
+
 export const SYSTEM_LOCALE = "system";
 
 /** Keys the desktop app renders in its native menu; the web pushes their translations to it. */

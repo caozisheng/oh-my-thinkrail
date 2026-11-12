@@ -104,6 +104,7 @@ jobs:
     name: E2E (no-agent) shard ${{ matrix.shard }}/3
     timeout-minutes: 30
     needs: changes
+    # Temporarily paused until Ubuntu WebKit dependency downloads recover; restore the app condition.
     if: ${{ false }}
     runs-on: ubuntu-26.04
     strategy:

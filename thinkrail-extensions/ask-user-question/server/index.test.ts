@@ -144,7 +144,9 @@ describe("the ask-user-question server half", () => {
 		});
 		const result = await tool.execute("tc-1", args, signal, undefined, { hasUI: false });
 		expect(asked).toEqual([{ toolCallId: "tc-1", signal }]);
-		expect(result).toEqual(buildQuestionnaireResponse(answer, args));
+		expect(result.details).toEqual(answer);
+		expect(text(result)).toContain(text(buildQuestionnaireResponse(answer, args)));
+		expect(text(result)).toContain('toolCallId: "tc-1"');
 	});
 
 	test("a deferral is the canonical ack that ends the turn; abandonment reports the stop", async () => {

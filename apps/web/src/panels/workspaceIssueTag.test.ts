@@ -17,7 +17,10 @@ test("the primary of an issue with associated repositories marks itself", () => 
 	expect(workspaceIssueTagText(binding("primary", true))).toBe("#23(master)");
 });
 
-test("a single-repository issue and every associated workspace keep the bare number", () => {
-	expect(workspaceIssueTagText(binding("primary", false))).toBe("#23");
+test("a single-repository issue has no tag", () => {
+	expect(workspaceIssueTagText(binding("primary", false))).toBeNull();
+});
+
+test("associated workspaces keep the bare number", () => {
 	expect(workspaceIssueTagText(binding("associated", true))).toBe("#23");
 });

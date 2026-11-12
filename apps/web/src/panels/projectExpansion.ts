@@ -2,13 +2,13 @@ import { STORAGE_PREFIX } from "../constants/branding";
 import { useAppStore } from "../store";
 import { getTransport } from "../transport";
 
-function storageKey(): string {
-	return `${STORAGE_PREFIX}expanded-projects:${getTransport().httpBase()}`;
+function storageKey(name: string): string {
+	return `${STORAGE_PREFIX}${name}:${getTransport().httpBase()}`;
 }
 
-function readPersistedExpansion(): string[] {
+function readPersistedKeys(name: string): string[] {
 	try {
-		const raw = localStorage.getItem(storageKey());
+		const raw = localStorage.getItem(storageKey(name));
 		if (!raw) return [];
 		const parsed = JSON.parse(raw) as unknown;
 		if (!Array.isArray(parsed)) return [];
@@ -18,18 +18,29 @@ function readPersistedExpansion(): string[] {
 	}
 }
 
-function persistExpansion(expanded: Record<string, true>): void {
+function persistKeys(name: string, keys: Record<string, true>): void {
 	try {
-		localStorage.setItem(storageKey(), JSON.stringify(Object.keys(expanded)));
+		localStorage.setItem(storageKey(name), JSON.stringify(Object.keys(keys)));
 	} catch {}
 }
 
+const EXPANDED_PROJECTS = "expanded-projects";
+const COLLAPSED_RAIL_NODES = "collapsed-rail-nodes";
+
 export function initProjectExpansionPersistence(): void {
-	useAppStore.getState().hydrateExpandedProjects(readPersistedExpansion());
+	const store = useAppStore.getState();
+	store.hydrateExpandedProjects(readPersistedKeys(EXPANDED_PROJECTS));
+	store.hydrateCollapsedRailNodes(readPersistedKeys(COLLAPSED_RAIL_NODES));
 	let previous = useAppStore.getState().expandedProjectIds;
+	let previousCollapsed = useAppStore.getState().collapsedRailNodes;
 	useAppStore.subscribe((state) => {
-		if (state.expandedProjectIds === previous) return;
-		previous = state.expandedProjectIds;
-		persistExpansion(previous);
+		if (state.expandedProjectIds !== previous) {
+			previous = state.expandedProjectIds;
+			persistKeys(EXPANDED_PROJECTS, previous);
+		}
+		if (state.collapsedRailNodes !== previousCollapsed) {
+			previousCollapsed = state.collapsedRailNodes;
+			persistKeys(COLLAPSED_RAIL_NODES, previousCollapsed);
+		}
 	});
 }
