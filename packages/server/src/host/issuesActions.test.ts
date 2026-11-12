@@ -890,7 +890,9 @@ for (const stage of ["design", "implementation"] as const)
 			...f.options,
 			sessions: { ...f.options.sessions, status: async () => "busy" as const },
 		});
-		const resumed = await (stage === "design" ? restored.beginDesign : restored.beginImplementation)({
+		const resumed = await (stage === "design"
+			? restored.beginDesign
+			: restored.beginImplementation)({
 			...f.target,
 			locale: "en",
 		});
