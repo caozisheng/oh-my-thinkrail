@@ -21,7 +21,9 @@ Host composition rechecks project trust, workspace ownership, committed checkout
 identity. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP clone
 URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
 creates drafts only. A matching existing request at an older SHA is updated in place after its card is
-confirmed; an exact-head request is reused without modification. Delivery readiness is determined by the agent's work and validation, not a prior implementation-stage journal receipt; the delivery card freezes the current committed checkout and exact PR/MR content. Local staged,
+confirmed; an exact-head request is reused without modification. Merged/closed requests are historical,
+not active candidates: they neither cause ambiguity nor prevent another Draft request for the same
+Issue/source branch. A deleted remote source branch can be republished by the confirmed non-force push. Delivery readiness is determined by the agent's work and validation, not a prior implementation-stage journal receipt; the delivery card freezes the current committed checkout and exact PR/MR content. Local staged,
 unstaged and untracked files are excluded and do not block preparation or execution. The agent verifies
 necessary files are committed and asks the human about doubtful exclusions; the host does not infer
 file necessity. No stash, deletion, commit or local ignore mutation is performed by delivery. The exact submitted questionnaire receipt, repository identity, remote, Issue snapshot and checkout are still revalidated before mutation. A changed checkout requires a fresh card; uncertain intents remain fenced. The agent receives no token,

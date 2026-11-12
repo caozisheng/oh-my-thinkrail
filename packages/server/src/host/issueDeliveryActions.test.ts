@@ -106,7 +106,9 @@ async function fixture() {
 		push: async (repo, input, onDispatch) => {
 			onDispatch();
 			effects.push({ repository: repo.projectId, ...input });
-			if (requests.length === 1) requests = requests.map((entry) => ({ ...entry, sha: input.sha }));
+			requests = requests.map((entry) =>
+				entry.state === "opened" ? { ...entry, sha: input.sha } : entry,
+			);
 			if (race) requests = [request()];
 		},
 		verifyAnswer: async (_sessionId, _payload: DeliveryPayload, toolCallId) => {
@@ -382,10 +384,38 @@ test("explicit target is frozen instead of guessing main", async () => {
 	expect((await f.prepare("release")).questions.questions[0]?.preview).toContain("Target: release");
 });
 
-test("ambiguous or closed existing PRs fail closed", async () => {
+for (const state of ["merged", "closed"] as const) {
+	test(`a ${state} historical MR allows a new delivery on the same Issue branch`, async () => {
+		const f = await fixture();
+		f.setRequests([{ ...f.request(), id: 90, iid: 8, state, sha: "b".repeat(40) }]);
+		const card = await f.prepare();
+		expect(card.questions.questions[0]?.preview).toContain("create a draft PR/MR");
+		f.approve();
+		expect(await f.actions.execute("session", "deliver", "answer")).toMatchObject({
+			created: true,
+			sha: f.state.sha,
+		});
+		expect(f.effects).toHaveLength(2);
+	});
+}
+
+test("historical requests do not make one open request ambiguous", async () => {
+	const f = await fixture();
+	f.setRequests([
+		{ ...f.request(), id: 90, iid: 8, state: "merged", sha: "b".repeat(40) },
+		{ ...f.request(), id: 89, iid: 7, state: "closed" },
+		f.request(),
+	]);
+	expect((await f.prepare()).questions.questions[0]?.preview).toContain("Reuse existing PR/MR #9");
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toEqual([]);
+});
+
+test("ambiguous or locked active PRs fail closed", async () => {
 	for (const requests of [
 		(f: Awaited<ReturnType<typeof fixture>>) => [f.request(), { ...f.request(), iid: 10 }],
-		(f: Awaited<ReturnType<typeof fixture>>) => [{ ...f.request(), state: "closed" as const }],
+		(f: Awaited<ReturnType<typeof fixture>>) => [{ ...f.request(), state: "locked" as const }],
 	]) {
 		const f = await fixture();
 		f.setRequests(requests(f));

@@ -149,7 +149,10 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 	) {
 		const requests = (await remote.mergeRequests(payload.branch)).filter(
 			(request) =>
-				request.sourceBranch === payload.branch && request.targetBranch === payload.targetBranch,
+				request.state !== "merged" &&
+				request.state !== "closed" &&
+				request.sourceBranch === payload.branch &&
+				request.targetBranch === payload.targetBranch,
 		);
 		if (requests.length > 1) stop("existing-requests-ambiguous");
 		const request = requests[0] ?? null;

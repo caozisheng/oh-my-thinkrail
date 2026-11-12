@@ -263,7 +263,9 @@ not use legacy GitLab approval labels or grant permission to start another stage
 
 Delivery is separately confirmed per repository, fixing the commit, authenticated repository identity,
 canonical push URL, source/target branches and complete draft text. Non-force push uses the exact SHA;
-one matching existing PR/MR at the same SHA is reused without editing. An older head on that same
+Only active opened PRs/MRs are reusable candidates; merged/closed requests stay in provider and journal
+history without blocking subsequent requests for the same Issue or branch. A removed remote source
+branch is recreated by ordinary confirmed push. One matching opened PR/MR at the same SHA is reused without editing. An older head on that same
 source/target repository and branch is updated by the confirmed non-force push, then re-read to verify
 the same request id/iid now points at the new SHA; it is never replaced by a duplicate. Otherwise only a
 Draft PR/MR is created.
