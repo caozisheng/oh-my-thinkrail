@@ -105,6 +105,8 @@ import type {
 	IssueDesignApproval,
 	IssueDesignPublicationInput,
 	IssueDetail,
+	IssueImplementationRecovery,
+	IssueImplementationRecoveryInput,
 	IssueImplementationTarget,
 	IssueList,
 	IssuePublication,
@@ -173,6 +175,7 @@ export type TemplateReadLocation =
 export const PROTOCOL_VERSION = 133;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
+export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 133;
 export const PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127;
 export const PROJECT_GROUP_MAX_REPOSITORIES = 500;
 export const SEARCH_PROTOCOL_VERSION = 116;
@@ -453,6 +456,9 @@ export const WS_METHODS = {
 	issuesSetRepositories: "issues.setRepositories",
 	issuesAddRepository: "issues.addRepository",
 	issuesCleanupRepositories: "issues.cleanupRepositories",
+	issuesImplementationRecovery: "issues.implementationRecovery",
+	issuesRecoverImplementation: "issues.recoverImplementation",
+	issuesImplementationHistory: "issues.implementationHistory",
 	issuesStartImplementation: "issues.startImplementation",
 	issuesValidateDesign: "issues.validateDesign",
 	issuesValidateImplementation: "issues.validateImplementation",
@@ -1007,6 +1013,23 @@ export interface WsMethodMap {
 	"issues.setRepositories": { params: IssueRepositoriesInput; result: IssueRepositories };
 	"issues.addRepository": { params: IssueRepositoryJoinInput; result: IssueRepositories };
 	"issues.cleanupRepositories": { params: IssueTarget; result: IssueRepositoriesCleanup };
+	"issues.implementationHistory": {
+		params: IssueTarget;
+		result: {
+			entries: {
+				workspaceId: string;
+				branch: string;
+				archivedAt: number | null;
+				sessionId: string | null;
+				messages: TranscriptMessage[] | null;
+			}[];
+		};
+	};
+	"issues.implementationRecovery": { params: IssueTarget; result: IssueImplementationRecovery };
+	"issues.recoverImplementation": {
+		params: IssueImplementationRecoveryInput;
+		result: IssueSessionLaunch;
+	};
 
 	"issues.connection": { params: { projectId: string }; result: IssueConnection | null };
 	"issues.connect": {

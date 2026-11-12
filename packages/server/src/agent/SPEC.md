@@ -505,7 +505,7 @@ re-opened transcripts provider-valid.
     lookup the host's `set_title` handler keys on) and `getSessionAttribution(sessionId)` (the same, also for a
     session still preparing — the extension-UI publisher's scope, since `session_start` runs before
     registration); `removeSession`/`disposeAllSessions`;
-    **`removeWorkspaceSessions(workspaceId, cwd?)`** (the **archive teardown**: close session admission for
+    **`archiveIssueWorkspaceSessions(workspaceId, cwd)`** (the Issue-only archive teardown: use the same close/admission, resource, child and live-session disposal barriers but retain pi transcript JSONL for Issue history; it never attaches the archived chat or restores commands), and **`removeWorkspaceSessions(workspaceId, cwd?)`** (the ordinary **archive teardown**: close session admission for
     the workspace before its first await, capture every registered parent, synchronously close its resource
     owners, and start parent abort/removal while concurrently draining preparations from the retired
     workspace generation. A preparation that finishes afterward disposes its unregistered owners/session

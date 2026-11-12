@@ -197,7 +197,9 @@ offer none at all. Each control carries its own host floor: design needs the v10
 (`supportsIssueImplementation`), and a missing floor leaves that control visible and disabled with
 `needs-newer-host` instead of hiding it. MR creation and merge are not implemented in the
 product and therefore appear nowhere: no control, menu entry, label or disabled placeholder is invented for
-them. The two controls sit **on the issue title row, right-aligned**, as icon-only `IconButton`s (quill = run
+them. For v133 recovery, implementation first performs a read-only diagnosis. An eligible wholly missing generation opens a localized confirmation showing member checkout evidence and exact commit starts; a missing prior branch requires a second explicit restart confirmation. Cancel performs no mutation. Execution submits the frozen snapshot and locale, then navigates to the newly returned session. A separate read-only history dialog requests the recorded generation list and renders transcript availability by session id; unavailable transcripts are explicit and never represented as an empty conversation.
+
+The two controls sit **on the issue title row, right-aligned**, as icon-only `IconButton`s (quill = run
 design, code box = run implementation) inside their own `TooltipProvider`; each keeps its action name as
 `aria-label`, a blocked one names its reason in the same tooltip plus `data-reason`, and a completed one is
 rendered with the shared `soft-primary` button variant and `data-done`. A pending action disables every control. Its own card immediately shows a localized, live status with a reduced-motion-aware spinner: starting design/implementation during the RPC, then opening chat while awaiting shell navigation. No percentage, cancellation or automatic retry is implied. Progress and failures are local to the issue and current project/connection request; refresh, disconnect and identity changes invalidate old continuations, including navigation after workspace loading. Navigation failure is distinct from host launch failure; without a navigation callback, a valid launch simply ends waiting. Dispatch goes through the one

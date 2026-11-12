@@ -1,4 +1,5 @@
 export * from "./agentSessionManager";
+export { archiveIssueWorkspaceSessions } from "./agentSessionManager";
 export { disableAnthropicExtraUsageWarning, globalProviderWarnings } from "./anthropicExtraUsage";
 export { readCacheWarmingSetting, writeCacheWarmingMode } from "./cacheWarming";
 export {

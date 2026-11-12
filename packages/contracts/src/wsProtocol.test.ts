@@ -9,7 +9,11 @@ import {
 	SETTLE_IDLE_DAYS,
 	SUBAGENT_MAX_CONCURRENT,
 } from "./domain";
-import { isIssueRepositoryJoinInput } from "./issues";
+import {
+	isIssueImplementationRecovery,
+	isIssueImplementationRecoveryInput,
+	isIssueRepositoryJoinInput,
+} from "./issues";
 import {
 	AGENT_REVIEW_SETTING_PROTOCOL_VERSION,
 	ANALYTICS_CONSENT_PROTOCOL_VERSION,
@@ -52,6 +56,7 @@ import {
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
+	ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	isBackgroundCommandCompletionMessage,
 	isCacheWarmingMode,
 	isCustomEndpointId,
@@ -298,11 +303,12 @@ test("new upstream capabilities do not collide with existing fork feature floors
 		FS_MUTATIONS_PROTOCOL_VERSION,
 		WORKSPACE_PATH_RESOLVE_PROTOCOL_VERSION,
 		IMAGE_REFS_PROTOCOL_VERSION,
+		ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	];
 	for (const version of additions)
 		expect(version).toBeGreaterThan(PROJECT_GROUP_HOME_PROTOCOL_VERSION);
 	expect(new Set(additions).size).toBe(additions.length);
-	expect(PROTOCOL_VERSION).toBe(IMAGE_REFS_PROTOCOL_VERSION);
+	expect(PROTOCOL_VERSION).toBe(ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION);
 });
 
 test("the project group home is pinned to v127", () => {
@@ -402,6 +408,45 @@ test("on-demand Issue repository joins are pinned to v126", () => {
 		result: { projectIds: [], locked: true, removed: ["core"] },
 	};
 	expect(cleanup.result.removed).toEqual(["core"]);
+});
+
+test("Issue workspace recovery is additive at v133 and validates frozen identity snapshots", () => {
+	expect(ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION).toBe(133);
+	expect(PROTOCOL_VERSION).toBe(133);
+	expect(WS_METHODS.issuesImplementationRecovery).toBe("issues.implementationRecovery");
+	expect(WS_METHODS.issuesRecoverImplementation).toBe("issues.recoverImplementation");
+	const reference = {
+		provider: "gitlab" as const,
+		instanceUrl: "https://gitlab.example",
+		projectId: "7",
+		number: 42,
+	};
+	const member = {
+		projectId: "app",
+		worktreePath: "/tmp/.worktrees/issue-42",
+		branch: "issue-42-branch",
+		baseCommit: "a".repeat(40),
+	};
+	const diagnosis: WsMethodMap["issues.implementationRecovery"] = {
+		params: { projectId: "app", reference },
+		result: {
+			status: "available",
+			reason: null,
+			baseCommit: "b".repeat(40),
+			members: [member],
+			generation: 2,
+			snapshot: "c".repeat(64),
+			requiresRestart: false,
+		},
+	};
+	expect(isIssueImplementationRecovery(diagnosis.result)).toBe(true);
+	expect(isIssueImplementationRecovery({ ...diagnosis.result, reason: "secret" })).toBe(false);
+	const recovery: WsMethodMap["issues.recoverImplementation"] = {
+		params: { projectId: "app", reference, locale: "en", snapshot: "c".repeat(64), restart: false },
+		result: { workspaceId: "new-workspace", sessionId: "new-session" },
+	};
+	expect(isIssueImplementationRecoveryInput(recovery.params)).toBe(true);
+	expect(isIssueImplementationRecoveryInput({ ...recovery.params, extra: true })).toBe(false);
 });
 
 test("project groups are pinned to v125", () => {

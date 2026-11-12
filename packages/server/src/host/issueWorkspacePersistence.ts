@@ -185,7 +185,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 			!shape(
 				i,
 				["state", "worktreePath", "branch", ...(i.state === "completed" ? ["workspaceId"] : [])],
-				i.state === "completed" ? ["session"] : [],
+				i.state === "completed" ? ["session", "recoveryCommit"] : ["recoveryCommit"],
 			)
 		)
 			stop();
@@ -202,6 +202,12 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 			i.branch.length > 255 ||
 			!/^issue-[1-9][0-9]*-[A-Za-z0-9-]+$/.test(i.branch) ||
 			!i.branch.startsWith(`issue-${reference(value.reference).number}-`)
+		)
+			stop();
+		if (
+			Object.hasOwn(i, "recoveryCommit") &&
+			(typeof i.recoveryCommit !== "string" ||
+				!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(i.recoveryCommit))
 		)
 			stop();
 		if (i.state === "completed" && !id(i.workspaceId)) stop();

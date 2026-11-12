@@ -26,7 +26,11 @@ token. It includes:
 - Personal access tokens stored in the host's OS credential vault, with explicit consent for non-local
   HTTP connections and no plaintext storage fallback.
 - An issue list with **Design** and **Implement** actions. Sessions use the Issue title; implementation
-  creates or reuses an owned `.worktrees/issue-<IID>` workspace. The two activities can interleave.
+  creates or reuses an owned `.worktrees/issue-<IID>` workspace. If that workspace is removed, the Issues
+  tool offers explicit recovery only after its checkout, Git registration, and ThinkRail workspace record
+  are all absent. Recovery preserves the old branch and starts a separate chat; archived Issue chats remain
+  independently readable as read-only history. Deleted uncommitted files and transcripts already removed
+  by earlier versions cannot be recovered. The two activities can interleave.
   The issue card shows startup and chat-opening feedback immediately, with stage actions disabled until
   navigation finishes or an error is reported.
 - **Linked repositories**: an issue can name other open projects it also touches. Design reads their

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { designVersion, implementationVersion } from "../issues";
 import { saveProjects } from "../persistence";
 import { setProjectTrust } from "../projects";
@@ -24,6 +24,109 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
+test("recovery refuses a stale frozen base and reports missing old transcript explicitly", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const first = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const workspace = listWorkspaceRecords("one").find((row) => row.id === first.workspaceId);
+	if (!workspace) throw new Error("missing fixture workspace");
+	const { forgetWorkspace } = await import("../workspaces");
+	forgetWorkspace(workspace.id);
+	git(f.dir, "worktree", "remove", "--force", workspace.worktreePath);
+	const diagnosis = await f.host.implementationRecovery(f.target);
+	git(
+		f.dir,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"advance base",
+	);
+	git(f.dir, "branch", "-f", workspace.branch, "HEAD");
+	await expect(
+		f.host.recoverImplementation({
+			...f.target,
+			locale: "en",
+			snapshot: diagnosis.snapshot,
+			restart: false,
+		}),
+	).rejects.toThrow();
+	const history = await f.host.implementationHistory(f.target);
+	expect(history.entries).toHaveLength(1);
+	expect(history.entries[0]?.sessionId).toBe(first.sessionId);
+	expect(history.entries[0]?.messages).toBeNull();
+});
+
+test("a stale prunable worktree registration blocks recovery", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const launch = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const workspace = listWorkspaceRecords("one").find((row) => row.id === launch.workspaceId);
+	if (!workspace) throw new Error("missing fixture workspace");
+	const { forgetWorkspace } = await import("../workspaces");
+	forgetWorkspace(workspace.id);
+	const gitDirectory = git(f.dir, "rev-parse", "--absolute-git-dir");
+	const administration = join(gitDirectory, "worktrees", basename(workspace.worktreePath));
+	await writeFileSync(join(administration, "gitdir"), "stale");
+	const diagnosis = await f.host.implementationRecovery(f.target);
+	expect(diagnosis.status).toBe("unavailable");
+	expect(diagnosis.reason).toBe("resources-remain");
+});
+
+test("a deleted previous branch requires explicit restart confirmation", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const first = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const workspace = listWorkspaceRecords("one").find((row) => row.id === first.workspaceId);
+	if (!workspace) throw new Error("missing fixture workspace");
+	const { forgetWorkspace } = await import("../workspaces");
+	forgetWorkspace(workspace.id);
+	git(f.dir, "worktree", "remove", "--force", workspace.worktreePath);
+	git(f.dir, "branch", "-D", workspace.branch);
+	const diagnosis = await f.host.implementationRecovery(f.target);
+	expect(diagnosis.status).toBe("available");
+	expect(diagnosis.requiresRestart).toBe(true);
+	await expect(
+		f.host.recoverImplementation({
+			...f.target,
+			locale: "en",
+			snapshot: diagnosis.snapshot,
+			restart: false,
+		}),
+	).rejects.toThrow();
+	const launch = await f.host.recoverImplementation({
+		...f.target,
+		locale: "en",
+		snapshot: diagnosis.snapshot,
+		restart: true,
+	});
+	expect(launch.sessionId).not.toBe(first.sessionId);
+});
+
+test("host explicitly recovers a deleted Issue checkout from its retained branch", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const first = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const workspace = listWorkspaceRecords("one").find((row) => row.id === first.workspaceId);
+	if (!workspace) throw new Error("missing fixture workspace");
+	const { forgetWorkspace } = await import("../workspaces");
+	forgetWorkspace(workspace.id);
+	git(f.dir, "worktree", "remove", "--force", workspace.worktreePath);
+	const diagnosis = await f.host.implementationRecovery(f.target);
+	expect(diagnosis.status).toBe("available");
+	const launch = await f.host.recoverImplementation({
+		...f.target,
+		locale: "en",
+		snapshot: diagnosis.snapshot,
+		restart: false,
+	});
+	expect(launch.sessionId).not.toBe(first.sessionId);
+	expect(git(f.dir, "rev-parse", workspace.branch)).toBe(git(f.dir, "rev-parse", "HEAD"));
+});
+
 test("host prepares selected source repositories before starting one Issue session", async () => {
 	const f = fixture();
 	const auxiliary = mkdtempSync(join(tmpdir(), "issue-auxiliary-"));

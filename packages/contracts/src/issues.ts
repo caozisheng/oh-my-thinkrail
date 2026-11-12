@@ -69,6 +69,82 @@ export interface IssueSessionLaunch {
 	workspaceId: string;
 	sessionId: string;
 }
+export interface IssueImplementationRecoveryMember {
+	projectId: string;
+	worktreePath: string;
+	branch: string;
+	baseCommit: string | null;
+}
+export interface IssueImplementationRecovery {
+	status: "available" | "unavailable";
+	reason: "missing-record" | "not-completed" | "resources-remain" | "pending-operation" | null;
+	baseCommit: string | null;
+	members: IssueImplementationRecoveryMember[];
+	generation: number;
+	snapshot: string;
+	requiresRestart: boolean;
+}
+export interface IssueImplementationRecoveryInput extends IssueSessionStartupTarget {
+	snapshot: string;
+	restart: boolean;
+}
+function recoveryMember(value: unknown): value is IssueImplementationRecoveryMember {
+	return (
+		exact(value, ["projectId", "worktreePath", "branch", "baseCommit"]) &&
+		typeof value.projectId === "string" &&
+		/^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$/.test(value.projectId) &&
+		typeof value.worktreePath === "string" &&
+		value.worktreePath.length > 0 &&
+		typeof value.branch === "string" &&
+		value.branch.length > 0 &&
+		(value.baseCommit === null || /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(String(value.baseCommit)))
+	);
+}
+export function isIssueImplementationRecovery(
+	value: unknown,
+): value is IssueImplementationRecovery {
+	return (
+		exact(value, [
+			"status",
+			"reason",
+			"baseCommit",
+			"members",
+			"generation",
+			"snapshot",
+			"requiresRestart",
+		]) &&
+		typeof value.snapshot === "string" &&
+		/^[a-f0-9]{64}$/.test(value.snapshot) &&
+		typeof value.requiresRestart === "boolean" &&
+		(value.status === "available" || value.status === "unavailable") &&
+		(value.reason === null ||
+			value.reason === "missing-record" ||
+			value.reason === "not-completed" ||
+			value.reason === "resources-remain" ||
+			value.reason === "pending-operation") &&
+		(value.baseCommit === null ||
+			/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(String(value.baseCommit))) &&
+		Array.isArray(value.members) &&
+		value.members.length <= 33 &&
+		value.members.every(recoveryMember) &&
+		Number.isSafeInteger(value.generation) &&
+		(value.generation as number) >= 0
+	);
+}
+export function isIssueImplementationRecoveryInput(
+	value: unknown,
+): value is IssueImplementationRecoveryInput {
+	return (
+		record(value) &&
+		exact(value, ["projectId", "reference", "locale", "snapshot", "restart"]) &&
+		value.locale !== "system" &&
+		isLocalePreference(value.locale) &&
+		actionTarget(value) &&
+		typeof value.snapshot === "string" &&
+		/^[a-f0-9]{64}$/.test(value.snapshot) &&
+		typeof value.restart === "boolean"
+	);
+}
 /**
  * The one credential-free read an implementation launch needs: the approved design receipt
  * digest the host holds, or null when this issue has no settled approved design.

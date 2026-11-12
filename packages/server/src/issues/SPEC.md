@@ -360,11 +360,36 @@ between creation and binding. Launch actions reconcile; read-only lookups such a
 `ownedImplementation` keep refusing any marker without writing. The host composes the coordinator under its durable launch fence. Host composition must use the server-only exact-branch
 workspace capability; the generic name-to-unique-branch API remains unsuitable.
 
+A completed implementation is never implicitly recreated. Explicit recovery is available only when
+its recorded directory, Git registration and workspace registration are all absent and no pending
+effect exists; confirmation snapshots include old ownership, frozen member set and commit starts, and
+execution rechecks them under the same launch fence. Prior generations retain workspace/path/branch/
+session identity and archive time. Partial absence, path conflicts and uncertain state remain refusal
+cases.
+
 `implementation(reference)` requires no design approval, version, workflow-label transition or
 readiness port. It creates or reuses the exact owned workspace and returns a recorded implementation
 session in either idle or busy state; a missing session is replaced only under a durable pending marker.
 Returning a busy session is navigation-only and does not start another prompt. Starting design or
 implementation is not publication, approval, merging or closing an Issue.
+
+A completed implementation whose checkout, Git registration and managed workspace are all absent can
+only be replaced through explicit recovery: diagnostics are read-only, execution rechecks the frozen
+ownership/member/base snapshot under the same launch fence, and prior generations remain in history.
+Partial absence, occupied paths and uncertain pending effects fail closed.
+
+`implementationRecovery(reference)` binds a SHA-256 snapshot to the Issue identity, prior generation,
+every missing member, and the exact commit chosen from the old branch (or a freshly resolved restart
+commit when that branch is absent). Execution re-diagnoses under the per-Issue launch fence; changed
+facts invalidate confirmation. It archives the old primary session id and ownership before reserving
+fresh checkout ownership. Healthy group members remain owned; only wholly absent members are rebuilt.
+Pending reservation evidence retains each selected commit so a provably empty failed creation can resume
+without changing its base.
+
+Issue archive waits for pending teardown before recovery can proceed. Issue-owned transcript preservation
+is separate from ordinary workspace removal: live sessions/resources are stopped and disposed, but pi
+JSONL remains. History reads select the recorded session id without attaching a session; cwd-wide
+sessions are never treated as one generation.
 
 `ownedImplementation(reference): Promise<WorkspaceHandle>` is lookup-only: it requires a completed
 record with exact local project/provider identity, recorded workspace id/path/branch, a managed

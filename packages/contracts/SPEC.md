@@ -19,6 +19,8 @@ the palette ranks with — kept here so host-side search can rank with the same 
 
 ## Issue integration
 
+Protocol v133 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.
+
 `issues.content(IssueTarget)` → `IssueContent` (`{ description, url }`) is a v113 read-only
 capability (`ISSUES_CONTENT_PROTOCOL_VERSION`). It returns only the issue body and a verified provider
 web URL, never comments or approval state; list summaries remain lightweight. Host adapters validate
