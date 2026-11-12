@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CodedError } from "@thinkrail/shared/codedError";
 import { createIssueConfirmationStore } from "./issueConfirmations";
 
 const roots: string[] = [];
@@ -278,6 +279,46 @@ test("uncertain inspection retains frozen questions and cannot be bypassed with 
 		message: expect.stringContaining("(uncertain_intent)"),
 	});
 	expect(calls).toBe(0);
+});
+
+test("read-only preflight refusal leaves no intent and preserves its coded reason", async () => {
+	const { store } = setup();
+	const prepared = await store.prepare("session", "op", {});
+	let calls = 0;
+	await expect(
+		store.execute(
+			"session",
+			"op",
+			prepared.digest,
+			"call",
+			async () => ++calls,
+			async () => {
+				throw new CodedError("ISSUE_DELIVERY_REFUSED", "checkout-commit-changed");
+			},
+		),
+	).rejects.toMatchObject({ code: "ISSUE_DELIVERY_REFUSED", message: "checkout-commit-changed" });
+	expect(calls).toBe(0);
+	expect((await store.inspect("session", "op")).status).toBe("prepared");
+	await store.prepare("session", "review-current-head", { current: true });
+});
+
+test("a concurrent intent admitted during preflight prevents a second dispatch", async () => {
+	const { store } = setup();
+	const prepared = await store.prepare("session", "op", {});
+	let calls = 0;
+	await expect(
+		store.execute(
+			"session",
+			"op",
+			prepared.digest,
+			"call",
+			async () => ++calls,
+			async () => {
+				await store.execute("session", "op", prepared.digest, "other", async () => ++calls);
+			},
+		),
+	).rejects.toMatchObject({ code: "ISSUE_CONFIRMATION_BLOCKED" });
+	expect(calls).toBe(1);
 });
 
 test("deterministic pre-dispatch failures preserve their reason and leave preparation safe", async () => {

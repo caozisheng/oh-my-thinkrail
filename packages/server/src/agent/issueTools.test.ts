@@ -10,6 +10,7 @@ import { buildResourceLoader, childExtensionFactories } from "./extensions";
 import {
 	createIssueContextTool,
 	createIssueJoinRepositoryTool,
+	createIssuePrepareConfirmationTool,
 	createIssueRecordSummaryTool,
 	type IssueToolHost,
 	issueToolsExtension,
@@ -148,6 +149,22 @@ test("default, reset, and arbitrary host failures are static coded errors withou
 		"RESOURCE_UNAVAILABLE",
 		unavailable,
 	);
+});
+
+test("confirmation preparation supports read-only inspection and passes it to the host", async () => {
+	const { host } = fakeHost();
+	let inspected = false;
+	host.prepareConfirmation = async (_sessionId, input) => {
+		inspected = input.inspect === true;
+		return { status: "uncertain", questions: { questions: [] }, nextAction: "inspect remote" };
+	};
+	setIssueToolHost(host);
+	const tool = createIssuePrepareConfirmationTool();
+	const params = { operationId: "op", inspect: true };
+	expect(Check(tool.parameters, params)).toBe(true);
+	const result = await tool.execute("call", params, undefined, undefined, ctx);
+	expect(inspected).toBe(true);
+	expect(result.details).toMatchObject({ status: "uncertain", nextAction: "inspect remote" });
 });
 
 test("extension registers the issue tools without injecting global issue instructions", () => {

@@ -53,18 +53,15 @@ const blockedMessages = {
 		"The journal limit has been reached. Reconcile and retain its records before continuing.",
 	intent_conflict:
 		"Another execution reserved this journal revision. Inspect its status before continuing.",
+	preflight_failed:
+		"Read-only validation failed before any intent was reserved. Inspect current facts and obtain a refreshed confirmation.",
 } as const;
 type BlockedReason = keyof typeof blockedMessages;
-class ConfirmationBlocked extends CodedError {
-	constructor(reason: BlockedReason) {
-		super(
-			"ISSUE_CONFIRMATION_BLOCKED",
-			`Issue confirmation blocked (${reason}). ${blockedMessages[reason]}`,
-		);
-	}
-}
 function stop(reason: BlockedReason = "journal_invalid"): never {
-	throw new ConfirmationBlocked(reason);
+	throw new CodedError(
+		"ISSUE_CONFIRMATION_BLOCKED",
+		`Issue confirmation blocked (${reason}). ${blockedMessages[reason]}`,
+	);
 }
 
 export type IssueConfirmationInspection =
@@ -195,7 +192,7 @@ export function createIssueConfirmationStore(root: string) {
 			}
 		} catch (error) {
 			if (absent(error)) return null;
-			if (error instanceof ConfirmationBlocked) throw error;
+			if (error instanceof CodedError) throw error;
 			return stop("journal_unavailable");
 		}
 	}
@@ -311,7 +308,7 @@ export function createIssueConfirmationStore(root: string) {
 		try {
 			return await fn();
 		} catch (error) {
-			if (error instanceof ConfirmationBlocked) throw error;
+			if (error instanceof CodedError) throw error;
 			return stop("journal_unavailable");
 		}
 	}
@@ -378,6 +375,7 @@ export function createIssueConfirmationStore(root: string) {
 			digest: string,
 			toolCallId: string,
 			run: () => Promise<unknown>,
+			preflight?: () => Promise<void>,
 		): Promise<unknown> {
 			return guarded(async () => {
 				if (
@@ -388,8 +386,8 @@ export function createIssueConfirmationStore(root: string) {
 					typeof run !== "function"
 				)
 					stop("invalid_input");
-				const state = scan(sessionId);
-				const op = state.ops.get(operationId);
+				let state = scan(sessionId);
+				let op = state.ops.get(operationId);
 				if (!op) stop("operation_missing");
 				if (op.prepared.digest !== digest) stop("digest_mismatch");
 				if (op.intent) {
@@ -398,6 +396,16 @@ export function createIssueConfirmationStore(root: string) {
 					return op.completed.result;
 				}
 				if (state.pending) stop("uncertain_intent");
+				try {
+					await preflight?.();
+				} catch (error) {
+					if (error instanceof CodedError) throw error;
+					stop("preflight_failed");
+				}
+				state = scan(sessionId);
+				op = state.ops.get(operationId);
+				if (!op || op.prepared.digest !== digest) stop("digest_mismatch");
+				if (op.intent || state.pending) stop("uncertain_intent");
 				if (state.revisions >= maxOperations) stop("capacity_reached");
 				const intent = { sessionId, operationId, digest, toolCallId };
 				const revision = state.revisions + 1;

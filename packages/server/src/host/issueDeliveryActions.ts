@@ -53,7 +53,7 @@ export interface IssueDeliveryActionOptions {
 function stop(reason: string = "execution-snapshot-changed"): never {
 	throw new CodedError(
 		"ISSUE_DELIVERY_REFUSED",
-		`Issue delivery refused [${reason}]. No automatic retry is authorized; journal reconciliation is a separate failure.`,
+		`Issue delivery refused [${reason}]. Inspect the operation with issue_prepare_confirmation({operationId, inspect:true}). If it is prepared without an intent, review the current facts and prepare a new confirmation for corrected inputs; completed deliveries allow a new confirmed update to the same PR/MR. If uncertain, inspect the remote result before authorizing recovery. Do not bypass the tool or silently repeat a possibly dispatched mutation.`,
 	);
 }
 function branch(value: string): boolean {
@@ -106,6 +106,20 @@ function validRequest(
 		(draft && request.draft !== true)
 	)
 		stop("existing-request-identity-invalid");
+}
+function requestSnapshot(request: IssueMergeRequest | null) {
+	if (!request) return null;
+	return {
+		id: request.id,
+		iid: request.iid,
+		webUrl: request.webUrl,
+		state: request.state,
+		sourceBranch: request.sourceBranch,
+		targetBranch: request.targetBranch,
+		sourceProjectId: request.sourceProjectId,
+		targetProjectId: request.targetProjectId,
+		sha: request.sha,
+	};
 }
 export function deliveryQuestions(payload: DeliveryPayload) {
 	const action = payload.existing
@@ -216,89 +230,108 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 		)
 			stop();
 		await options.verifyAnswer(sessionId, payload, toolCallId);
-		return options.journal.execute(sessionId, operationId, stored.digest, toolCallId, async () => {
-			const binding = await options.binding(sessionId);
-			if (
-				binding.sessionId !== sessionId ||
-				binding.stage !== "implementation" ||
-				!isDeepStrictEqual(binding.reference, payload.reference)
-			)
-				stop();
-			const { remote, guard } = await options.access(binding);
-			async function revalidate() {
-				const repositories = await options.repositories(binding);
-				guard();
-				const matches = repositories.filter(
-					(repo) => repo.projectId === payload.repository.projectId,
-				);
-				if (matches.length !== 1 || !isDeepStrictEqual(matches[0], payload.repository)) stop();
-				const state = await options.checkout(payload.repository);
-				guard();
-				if (state.sha !== payload.sha || state.branch !== payload.branch) stop();
-				const issue = await remote.issue(payload.reference.number);
-				guard();
-				if (!isDeepStrictEqual(issue, payload.issueSnapshot)) stop();
-				const host = await options.repositoryRemote(payload.repository);
-				guard();
-				if (
-					host.repositoryId !== payload.repositoryId ||
-					host.url !== payload.url ||
-					host.targetBranch !== payload.hostTargetBranch
-				)
-					stop();
-				return host.remote;
-			}
-			let delivery = await revalidate();
-			const before = await existing(delivery, payload);
+		const binding = await options.binding(sessionId);
+		if (binding.sessionId !== sessionId) stop("session-mismatch");
+		if (binding.stage !== "implementation") stop("session-stage-changed");
+		if (!isDeepStrictEqual(binding.reference, payload.reference)) stop("issue-binding-changed");
+		const { remote, guard } = await options.access(binding);
+		async function revalidate() {
+			const repositories = await options.repositories(binding);
 			guard();
-			if (!isDeepStrictEqual(before, payload.existing)) stop();
-			let request = before;
-			if (request && request.sha !== payload.sha) {
-				await options.push(payload.repository, {
+			const matches = repositories.filter(
+				(repo) => repo.projectId === payload.repository.projectId,
+			);
+			if (matches.length !== 1) stop("repository-not-participating");
+			if (!isDeepStrictEqual(matches[0], payload.repository)) stop("repository-identity-changed");
+			const state = await options.checkout(payload.repository);
+			guard();
+			if (state.sha !== payload.sha) stop("checkout-commit-changed");
+			if (state.branch !== payload.branch) stop("checkout-branch-changed");
+			const issue = await remote.issue(payload.reference.number);
+			guard();
+			if (!isDeepStrictEqual(issue, payload.issueSnapshot)) stop("issue-snapshot-changed");
+			const host = await options.repositoryRemote(payload.repository);
+			guard();
+			if (host.repositoryId !== payload.repositoryId) stop("remote-project-changed");
+			if (host.url !== payload.url) stop("push-remote-changed");
+			if (host.targetBranch !== payload.hostTargetBranch) stop("default-target-changed");
+			return host.remote;
+		}
+		return options.journal.execute(
+			sessionId,
+			operationId,
+			stored.digest,
+			toolCallId,
+			async () => {
+				let delivery = await revalidate();
+				const before = await existing(delivery, payload);
+				guard();
+				if (!isDeepStrictEqual(requestSnapshot(before), requestSnapshot(payload.existing))) {
+					stop(
+						before?.id === payload.existing?.id
+							? "existing-request-changed"
+							: "matching-request-set-changed",
+					);
+				}
+				let request = before;
+				if (request && request.sha !== payload.sha) {
+					await options.push(payload.repository, {
+						sha: payload.sha,
+						branch: payload.branch,
+						url: payload.url,
+					});
+					guard();
+					delivery = await revalidate();
+					const updated = await existing(delivery, payload);
+					guard();
+					if (
+						!updated ||
+						updated.id !== request.id ||
+						updated.iid !== request.iid ||
+						updated.webUrl !== request.webUrl ||
+						updated.sha !== payload.sha
+					)
+						stop("updated-request-not-observed");
+					request = updated;
+				}
+				if (!request) {
+					await options.push(payload.repository, {
+						sha: payload.sha,
+						branch: payload.branch,
+						url: payload.url,
+					});
+					guard();
+					delivery = await revalidate();
+					if (await existing(delivery, payload)) stop();
+					guard();
+					request = await delivery.createMergeRequest({
+						sourceBranch: payload.branch,
+						targetBranch: payload.targetBranch,
+						title: payload.title,
+						description: payload.body,
+						draft: true,
+					});
+					guard();
+					validRequest(request, payload, true);
+					await revalidate();
+				}
+				return {
+					stage: "delivery",
+					projectId: payload.repository.projectId,
 					sha: payload.sha,
-					branch: payload.branch,
-					url: payload.url,
-				});
+					url: request.webUrl,
+					number: request.iid,
+					created: payload.existing === null,
+				};
+			},
+			async () => {
+				const delivery = await revalidate();
+				const actual = await existing(delivery, payload);
 				guard();
-				delivery = await revalidate();
-				const updated = await existing(delivery, payload);
-				guard();
-				if (
-					!updated || updated.id !== request.id || updated.iid !== request.iid ||
-					updated.webUrl !== request.webUrl || updated.sha !== payload.sha
-				) stop("updated-request-not-observed");
-				request = updated;
-			}
-			if (!request) {
-				await options.push(payload.repository, {
-					sha: payload.sha,
-					branch: payload.branch,
-					url: payload.url,
-				});
-				guard();
-				delivery = await revalidate();
-				if (await existing(delivery, payload)) stop();
-				guard();
-				request = await delivery.createMergeRequest({
-					sourceBranch: payload.branch,
-					targetBranch: payload.targetBranch,
-					title: payload.title,
-					description: payload.body,
-					draft: true,
-				});
-				guard();
-				validRequest(request, payload, true);
-				await revalidate();
-			}
-			return {
-				stage: "delivery",
-				projectId: payload.repository.projectId,
-				sha: payload.sha,
-				url: request.webUrl,
-				number: request.iid,
-				created: payload.existing === null,
-			};
-		});
+				if (!isDeepStrictEqual(requestSnapshot(actual), requestSnapshot(payload.existing)))
+					stop("existing-request-changed");
+			},
+		);
 	}
 	return { prepare, execute };
 }

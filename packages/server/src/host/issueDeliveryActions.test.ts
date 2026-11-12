@@ -244,6 +244,17 @@ test("an older MR head can be updated repeatedly without creating another reques
 	expect(f.effects[1]).toMatchObject({ sha: "c".repeat(40) });
 });
 
+test("pipeline and review metadata changes do not block a confirmed MR update", async () => {
+	const f = await fixture();
+	const old = { ...f.request(), sha: "b".repeat(40) };
+	f.setRequests([old]);
+	await f.prepare();
+	f.setRequests([{ ...old, mergeStatus: "can_be_merged", detailedMergeStatus: "ci_must_pass" }]);
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toHaveLength(1);
+});
+
 test("prepare refuses design stage, invalid SHA and missing default", async () => {
 	for (const mutate of [
 		(f: Awaited<ReturnType<typeof fixture>>) => {
@@ -289,6 +300,18 @@ test("prepare identifies checkout and existing-request refusals without exposing
 		});
 		expect(f.effects).toEqual([]);
 	}
+});
+
+test("deterministic snapshot mismatch before intent remains prepared for corrected confirmation", async () => {
+	const f = await fixture();
+	await f.prepare();
+	f.approve();
+	f.state.sha = "b".repeat(40);
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toMatchObject({
+		message: expect.stringContaining("checkout-commit-changed"),
+	});
+	expect(await f.journal.inspect("session", "deliver")).toMatchObject({ status: "prepared" });
+	expect(f.effects).toEqual([]);
 });
 
 test("local edits do not block authorization or change the pushed commit", async () => {
@@ -361,6 +384,7 @@ test("changed checkout, repository path, remote identity, target or Issue invali
 		mutate(f);
 		await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
 		expect(f.effects).toEqual([]);
+		expect((await f.journal.inspect?.("session", "deliver"))?.status).toBe("prepared");
 	}
 });
 
