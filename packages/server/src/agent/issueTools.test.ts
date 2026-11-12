@@ -9,6 +9,7 @@ import { Check } from "typebox/value";
 import { buildResourceLoader, childExtensionFactories } from "./extensions";
 import {
 	createIssueContextTool,
+	createIssueExecuteConfirmationTool,
 	createIssueJoinRepositoryTool,
 	createIssuePrepareConfirmationTool,
 	createIssueRecordSummaryTool,
@@ -168,6 +169,21 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	const result = await tool.execute("call", params, undefined, undefined, ctx);
 	expect(inspected).toBe(true);
 	expect(result.details).toMatchObject({ status: "uncertain", nextAction: "inspect remote" });
+});
+
+test("continuation execution forwards the real receipt and continuation identity", async () => {
+	const { host } = fakeHost();
+	const calls: unknown[][] = [];
+	host.executeConfirmation = async (...args) => {
+		calls.push(args);
+		return { status: "attempted" };
+	};
+	setIssueToolHost(host);
+	const tool = createIssueExecuteConfirmationTool();
+	const params = { operationId: "op", toolCallId: "real-receipt", continuationId: "continuation" };
+	expect(Check(tool.parameters, params)).toBe(true);
+	await tool.execute("call", params, undefined, undefined, ctx);
+	expect(calls).toEqual([["own-session", "op", "real-receipt", "continuation"]]);
 });
 
 test("extension registers the issue tools without injecting global issue instructions", () => {

@@ -34,6 +34,7 @@ export interface IssueAgentSessionHostOptions {
 		sessionId: string,
 		operationId: string,
 		toolCallId: string,
+		continuationId?: string,
 	): Promise<unknown>;
 	repositories?(target: Target): Promise<readonly IssueRepositoryContext[]>;
 	/** Join one more repository to the bound Issue's running implementation. */
@@ -146,9 +147,9 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 			if (!options.prepareConfirmation) stop();
 			return options.prepareConfirmation(sessionId, input);
 		},
-		executeConfirmation: (sessionId, operationId, toolCallId) => {
+		executeConfirmation: (sessionId, operationId, toolCallId, continuationId) => {
 			if (!options.executeConfirmation) stop();
-			return options.executeConfirmation(sessionId, operationId, toolCallId);
+			return options.executeConfirmation(sessionId, operationId, toolCallId, continuationId);
 		},
 		async context(sessionId) {
 			const found = await binding(sessionId);

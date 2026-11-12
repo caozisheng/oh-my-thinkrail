@@ -30,6 +30,7 @@ export interface DeliveryPayload {
 	issueSnapshot: unknown;
 	existing: IssueMergeRequest | null;
 	warnings?: string[];
+	sessionStage?: IssueSessionAssociation["stage"];
 }
 export interface IssueDeliveryActionOptions {
 	binding(sessionId: string): Promise<IssueSessionAssociation>;
@@ -58,6 +59,30 @@ function stop(reason: string = "execution-snapshot-changed"): never {
 		`Issue delivery refused [${reason}]. Inspect the operation with issue_prepare_confirmation({operationId, inspect:true}). To request a one-shot warned exception card, prepare with continueDespiteChecks:true; the flag grants no execution authority. Correct invalid or unavailable execution prerequisites and prepare current facts rather than treating confirmation as proof they are valid. If it is prepared without an intent, review the current facts and prepare a new confirmation for corrected inputs; completed deliveries allow a new confirmed update to the same PR/MR. If uncertain, inspect the remote result before authorizing recovery. Do not bypass the tool or silently repeat a possibly dispatched mutation.`,
 	);
 }
+type DeliveryCheck = (valid: boolean, reason: string, detail?: string) => void;
+function checks(warnings?: string[]): DeliveryCheck {
+	return (valid, reason, detail) => {
+		if (valid) return;
+		if (!warnings) stop(reason);
+		warnings.push(
+			`${reason}: ${detail ?? "The remote may refuse this attempt; invalid execution prerequisites still require repair."}`,
+		);
+	};
+}
+function safeUrl(value: string, reason: string): void {
+	try {
+		const url = new URL(value);
+		if (
+			["http:", "https:"].includes(url.protocol) &&
+			!url.username &&
+			!url.password &&
+			!url.search &&
+			!url.hash
+		)
+			return;
+	} catch {}
+	stop(reason);
+}
 function branch(value: string): boolean {
 	return (
 		!!value &&
@@ -80,35 +105,31 @@ function validRequest(
 	request: IssueMergeRequest,
 	payload: Pick<DeliveryPayload, "repositoryId" | "branch" | "targetBranch" | "sha">,
 	draft: boolean,
+	check: DeliveryCheck = checks(),
 ): void {
-	let url: URL;
-	try {
-		url = new URL(request.webUrl);
-	} catch {
-		stop("existing-request-url-invalid");
-	}
-	if (typeof request.sha !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.sha))
-		stop("existing-request-sha-invalid");
-	if (draft && request.sha !== payload.sha) stop("existing-request-sha-mismatch");
-	if (
-		!Number.isSafeInteger(request.id) ||
-		request.id < 1 ||
-		!Number.isSafeInteger(request.iid) ||
-		request.iid < 1 ||
-		!["http:", "https:"].includes(url.protocol) ||
-		url.username ||
-		url.password ||
-		url.search ||
-		url.hash ||
-		request.state !== "opened" ||
-		request.sourceBranch !== payload.branch ||
-		request.targetBranch !== payload.targetBranch ||
-		request.sourceProjectId !== Number(payload.repositoryId) ||
-		request.targetProjectId !== Number(payload.repositoryId) ||
-		(draft && request.draft !== true)
-	)
-		stop("existing-request-identity-invalid");
+	safeUrl(request.webUrl, "existing-request-url-invalid");
+	check(
+		typeof request.sha === "string" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.sha),
+		"existing-request-sha-invalid",
+		"The request head is unknown or inexact; no push is authorized until its exact head is known.",
+	);
+	check(!draft || request.sha === payload.sha, "existing-request-sha-mismatch");
+	check(
+		Number.isSafeInteger(request.id) &&
+			request.id > 0 &&
+			Number.isSafeInteger(request.iid) &&
+			request.iid > 0 &&
+			request.state === "opened" &&
+			request.sourceBranch === payload.branch &&
+			request.targetBranch === payload.targetBranch &&
+			request.sourceProjectId === Number(payload.repositoryId) &&
+			request.targetProjectId === Number(payload.repositoryId) &&
+			(!draft || request.draft === true),
+		"existing-request-identity-invalid",
+		`Expected repository ${payload.repositoryId}, source ${payload.branch}, target ${payload.targetBranch}, state opened; actual source repository ${request.sourceProjectId}, target repository ${request.targetProjectId}, source ${request.sourceBranch}, target ${request.targetBranch}, state ${request.state}, id ${request.id}, number ${request.iid}. Risk: this may be a fork or invalid request; no push to an unverified target is authorized and the remote client may refuse.`,
+	);
 }
+
 function requestSnapshot(request: IssueMergeRequest | null) {
 	if (!request) return null;
 	return {
@@ -146,14 +167,18 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 	async function existing(
 		remote: IssueDeliveryRemote,
 		payload: Pick<DeliveryPayload, "repositoryId" | "branch" | "targetBranch" | "sha">,
+		check: DeliveryCheck = checks(),
 	) {
 		const requests = (await remote.mergeRequests(payload.branch)).filter(
 			(request) =>
-				request.sourceBranch === payload.branch && request.targetBranch === payload.targetBranch,
+				request.state !== "merged" &&
+				request.state !== "closed" &&
+				request.sourceBranch === payload.branch &&
+				request.targetBranch === payload.targetBranch,
 		);
-		if (requests.length > 1) stop("existing-requests-ambiguous");
+		if (requests.length > 1) stop("existing-requests-ambiguous-select-explicit-request");
 		const request = requests[0] ?? null;
-		if (request) validRequest(request, payload, false);
+		if (request) validRequest(request, payload, false, check);
 		return request;
 	}
 	async function prepare(
@@ -167,6 +192,8 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			continueDespiteChecks?: boolean;
 		},
 	) {
+		const warnings: string[] = [];
+		const check = checks(input.continueDespiteChecks ? warnings : undefined);
 		if (
 			!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.operationId) ||
 			!input.title.trim() ||
@@ -175,46 +202,40 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			stop("input-invalid");
 		const binding = await options.binding(sessionId);
 		if (binding.sessionId !== sessionId) stop("session-mismatch");
-		if (binding.stage !== "implementation") stop("session-not-implementation");
+		check(binding.stage === "implementation", "session-not-implementation");
 		const { remote, guard } = await options.access(binding);
 		const repositories = await options.repositories(binding);
 		guard();
 		const selected = repositories.filter((repo) => repo.projectId === input.projectId);
-		if (selected.length !== 1) stop("repository-not-participating");
+		if (selected.length !== 1) stop("repository-not-participating-select-explicit-repository");
 		const repository = selected[0];
-		if (!repository) stop("repository-not-participating");
+		if (!repository) stop("repository-not-participating-select-explicit-repository");
 		const state = await options.checkout(repository);
 		guard();
-		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(state.sha)) stop("checkout-sha-invalid");
-		if (!branch(state.branch)) stop("source-branch-invalid");
+		check(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(state.sha), "checkout-sha-invalid");
+		check(branch(state.branch), "source-branch-invalid");
 		const host = await options.repositoryRemote(repository);
 		guard();
 		const targetBranch = input.targetBranch ?? host.targetBranch;
-		if (
-			!/^[1-9][0-9]*$/.test(host.repositoryId) ||
-			!Number.isSafeInteger(Number(host.repositoryId)) ||
-			!host.url
-		)
-			stop("remote-identity-invalid");
-		if (!branch(targetBranch)) stop("target-branch-invalid");
-		if (targetBranch === state.branch) stop("target-equals-source");
+		safeUrl(host.url, "remote-url-invalid");
+		check(
+			/^[1-9][0-9]*$/.test(host.repositoryId) && Number.isSafeInteger(Number(host.repositoryId)),
+			"remote-identity-invalid",
+		);
+		check(branch(targetBranch), "target-branch-invalid");
+		check(targetBranch !== state.branch, "target-equals-source");
 		const issueSnapshot = await remote.issue(binding.reference.number);
 		guard();
-		if (issueSnapshot.iid !== binding.reference.number) stop("issue-identity-mismatch");
-		const warnings: string[] = [];
-		if (issueSnapshot.state !== "opened") {
-			if (!input.continueDespiteChecks) {
-				throw new CodedError(
-					"ISSUE_DELIVERY_REFUSED",
-					`Issue delivery refused [issue-not-open]. Current state is ${issueSnapshot.state}. Retry with continueDespiteChecks:true for a warned one-shot delivery card; delivery will not change the Issue state.`,
-				);
-			}
-			warnings.push(
-				`issue-not-open: linked Issue state is ${issueSnapshot.state}; delivery will not change the Issue state.`,
-			);
-		}
+		check(issueSnapshot.iid === binding.reference.number, "issue-identity-mismatch");
+		check(
+			issueSnapshot.state === "opened",
+			"issue-not-open",
+			`Linked Issue state is ${issueSnapshot.state}; delivery will not change the Issue state.`,
+		);
+
 		const payload: DeliveryPayload = {
 			stage: "delivery",
+			sessionStage: binding.stage,
 			sessionId,
 			operationId: input.operationId,
 			reference: binding.reference,
@@ -231,7 +252,8 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			existing: null,
 			...(warnings.length ? { warnings } : {}),
 		};
-		payload.existing = await existing(host.remote, payload);
+		payload.existing = await existing(host.remote, payload, check);
+		if (warnings.length) payload.warnings = warnings;
 		guard();
 		const stored = await options.journal.prepare(sessionId, input.operationId, payload);
 		return { digest: stored.digest, questions: deliveryQuestions(payload) };
@@ -249,7 +271,7 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 		await options.verifyAnswer(sessionId, payload, toolCallId);
 		const binding = await options.binding(sessionId);
 		if (binding.sessionId !== sessionId) stop("session-mismatch");
-		if (binding.stage !== "implementation") stop("session-stage-changed");
+		if (binding.stage !== (payload.sessionStage ?? "implementation")) stop("session-stage-changed");
 		if (!isDeepStrictEqual(binding.reference, payload.reference)) stop("issue-binding-changed");
 		const { remote, guard } = await options.access(binding);
 		async function revalidate() {
@@ -258,7 +280,7 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			const matches = repositories.filter(
 				(repo) => repo.projectId === payload.repository.projectId,
 			);
-			if (matches.length !== 1) stop("repository-not-participating");
+			if (matches.length !== 1) stop("repository-not-participating-select-explicit-repository");
 			if (!isDeepStrictEqual(matches[0], payload.repository)) stop("repository-identity-changed");
 			const state = await options.checkout(payload.repository);
 			guard();
@@ -274,6 +296,26 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			if (host.targetBranch !== payload.hostTargetBranch) stop("default-target-changed");
 			return host.remote;
 		}
+		const confirmedCheck: DeliveryCheck = (valid, reason) => {
+			if (!valid && !payload.warnings?.some((warning) => warning.startsWith(`${reason}:`)))
+				stop(reason);
+		};
+		function executable(request: IssueMergeRequest | null) {
+			if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(payload.sha)) stop("checkout-sha-invalid");
+			if (!branch(payload.branch)) stop("source-branch-invalid");
+			if (!branch(payload.targetBranch)) stop("target-branch-invalid");
+			if (
+				!/^[1-9][0-9]*$/.test(payload.repositoryId) ||
+				!Number.isSafeInteger(Number(payload.repositoryId))
+			)
+				stop("remote-identity-invalid");
+			if (request)
+				validRequest(
+					{ ...request, state: request.state === "locked" ? "opened" : request.state },
+					payload,
+					false,
+				);
+		}
 		let dispatched = false;
 		return options.journal.execute(
 			sessionId,
@@ -282,7 +324,7 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			toolCallId,
 			async () => {
 				let delivery = await revalidate();
-				const before = await existing(delivery, payload);
+				const before = await existing(delivery, payload, confirmedCheck);
 				guard();
 				if (!isDeepStrictEqual(requestSnapshot(before), requestSnapshot(payload.existing))) {
 					stop(
@@ -291,6 +333,7 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 							: "matching-request-set-changed",
 					);
 				}
+				executable(before);
 				let request = before;
 				if (request && request.sha !== payload.sha) {
 					await options.push(
@@ -306,7 +349,8 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 					);
 					guard();
 					delivery = await revalidate();
-					const updated = await existing(delivery, payload);
+					const updated = await existing(delivery, payload, confirmedCheck);
+					executable(updated);
 					guard();
 					if (
 						!updated ||
@@ -357,10 +401,11 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			},
 			async () => {
 				const delivery = await revalidate();
-				const actual = await existing(delivery, payload);
+				const actual = await existing(delivery, payload, confirmedCheck);
 				guard();
 				if (!isDeepStrictEqual(requestSnapshot(actual), requestSnapshot(payload.existing)))
 					stop("existing-request-changed");
+				executable(actual);
 			},
 			() => dispatched,
 		);

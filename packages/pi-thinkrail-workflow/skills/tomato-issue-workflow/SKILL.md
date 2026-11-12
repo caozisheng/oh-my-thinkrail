@@ -140,8 +140,11 @@ its own card authorizes the current commit and PR/MR content. Prepare with proje
 and, when needed, targetBranch. Use the unchanged returned card, then execute after its submitted answer.
 It authorizes only non-force push and Draft PR/MR creation or reuse of the displayed existing request.
 The card authorizes no commit, ready transition, merge or closure. Changed versions invalidate it.
-Every refusal must state the checked facts, reason and next action. Request `inspect:true` with the
-original operationId to read status and frozen questions. For supported policy failures, prepare with
+Every refusal returns a reason and may include exact continuation questions. Show that card unchanged;
+only its real answer permits submitting `continuationId` with `operationId` and `toolCallId` to
+`issue_execute_confirmation`. It attempts the frozen request once; a preparation continuation only
+returns the normal/warned operation card, which still needs separate approval. Do not equate offering
+a workaround with guaranteed success. Request `inspect:true` with the original operationId for status. For supported policy failures, prepare with
 `continueDespiteChecks:true` to obtain the warned one-shot card; the flag alone authorizes nothing.
 For other deterministic failures, correct or explicitly review facts and obtain a fresh exact card. A changed committed version always needs a new card. After delivery completes, later CI
 repairs are new, separately confirmed pushes to the same MR; monitor the pipeline belonging to the new
