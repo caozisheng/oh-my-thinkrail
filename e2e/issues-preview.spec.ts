@@ -64,6 +64,7 @@ for (const provider of ["github", "gitlab"] as const) {
 		await enterDefaultWorkspace(page);
 		const rail = page.getByTestId("tool-rail-issues");
 		if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+		await page.getByTestId("issues-trust").click();
 		const toggles = page.getByTestId("issue-preview-toggle");
 		await expect(toggles).toHaveCount(2);
 		for (const [index, stage] of ["Backlog", "Closed"].entries()) {
@@ -161,6 +162,7 @@ for (const provider of ["github", "gitlab"] as const) {
 		await enterDefaultWorkspace(page);
 		const rail = page.getByTestId("tool-rail-issues");
 		if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+		await page.getByTestId("issues-trust").click();
 		const toggle = page.getByTestId("issue-preview-toggle");
 		await expect(toggle).toBeEnabled();
 		await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -229,6 +231,7 @@ test("old hosts keep body preview disabled", async ({ page }) => {
 	await enterDefaultWorkspace(page);
 	const rail = page.getByTestId("tool-rail-issues");
 	if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+	await page.getByTestId("issues-trust").click();
 	await expect(page.getByTestId("issue-preview-toggle")).toBeDisabled();
 	await expect(page.getByRole("link", { name: "#1 Old fixture" })).toHaveAttribute(
 		"href",
