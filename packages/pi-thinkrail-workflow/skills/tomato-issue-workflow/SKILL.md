@@ -134,8 +134,8 @@ An implementation report binds the confirmed design and each repository's clean 
 of a stage does not start another stage or authorize delivery.
 
 After implementation and validation, offer delivery separately per changed repository. Before prepare,
-verify the selected checkout is clean; if dirty or refused with `checkout-dirty`, follow
-[delivery-worktree.md](delivery-worktree.md), then return here. Delivery needs no historical stage receipt;
+follow [delivery-worktree.md](delivery-worktree.md) to verify necessary files are committed and ask
+about doubtful files; remaining local files do not block. Then return here. Delivery needs no historical stage receipt;
 its own card authorizes the current commit and PR/MR content. Prepare with projectId, exact title/body
 and, when needed, targetBranch. Use the unchanged returned card, then execute after its submitted answer.
 It authorizes only non-force push and Draft PR/MR creation or reuse of the displayed existing request.

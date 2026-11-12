@@ -1,38 +1,36 @@
-# Prepare a clean delivery checkout
+# Verify delivery completeness
 
-Entry: the selected delivery checkout is dirty, or prepare returned `checkout-dirty` before a card.
-Save only necessary recovery artifacts; return to **Stage confirmation and delivery** in `SKILL.md`
-when the checkout is clean. This path never recovers an uncertain remote mutation.
+Entry: implementation is ready for a per-repository delivery card. Return to **Stage confirmation
+and delivery** in `SKILL.md` after checking necessary changes; the workspace need not be clean.
+This path never recovers an uncertain remote mutation.
 
-1. Identify the exact selected repository, worktree, HEAD and branch. Inspect `git status --short
-   --untracked-files=all`, staged/unstaged diffs and applicable local instructions. Do not assume that
-   a dirty associated repository means every repository is dirty. Never print private `.env` contents.
-2. Review lockfile changes against dependency manifests and the intended implementation. Verify that
-   necessary changes are reproducible with the repository's pinned tooling and relevant checks;
-   do not install blindly in a worktree containing changes to preserve. Commit only verified,
-   task-related changes within existing commit authority, using explicit paths or selected hunks.
-   A lockfile is neither automatically unrelated nor automatically safe to include. If committing
-   changes HEAD, the next delivery card must show that actual commit; never claim the prior SHA.
-3. Preserve unrelated tracked edits before restoring anything. Use a verified, recoverable patch or
-   backup outside the tracked tree; preserve staged and unstaged edits separately where needed.
-   Record recovery location/instructions locally without publishing private content. Restore only
-   reviewed paths/hunks after confirming the backup is complete. Ask before destructive or ambiguous
-   changes; never use blanket reset, clean, checkout or automatic stash to make the gate green.
-4. Keep `.env`, credentials and Python caches out of commits. Preserve local private files in place;
-   use the worktree's effective local Git exclude file (`git rev-parse --git-path info/exclude`) for
-   appropriate private/cache paths without adding a shared `.gitignore` change solely for delivery.
-   Check scope in linked worktrees before editing excludes. Ignoring must not hide implementation
-   files that belong in the commit, and does not untrack an already tracked secret. Never delete,
-   upload or include private files in a general patch; handle already tracked private data separately.
-5. Verify private files/backups still exist, required local test configuration remains available, and
-   `git status --porcelain` is empty for each repository about to be confirmed. Rerun checks affected
-   by the final committed tree; tests against unrelated local edits do not prove the committed tree.
-6. Only after an explicit pre-mutation `checkout-dirty` refusal, re-prepare with the ORIGINAL operationId
-   and exact title/body/target input. Let the host validate the new snapshot; do not edit journals or
-   invent another ID if the immutable operation is rejected. Show the returned card unchanged and wait
-   for its real answer. An execute failure, timeout or uncertain intent is not this case: stop and
-   report it under `SKILL.md`'s existing uncertainty rules, with no automatic replay.
+1. Identify the exact selected repository, worktree, HEAD and branch. Inspect staged, unstaged and
+   untracked changes with `git status --short --untracked-files=all` and scoped diffs. Never print
+   private `.env` contents. Classify remaining files using task context, not a filename whitelist.
+2. Verify and commit necessary task changes within existing commit authority using explicit paths or
+   selected hunks. For lockfiles, check dependency manifests, pinned tooling and reproducibility;
+   neither assume a lockfile is unrelated nor include it blindly. If HEAD changes, the delivery card
+   must show the actual new commit. Do not claim the earlier SHA is still the delivery version.
+3. If necessity is uncertain, use `ask_user_question` with sanitized filenames and implications:
+   include the change after review/verification, keep it local and exclude it from this delivery,
+   or continue investigating. Do not silently exclude doubtful implementation files or merely report
+   an indefinite dirty-checkout blocker. A skipped answer is not permission to guess file necessity;
+   retain the file and explain which concrete decision remains open before delivering dependent work.
+4. Keep unrelated tracked edits, private `.env`, credentials and Python caches intact and out of
+   commits. No cleanup, automatic stash, restore, deletion or ignore change is required for delivery.
+   Do not change shared ignore rules just to hide status. If preservation or relocation is requested,
+   verify a recoverable backup first and obtain approval for destructive or ambiguous changes.
+5. Confirm all necessary changes are committed and remaining files are deliberately local. Report
+   sanitized exclusions without exposing secrets. Tests using local configuration may support joint
+   manual testing; tests depending on uncommitted code do not establish the same result for the
+   committed version. Run affected checks against the delivery commit or state the validation limit.
+6. Prepare the delivery card for that committed SHA. Remaining staged, unstaged and untracked files
+   are excluded from push and must not permanently block a card. If an older host still refuses
+   `checkout-dirty`, report an upgrade requirement and preserve files; do not weaken it via shell.
+   After a known pre-mutation prepare refusal, reuse the original operationId and exact input when
+   retrying. Immutable journal rejection still blocks replacement IDs; an execute failure, timeout
+   or uncertain intent requires the separate uncertainty rules, never automatic replay.
 
-If preservation or cleanup cannot be completed safely, retain the files and report the selected
-repository and sanitized blocker. Return to **Stage confirmation and delivery** only after clean-state
-verification; otherwise return for the required blocked Issue handoff.
+Return to **Stage confirmation and delivery** for the exact host card and real human submission.
+If required file decisions remain unresolved, retain the files, provide the actionable question and
+return for the required partial/blocked Issue handoff; never bypass authorization.

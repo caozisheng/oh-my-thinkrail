@@ -417,8 +417,7 @@ export function createIssuesHost(
 			},
 			push: async (repository, input) => {
 				const current = await trustedCheckout(repository);
-				if (current.sha !== input.sha || current.branch !== input.branch || current.dirty)
-					invalid();
+				if (current.sha !== input.sha || current.branch !== input.branch) invalid();
 				// Recheck immediately before dispatch: URL config may have changed since review.
 				const urls = await originUrls(repository.path);
 				const effective = urls.push ? await deliveryPushUrl(repository.path, urls.push) : null;
