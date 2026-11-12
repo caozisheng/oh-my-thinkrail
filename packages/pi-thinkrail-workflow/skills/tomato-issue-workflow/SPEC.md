@@ -53,6 +53,16 @@ Design and implementation may alternate; acceptance and closure stay in the trac
 [approved Issue design](../../../../docs/plans/2026-11-04-issues-workflow-design.md#最新简化决定),
 not its superseded gated lifecycle description.
 
+## Delivery checkout preparation
+
+The worker's `delivery-worktree.md` owns the dirty-checkout preparation path. A clean delivery gate
+must not force private local test configuration into commits or discard unrelated edits. Lockfile
+changes require task relevance and verification; unrelated tracked edits require recoverable preservation
+before selective restoration, while private untracked files may remain locally excluded. Preparation
+refusal is distinct from uncertain execution: only an explicit pre-mutation dirty-checkout refusal
+permits re-preparing the original operation/input after cleanup, subject to immutable journal checks.
+This guidance is unverified by use; it changes no host gate or recovery authority.
+
 ## Handoff artifacts
 
 In both stages, referenced local design documents and implementation plans accompany the handoff as

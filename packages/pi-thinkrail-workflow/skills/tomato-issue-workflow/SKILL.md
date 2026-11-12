@@ -133,14 +133,16 @@ in-progress and moves to in-review. Both GitHub and GitLab preserve unrelated la
 An implementation report binds the confirmed design and each repository's clean commit. Confirmation
 of a stage does not start another stage or authorize delivery.
 
-After implementation and validation, offer delivery separately per changed repository. Delivery does not require a prior design or implementation stage-confirmation record; its own card authorizes the current checkout and PR/MR content. Do not block delivery on a missing historical stage receipt. Prepare with projectId, exact title/body and, when
-needed, an explicit targetBranch. Use the exact returned card, then execute after its submitted answer.
+After implementation and validation, offer delivery separately per changed repository. Before prepare,
+verify the selected checkout is clean; if dirty or refused with `checkout-dirty`, follow
+[delivery-worktree.md](delivery-worktree.md), then return here. Delivery needs no historical stage receipt;
+its own card authorizes the current commit and PR/MR content. Prepare with projectId, exact title/body
+and, when needed, targetBranch. Use the unchanged returned card, then execute after its submitted answer.
 It authorizes only non-force push and Draft PR/MR creation or reuse of the displayed existing request.
-No automatic commit, ready transition, merge or closure is included. A changed version invalidates the
-card. Uncertain operations remain fenced: stop and report the original operation, do not create another
-ID to retry or bypass the host through shell/provider APIs. A missing capability is an upgrade blocker.
-Standalone PR work remains **shipping-a-pr** work. These gates govern product operations; this skill
-itself grants no remote mutation authority. The required summary handoff below remains independent.
+The card authorizes no commit, ready transition, merge or closure. Changed versions invalidate it.
+Uncertain operations remain fenced: stop and report the original operation; never change IDs or bypass
+through shell/provider APIs. A missing capability requires an upgrade. Standalone PR work uses **shipping-a-pr**.
+These gates grant no remote authority themselves; the required summary handoff remains independent.
 
 ## Ending
 
