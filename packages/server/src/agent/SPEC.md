@@ -635,7 +635,9 @@ re-opened transcripts provider-valid.
       Issue execution; this informational text never replaces structured receipt validation. The prepare
       tool's `inspect:true` mode returns frozen card/status without mutation. `continueDespiteChecks:true`
       requests a warned one-shot policy card; it grants no authority until this same trusted receipt
-      rule accepts the exact warning preview. Changed facts require renewed review.
+      rule accepts the exact warning preview. Changed facts require renewed review. Refusal continuation
+      cards carry a host-local continuationId passed to execute with the real questionnaire receipt;
+      accepted preparation continuations do not authorize a remote write or substitute for operation cards.
 
     An eligible live call is **sequential and blocking**: after validation its `execute` waits for
     `session.respondToTool`, then returns the person's real response through the tool's own envelope as

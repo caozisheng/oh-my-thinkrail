@@ -107,7 +107,7 @@ async function fixture() {
 			onDispatch();
 			effects.push({ repository: repo.projectId, ...input });
 			requests = requests.map((entry) =>
-				entry.state === "opened" ? { ...entry, sha: input.sha } : entry,
+				["opened", "locked"].includes(entry.state) ? { ...entry, sha: input.sha } : entry,
 			);
 			if (race) requests = [request()];
 		},
@@ -540,5 +540,133 @@ test("authenticated repository identity is numeric and frozen in the delivery pa
 		invalid.host.repositoryId = repositoryId;
 		await expect(invalid.prepare()).rejects.toThrow();
 		expect(invalid.effects).toEqual([]);
+	}
+});
+
+for (const older of [false, true]) {
+	test(`warned locked request ${older ? "updates" : "reuses"} only after exact review`, async () => {
+		const f = await fixture();
+		f.setRequests([{ ...f.request(), state: "locked", ...(older ? { sha: "b".repeat(40) } : {}) }]);
+		await expect(f.prepare()).rejects.toThrow("existing-request-identity-invalid");
+		const card = await f.actions.prepare("session", {
+			operationId: "deliver",
+			projectId: f.repository.projectId,
+			title: "Deliver",
+			body: "Body",
+			continueDespiteChecks: true,
+		});
+		expect(card.questions.questions[0]?.preview).toContain("state locked");
+		await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+		expect(f.effects).toEqual([]);
+		f.approve();
+		await f.actions.execute("session", "deliver", "answer");
+		expect(f.effects).toHaveLength(older ? 1 : 0);
+	});
+}
+
+test("collector includes multiple checks and changed candidate facts require fresh review", async () => {
+	const f = await fixture();
+	f.issue.state = "closed";
+	f.setRequests([{ ...f.request(), state: "locked" }]);
+	const card = await f.actions.prepare("session", {
+		operationId: "deliver",
+		projectId: f.repository.projectId,
+		title: "Deliver",
+		body: "Body",
+		continueDespiteChecks: true,
+	});
+	expect(card.questions.questions[0]?.preview).toContain("issue-not-open");
+	expect(card.questions.questions[0]?.preview).toContain("existing-request-identity-invalid");
+	f.approve();
+	f.setRequests([{ ...f.request(), state: "locked", sourceProjectId: 789 }]);
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+	expect(f.effects).toEqual([]);
+	expect(await f.journal.inspect("session", "deliver")).toMatchObject({ status: "prepared" });
+});
+
+test("warned fork and unknown-head cards disclose risk without authorizing a wrong push", async () => {
+	for (const overrides of [{ sourceProjectId: 789 }, { targetProjectId: null }, { sha: null }]) {
+		const f = await fixture();
+		f.setRequests([{ ...f.request(), ...overrides }]);
+		const card = await f.actions.prepare("session", {
+			operationId: "deliver",
+			projectId: f.repository.projectId,
+			title: "Deliver",
+			body: "Body",
+			continueDespiteChecks: true,
+		});
+		expect(card.questions.questions[0]?.preview).toContain("ONE-SHOT EXCEPTION");
+		if (!("sha" in overrides)) {
+			expect(card.questions.questions[0]?.preview).toContain("Expected repository 456");
+			expect(card.questions.questions[0]?.preview).toContain("Risk:");
+		}
+		f.approve();
+		await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+		expect(f.effects).toEqual([]);
+	}
+});
+
+test("override cannot expose credential-bearing URLs or invent a repository selection", async () => {
+	for (const mode of ["url", "request", "repository"] as const) {
+		const f = await fixture();
+		if (mode === "url") f.host.url = "https://private-secret@example.com/repo.git";
+		if (mode === "request")
+			f.setRequests([{ ...f.request(), webUrl: "https://private-secret@example.com/pull/9" }]);
+		let error: unknown;
+		try {
+			await f.actions.prepare("session", {
+				operationId: "deliver",
+				projectId: mode === "repository" ? "missing" : f.repository.projectId,
+				title: "Deliver",
+				body: "Body",
+				continueDespiteChecks: true,
+			});
+		} catch (caught) {
+			error = caught;
+		}
+		expect(error).toBeDefined();
+		expect(String(error)).not.toContain("private-secret");
+		if (mode === "repository") expect(String(error)).toContain("select-explicit-repository");
+		expect(await f.journal.get("session", "deliver")).toBeNull();
+		expect(f.effects).toEqual([]);
+	}
+});
+
+for (const policy of ["session-stage", "same-target"] as const) {
+	test(`warned ${policy} can attempt mechanically valid delivery with unchanged facts`, async () => {
+		const f = await fixture();
+		if (policy === "session-stage") f.binding.stage = "design";
+		else f.state.branch = f.host.targetBranch;
+		await expect(f.prepare()).rejects.toThrow();
+		const card = await f.actions.prepare("session", {
+			operationId: "deliver",
+			projectId: f.repository.projectId,
+			title: "Deliver",
+			body: "Body",
+			continueDespiteChecks: true,
+		});
+		expect(card.questions.questions[0]?.preview).toContain("ONE-SHOT EXCEPTION");
+		f.approve();
+		f.created({ sourceBranch: f.state.branch });
+		await f.actions.execute("session", "deliver", "answer");
+		expect(f.effects).toHaveLength(2);
+	});
+}
+
+test("warned delivery still freezes checkout SHA and branch", async () => {
+	for (const fact of ["sha", "branch"] as const) {
+		const f = await fixture();
+		f.issue.state = "closed";
+		await f.actions.prepare("session", {
+			operationId: "deliver",
+			projectId: f.repository.projectId,
+			title: "Deliver",
+			body: "Body",
+			continueDespiteChecks: true,
+		});
+		f.approve();
+		f.state[fact] = fact === "sha" ? "b".repeat(40) : "changed";
+		await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+		expect(f.effects).toEqual([]);
 	}
 });

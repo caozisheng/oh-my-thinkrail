@@ -32,9 +32,19 @@ path override or merge/close capability.
 Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags and a concrete
 next action. Read-only preflight failures occur before intent reservation and remain eligible for a
 refreshed confirmation. Once an intent is reserved, only a completed receipt or explicit inspection and
-user-directed recovery can proceed; no replacement ID bypasses uncertainty. `continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
+user-directed recovery can proceed; no replacement ID bypasses uncertainty. Every confirmation prepare/execute refusal is wrapped by host-local `issueContinuations`: return a
+sanitized cause tag, fixed input snapshot and exact continuation questions. A real receipt authorizes
+one memoized attempt; concurrent/replayed calls share it. A successful prepare continuation returns a
+new normal/warned operation card needing separate approval, not remote mutation. Snapshots expire with
+host restart or after 30 minutes, are bounded to 100, and can be disabled by
+`THINKRAIL_ISSUE_CONTINUATIONS=0`. Invalid receipts grant no action. This is universal card offering,
+not a promise that invalid targets/credentials become valid or uncertain writes resend.
+
+`continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
 include closed Issue, missing design receipt, unexpected workflow labels and uncommitted files; delivery
-permits a warned closed-Issue operation. The frozen payload includes each exception and still requires
+collects executable policy checks including locked request state and session-stage mismatch into its
+exact card. Missing/ambiguous repository selection and credential-bearing URLs cannot be invented or
+made safe by a flag. The frozen payload includes each exception and still requires
 the exact real answer. New facts invalidate that authority. Invalid identities, unavailable credentials
 and uncertain intents still need repair or reconciliation. `recovery:"reconcile"` freezes observed
 stage note/label or delivery MR evidence for the original operation; its exact card requires human

@@ -73,6 +73,7 @@ export interface IssueToolHost {
 		sessionId: string,
 		operationId: string,
 		toolCallId: string,
+		continuationId?: string,
 	): Promise<unknown>;
 	recordSummary(
 		sessionId: string,
@@ -276,7 +277,8 @@ const PrepareConfirmationSchema = Type.Object(
 const ExecuteConfirmationSchema = Type.Object(
 	{
 		operationId: Type.String({ minLength: 1, maxLength: 128 }),
-		toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+		toolCallId: Type.String({ minLength: 1, maxLength: 512 }),
+		continuationId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 	},
 	{ additionalProperties: false },
 );
@@ -306,13 +308,14 @@ export function createIssueExecuteConfirmationTool(): ToolDefinition<
 		label: "Execute Issue Confirmation",
 		parameters: ExecuteConfirmationSchema,
 		description:
-			"Execute a prepared Issue operation only after the exact returned question was submitted with Looks right. Supply that ask_user_question toolCallId. Host validates the real answer, fixed version and one-time durable intent. Results may be partial/uncertain: stop and reconcile, never retry under a new operationId or bypass through shell. Stage confirmation does not authorize push or PR/MR creation; those require their own per-repository card.",
+			"Execute a prepared Issue operation only after the exact returned question was submitted with Looks right. Supply that ask_user_question toolCallId. Host validates the real answer, fixed version and one-time durable intent. Results may be partial/uncertain: stop and reconcile, never retry under a new operationId or bypass through shell. When a refusal returns continuation questions, show them unchanged and pass continuationId with that card's real toolCallId to attempt the fixed request once. Stage confirmation does not authorize push or PR/MR creation; those require their own per-repository card.",
 		async execute(_id, params, _signal, _update, ctx) {
 			if (!host.executeConfirmation) throw unavailable();
 			const result = await host.executeConfirmation(
 				ctx.sessionManager.getSessionId(),
 				params.operationId,
 				params.toolCallId,
+				params.continuationId,
 			);
 			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
 		},

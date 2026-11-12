@@ -204,10 +204,14 @@ test("a fresh host prepares confirmations from durable session bindings without 
 	});
 	await expect(
 		prepareConfirmation("bound-session", { ...confirmation, inspect: true }),
-	).rejects.toThrow("Invalid Issue request");
+	).resolves.toMatchObject({
+		status: "blocked",
+		continuationId: expect.any(String),
+		questions: { questions: expect.any(Array) },
+	});
 	await expect(
 		prepareConfirmation("unbound-session", { operationId: "design-review", inspect: true }),
-	).rejects.toThrow("Invalid Issue request");
+	).resolves.toMatchObject({ status: "blocked", continuationId: expect.any(String) });
 	await expect(
 		prepareConfirmation("bound-session", { operationId: "missing", recovery: "reconcile" }),
 	).resolves.toEqual({ status: "missing" });
@@ -217,14 +221,17 @@ test("a fresh host prepares confirmations from durable session bindings without 
 			recovery: "reconcile",
 			projectId: "one",
 		}),
-	).rejects.toThrow("Invalid Issue request");
-	await expect(prepareConfirmation("unbound-session", confirmation)).rejects.toThrow(
-		"Invalid Issue request",
-	);
+	).resolves.toMatchObject({ status: "blocked", continuationId: expect.any(String) });
+	await expect(prepareConfirmation("unbound-session", confirmation)).resolves.toMatchObject({
+		status: "blocked",
+		continuationId: expect.any(String),
+	});
 	setProjectTrust("one", false);
-	await expect(prepareConfirmation("bound-session", confirmation)).rejects.toThrow(
-		"Issue project requires trust",
-	);
+	await expect(prepareConfirmation("bound-session", confirmation)).resolves.toMatchObject({
+		status: "blocked",
+		reason: { code: "RESOURCE_UNAVAILABLE" },
+		continuationId: expect.any(String),
+	});
 });
 
 test("unknown params and missing projects fail closed; an untrusted project may still connect", async () => {
