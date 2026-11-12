@@ -416,7 +416,6 @@ export function IssuesPanel({
 										onRetry={() => onRetryPreview?.(issue)}
 									/>
 								)}
-								<p className="text-text-subtle">{t(STAGE_KEY[stage])}</p>
 								{issue.labels.length > 0 && (
 									<p className="break-words text-text-muted">{issue.labels.join(" · ")}</p>
 								)}

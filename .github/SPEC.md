@@ -36,8 +36,10 @@ checks. Packaging-affecting changes and merge groups also run Linux binary/deskt
 The restored `changes` classifier preserves the existing app/artifact path filters; manual dispatch runs
 all coverage. `CI passed` requires classification, lint, unit and Windows jobs to succeed, and every
 classifier-gated job to succeed or be legitimately skipped. No macOS CI runner is scheduled; Linux CLI
-release runners are separate from application CI. Source browser CI pins Ubuntu 24.04, matching the
-validated WebKit/system-library baseline rather than following `ubuntu-latest` distribution upgrades.
+release runners are separate from application CI. The three source no-agent browser shards are temporarily
+disabled while Ubuntu WebKit system-library downloads fail due to package-mirror DNS errors. Their task
+steps and matrix remain intact; restore `needs.changes.outputs.app == 'true'` on `e2e-shard` once dependency
+installation recovers. The aggregate accepts that job as skipped, not as browser verification passed.
 
 The synchronized upstream cross-platform CI recipe is retained fully commented in
 `ci-upstream.yml.disabled`; Linux build branches in the reusable native build action remain intact
@@ -80,8 +82,8 @@ that does not touch artifacts.
 
 **Required gate.** The ruleset requires one check, "CI passed": an aggregate job that succeeds only when the
 change classifier, conformance/lint/typecheck and unit tests succeeded and every other job either succeeded
-or was skipped by the classifier. CI can then add, rename or skip jobs without a ruleset edit; renaming "CI
-passed" itself blocks the merge queue. Every job carries a timeout a few times its healthy duration, so a
+or was skipped by the classifier. CI can then add, rename or skip jobs without a ruleset edit; conditionally skipped jobs are accepted but
+are not evidence that their checks ran. Renaming "CI passed" itself blocks the merge queue. Every job carries a timeout a few times its healthy duration, so a
 hung process fails its job, and with it "CI passed", within minutes instead of holding a runner for GitHub's
 six-hour default.
 

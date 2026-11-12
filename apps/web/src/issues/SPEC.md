@@ -167,7 +167,9 @@ live association and reports only the list failure, because a later read cannot 
 follows. Local request sequencing and effect cleanup reject late replies after project, connection or
 request changes; `loadIssueSnapshot` also stops between its own awaits once it is stale.
 
-Summaries group all four stages — backlog, in-progress, in-review and closed — show labels verbatim
+Summaries group all four stages — backlog, in-progress, in-review and closed. Group headings carry the
+stage, count and accessible name; cards do not repeat a system-stage row or reserve space for it.
+Cards show labels verbatim
 (including blocked labels), and open http(s)-only external title links with noopener/noreferrer. The read DTO carries no separate blocked
 reason, so none is invented.
 

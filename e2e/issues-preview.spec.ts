@@ -66,6 +66,13 @@ for (const provider of ["github", "gitlab"] as const) {
 		if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
 		const toggles = page.getByTestId("issue-preview-toggle");
 		await expect(toggles).toHaveCount(2);
+		for (const [index, stage] of ["Backlog", "Closed"].entries()) {
+			const group = page.getByRole("region", { name: stage, exact: true });
+			await expect(group.getByRole("heading")).toHaveText(`${stage} · 1`);
+			const card = group.getByRole("article");
+			await expect(card.getByRole("link")).toHaveText(`#${index + 1} Preview fixture ${index + 1}`);
+			await expect(card.locator(":scope > p")).toHaveCount(0);
+		}
 		await expect(page.getByTestId("issue-body")).toHaveCount(0);
 		expect(reads).toBe(0);
 		await toggles.nth(0).click();
