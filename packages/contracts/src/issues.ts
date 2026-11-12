@@ -21,11 +21,17 @@ export interface IssueConnection {
 }
 export type IssueStage = "backlog" | "in-progress" | "in-review" | "closed";
 export type IssueAction = "design" | "approve-design" | "implement" | "approve-implementation";
+export interface IssueLabelColor {
+	name: string;
+	color: string;
+	textColor?: string;
+}
 export interface IssueSummary {
 	reference: IssueReference;
 	title: string;
 	url: string;
 	labels: string[];
+	labelColors?: IssueLabelColor[];
 	stage: IssueStage;
 	updatedAt: string;
 }

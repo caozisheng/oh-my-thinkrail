@@ -8,12 +8,18 @@ export interface IssueProject {
 	httpUrlToRepo: string | null;
 	sshUrlToRepo: string | null;
 }
+export interface IssueLabelColor {
+	name: string;
+	color: string;
+	textColor?: string;
+}
 export interface IssueRecord {
 	iid: number;
 	title: string;
 	description: string;
 	state: "opened" | "closed";
 	labels: string[];
+	labelColors?: IssueLabelColor[];
 	updatedAt: string;
 }
 export interface IssueNote {

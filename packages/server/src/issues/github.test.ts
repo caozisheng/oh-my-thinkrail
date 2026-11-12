@@ -73,6 +73,22 @@ describe("GitHub Issue reads", () => {
 		).rejects.toHaveProperty("code", "RANGE_INVALID");
 	});
 
+	test("projects GitHub label colors without changing names or order", async () => {
+		const { remote } = client(() =>
+			Response.json({
+				...issuePayload,
+				labels: [
+					{ name: "workflow::in-progress", color: "d73a4a" },
+					{ name: "plain", color: "not-hex" },
+				],
+			}),
+		);
+		expect(await remote.issue(7)).toMatchObject({
+			labels: ["workflow::in-progress", "plain"],
+			labelColors: [{ name: "workflow::in-progress", color: "#D73A4A" }],
+		});
+	});
+
 	test("the issue list drops pull requests and maps open state to the GitLab stage words", async () => {
 		const { remote } = client(() =>
 			Response.json([
