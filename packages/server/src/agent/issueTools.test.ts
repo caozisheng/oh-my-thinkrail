@@ -162,6 +162,9 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	const tool = createIssuePrepareConfirmationTool();
 	const params = { operationId: "op", inspect: true };
 	expect(Check(tool.parameters, params)).toBe(true);
+	expect(Check(tool.parameters, { operationId: "op", continueDespiteChecks: true })).toBe(true);
+	expect(Check(tool.parameters, { operationId: "op", recovery: "reconcile" })).toBe(true);
+	expect(Check(tool.parameters, { operationId: "op", recovery: "resend" })).toBe(false);
 	const result = await tool.execute("call", params, undefined, undefined, ctx);
 	expect(inspected).toBe(true);
 	expect(result.details).toMatchObject({ status: "uncertain", nextAction: "inspect remote" });

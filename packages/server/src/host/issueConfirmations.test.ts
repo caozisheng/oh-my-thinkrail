@@ -266,7 +266,14 @@ test("uncertain inspection retains frozen questions and cannot be bypassed with 
 		message: expect.stringContaining("(uncertain_intent)"),
 	});
 	const restarted = createIssueConfirmationStore(root);
-	expect(await restarted.inspect("session", "op")).toEqual({ status: "uncertain", ...prepared });
+	expect(await restarted.inspect("session", "op")).toMatchObject({
+		status: "uncertain",
+		...prepared,
+		failure: {
+			code: "RESOURCE_UNAVAILABLE",
+			reason: expect.stringContaining("inspect remote state"),
+		},
+	});
 	await expect(restarted.prepare("session", "replacement", {})).rejects.toMatchObject({
 		code: unavailable.code,
 		message: expect.stringContaining("(uncertain_intent)"),
@@ -279,6 +286,170 @@ test("uncertain inspection retains frozen questions and cannot be bypassed with 
 		message: expect.stringContaining("(uncertain_intent)"),
 	});
 	expect(calls).toBe(0);
+});
+
+test("recovery freezes an observed receipt and completes only after verification", async () => {
+	const { root, store } = setup();
+	const prepared = await store.prepare("session", "op", { payload: true });
+	await expect(
+		store.execute("session", "op", prepared.digest, "original-call", async () => {
+			throw new Error("uncertain dispatch");
+		}),
+	).rejects.toMatchObject(unavailable);
+	const candidate = { result: { receipt: "remote-123" } };
+	const frozen = await store.prepareRecovery("session", "op", candidate);
+	candidate.result.receipt = "changed";
+	let verified = false;
+	await expect(
+		store.completeRecovery("session", "op", "0".repeat(64), "recovery-call", async () => {
+			verified = true;
+		}),
+	).rejects.toMatchObject(unavailable);
+	expect(verified).toBe(false);
+	await expect(
+		store.completeRecovery("session", "op", frozen.candidateDigest, "recovery-call", async () => {
+			throw new Error("verification failed");
+		}),
+	).rejects.toMatchObject(unavailable);
+	const restarted = createIssueConfirmationStore(root);
+	expect(await restarted.getRecovery("session", "op")).toEqual({
+		candidateDigest: frozen.candidateDigest,
+		candidate: { result: { receipt: "remote-123" } },
+	});
+	expect(await restarted.inspect("session", "op")).toMatchObject({ status: "uncertain" });
+	const path = join(root, hash("session"));
+	expect(readdirSync(path)).not.toContain("1.recovery-call");
+	const originalIntent = readFileSync(join(path, "1.intent"), "utf8");
+	const originalCandidate = readFileSync(join(path, "1.1.recovery"), "utf8");
+	const fresh = await restarted.prepareRecovery("session", "op", {
+		result: { receipt: "remote-456" },
+	});
+	expect(fresh.candidateDigest).not.toBe(frozen.candidateDigest);
+	expect(readFileSync(join(path, "1.1.recovery"), "utf8")).toBe(originalCandidate);
+	await expect(
+		restarted.completeRecovery("session", "op", frozen.candidateDigest, "stale-call", async () => {
+			throw new Error("stale candidate must not verify");
+		}),
+	).rejects.toMatchObject({ message: expect.stringContaining("(digest_mismatch)") });
+	await restarted.completeRecovery(
+		"session",
+		"op",
+		fresh.candidateDigest,
+		"fresh-call",
+		async () => {},
+	);
+	expect(readFileSync(join(path, "1.intent"), "utf8")).toBe(originalIntent);
+	expect(await restarted.getRecovery("session", "op")).toEqual({
+		candidateDigest: fresh.candidateDigest,
+		candidate: { result: { receipt: "remote-456" } },
+	});
+	expect(JSON.parse(readFileSync(join(path, "1.recovery-call"), "utf8")).toolCallId).toBe(
+		"fresh-call",
+	);
+	expect(await restarted.inspect("session", "op")).toMatchObject({
+		status: "completed",
+		digest: prepared.digest,
+		result: { receipt: "remote-456" },
+	});
+	expect(await restarted.listCompleted()).toHaveLength(1);
+	expect(
+		JSON.parse(readFileSync(join(root, hash("session"), "1.completed"), "utf8")).toolCallId,
+	).toBe("original-call");
+	expect(
+		await restarted.completeRecovery(
+			"session",
+			"op",
+			fresh.candidateDigest,
+			"fresh-call",
+			async () => {
+				throw new Error("must not reverify");
+			},
+		),
+	).toEqual({ receipt: "remote-456" });
+});
+
+test("legacy recovery candidates remain readable and versioned appends are bounded", async () => {
+	const { root, store } = setup();
+	const prepared = await store.prepare("session", "op", {});
+	await expect(
+		store.execute("session", "op", prepared.digest, "original", async () => {
+			throw new Error("uncertain");
+		}),
+	).rejects.toMatchObject(unavailable);
+	const first = await store.prepareRecovery("session", "op", { result: 1 });
+	const path = join(root, hash("session"));
+	const legacy = readFileSync(join(path, "1.1.recovery"));
+	writeFileSync(join(path, "1.recovery"), legacy);
+	rmSync(join(path, "1.1.recovery"));
+	const restarted = createIssueConfirmationStore(root);
+	expect(await restarted.getRecovery("session", "op")).toEqual({
+		...first,
+		candidate: { result: 1 },
+	});
+	for (let version = 2; version <= 32; version++) {
+		await restarted.prepareRecovery("session", "op", { result: version });
+	}
+	expect(readFileSync(join(path, "1.recovery"))).toEqual(legacy);
+	await restarted.prepareRecovery("session", "op", { result: 32 });
+	await expect(restarted.prepareRecovery("session", "op", { result: 33 })).rejects.toMatchObject({
+		message: expect.stringContaining("(capacity_reached)"),
+	});
+	expect(await restarted.getRecovery("session", "op")).toMatchObject({ candidate: { result: 32 } });
+	writeFileSync(join(path, "1.34.recovery"), legacy);
+	await expect(restarted.getRecovery("session", "op")).rejects.toMatchObject(unavailable);
+});
+
+test("recovery cannot complete while original execution is live", async () => {
+	const { root, store } = setup();
+	const prepared = await store.prepare("session", "op", {});
+	let finish!: (value: unknown) => void;
+	const running = store.execute(
+		"session",
+		"op",
+		prepared.digest,
+		"original",
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	);
+	await new Promise((resolve) => setImmediate(resolve));
+	const other = createIssueConfirmationStore(root);
+	await expect(
+		other.prepareRecovery("session", "op", { result: { observed: true } }),
+	).rejects.toMatchObject({ message: expect.stringContaining("(uncertain_intent)") });
+	expect(await other.getRecovery("session", "op")).toBeNull();
+	await expect(
+		other.completeRecovery("session", "op", "0".repeat(64), "recover", async () => {}),
+	).rejects.toMatchObject(unavailable);
+	finish({ ok: true });
+	await running;
+	const restarted = createIssueConfirmationStore(root);
+	expect(await restarted.getRecovery("session", "op")).toBeNull();
+	expect(
+		await restarted.execute("session", "op", prepared.digest, "original", async () => {
+			throw new Error("must replay original completion");
+		}),
+	).toEqual({ ok: true });
+});
+
+test("a proven pre-dispatch refusal resolves its reserved intent without uncertain replay", async () => {
+	const { store } = setup();
+	const prepared = await store.prepare("session", "op", {});
+	const result = await store.execute(
+		"session",
+		"op",
+		prepared.digest,
+		"call",
+		async () => {
+			throw new CodedError("ISSUE_DELIVERY_REFUSED", "pre-push-check");
+		},
+		undefined,
+		() => false,
+	);
+	expect(result).toMatchObject({ status: "not-dispatched", code: "ISSUE_DELIVERY_REFUSED" });
+	expect((await store.inspect("session", "op")).status).toBe("completed");
+	await store.prepare("session", "fresh-confirmation", { current: true });
 });
 
 test("read-only preflight refusal leaves no intent and preserves its coded reason", async () => {

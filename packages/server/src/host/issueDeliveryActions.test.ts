@@ -45,7 +45,7 @@ async function fixture() {
 		iid: 38,
 		title: "Issue",
 		description: "Description",
-		state: "opened" as const,
+		state: "opened" as "opened" | "closed",
 		labels: ["workflow::in-review"],
 		updatedAt: "1",
 	};
@@ -103,7 +103,8 @@ async function fixture() {
 		repositories: async () => [structuredClone(repository)],
 		checkout: async () => structuredClone(state),
 		repositoryRemote: async () => ({ ...host, remote }),
-		push: async (repo, input) => {
+		push: async (repo, input, onDispatch) => {
+			onDispatch();
 			effects.push({ repository: repo.projectId, ...input });
 			if (requests.length === 1) requests = requests.map((entry) => ({ ...entry, sha: input.sha }));
 			if (race) requests = [request()];
@@ -210,6 +211,30 @@ test("historical implementation commits do not block review of the current check
 	expect(f.effects).toEqual([]);
 });
 
+test("a closed Issue offers a warned one-shot card rather than a permanent delivery block", async () => {
+	const f = await fixture();
+	f.issue.state = "closed";
+	await expect(f.prepare()).rejects.toMatchObject({
+		code: "ISSUE_DELIVERY_REFUSED",
+		message: expect.stringContaining("continueDespiteChecks:true"),
+	});
+	const card = await f.actions.prepare("session", {
+		operationId: "deliver",
+		projectId: f.repository.projectId,
+		title: "Deliver exact title",
+		body: "Exact draft body",
+		continueDespiteChecks: true,
+	});
+	expect(card.questions.questions[0]?.preview).toContain("ONE-SHOT EXCEPTION");
+	expect(card.questions.questions[0]?.preview).toContain("issue-not-open");
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+	expect(f.effects).toEqual([]);
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toHaveLength(2);
+	expect(f.issue.state).toBe("closed");
+});
+
 test("one exact existing PR is reused without push or modification", async () => {
 	const f = await fixture();
 	f.setRequests([f.request()]);
@@ -253,6 +278,21 @@ test("pipeline and review metadata changes do not block a confirmed MR update", 
 	f.approve();
 	await f.actions.execute("session", "deliver", "answer");
 	expect(f.effects).toHaveLength(1);
+});
+
+test("recovery observes the same updated MR without dispatching another push", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	await f.prepare();
+	const stored = await f.journal.get("session", "deliver");
+	if (!stored) throw new Error("Missing payload");
+	await expect(f.actions.observe("session", stored.payload as DeliveryPayload)).rejects.toThrow();
+	f.setRequests([f.request()]);
+	const observed = await f.actions.observe("session", stored.payload as DeliveryPayload);
+	expect(observed.result).toMatchObject({ number: 9, sha: f.state.sha, created: false });
+	expect(f.effects).toEqual([]);
+	f.setRequests([{ ...f.request(), id: 92, iid: 10 }]);
+	await expect(f.actions.observe("session", stored.payload as DeliveryPayload)).rejects.toThrow();
 });
 
 test("prepare refuses design stage, invalid SHA and missing default", async () => {

@@ -21,6 +21,8 @@ export interface IssueAgentSessionHostOptions {
 		input: {
 			operationId: string;
 			inspect?: boolean;
+			continueDespiteChecks?: boolean;
+			recovery?: "reconcile";
 			report?: string;
 			projectId?: string;
 			title?: string;

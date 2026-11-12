@@ -30,9 +30,17 @@ path override or merge/close capability.
 Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags and a concrete
 next action. Read-only preflight failures occur before intent reservation and remain eligible for a
 refreshed confirmation. Once an intent is reserved, only a completed receipt or explicit inspection and
-user-directed recovery can proceed; no replacement ID bypasses uncertainty. A failure card must disclose
-the checked facts, proposed operation and risk before accepting a user-authorized exception. There is no
-silent or permanent force-continue switch.
+user-directed recovery can proceed; no replacement ID bypasses uncertainty. `continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
+include closed Issue, missing design receipt, unexpected workflow labels and uncommitted files; delivery
+permits a warned closed-Issue operation. The frozen payload includes each exception and still requires
+the exact real answer. New facts invalidate that authority. Invalid identities, unavailable credentials
+and uncertain intents still need repair or reconciliation. `recovery:"reconcile"` freezes observed
+stage note/label or delivery MR evidence for the original operation; its exact card requires human
+confirmation that the original request/process ended and approval to adopt the result. Completion
+rechecks the observed result and records the recovery toolCallId without any remote write. Recovery
+cannot complete during an active original execution in this host. Cross-process termination is a human
+assertion; generic override and uncertain resend are not implemented by this flag. There is no silent or permanent force-continue switch. Bounded failure
+sidecars retain only known sanitized confirmation/delivery reasons for inspection after dispatch.
 
 ## Responsibility
 

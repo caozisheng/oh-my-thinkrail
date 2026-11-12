@@ -60,6 +60,8 @@ export interface IssueToolHost {
 		input: {
 			operationId: string;
 			inspect?: boolean;
+			continueDespiteChecks?: boolean;
+			recovery?: "reconcile";
 			report?: string;
 			projectId?: string;
 			title?: string;
@@ -261,6 +263,8 @@ const PrepareConfirmationSchema = Type.Object(
 			pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
 		}),
 		inspect: Type.Optional(Type.Boolean()),
+		continueDespiteChecks: Type.Optional(Type.Boolean()),
+		recovery: Type.Optional(Type.Literal("reconcile")),
 		report: Type.Optional(Type.String({ minLength: 1, maxLength: 32000 })),
 		projectId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 		title: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
@@ -285,7 +289,7 @@ export function createIssuePrepareConfirmationTool(): ToolDefinition<
 		label: "Prepare Issue Confirmation",
 		parameters: PrepareConfirmationSchema,
 		description:
-			"Prepare a fixed Issue stage report (report) or per-repository delivery (projectId, title, body, optional targetBranch). Returns exact questions to pass unchanged to ask_user_question. Use inspect:true with only operationId to read frozen questions, completion or uncertain status without mutation. Preparation authorizes no writes. Never change the preview. Skip/Discuss/Other does not authorize execution. If unavailable, stop; never bypass through shell.",
+			"Prepare a fixed Issue stage report (report) or per-repository delivery (projectId, title, body, optional targetBranch). Returns exact questions to pass unchanged to ask_user_question. Use inspect:true with only operationId to read frozen questions, completion or uncertain status without mutation. Use recovery:'reconcile' with only the original operationId to prepare a card adopting an observed remote result; the real answer must confirm the original request/process ended. Recovery does not resend. Use continueDespiteChecks:true to request an explicit warned one-shot exception card for failed policy checks; the flag is not authorization. Preparation authorizes no writes. Never change the preview. Skip/Discuss/Other does not authorize execution. If unavailable, stop; never bypass through shell.",
 		async execute(_id, params, _signal, _update, ctx) {
 			if (!host.prepareConfirmation) throw unavailable();
 			const result = await host.prepareConfirmation(ctx.sessionManager.getSessionId(), params);
