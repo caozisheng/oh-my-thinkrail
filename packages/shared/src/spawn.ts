@@ -155,7 +155,10 @@ export function spawnSyncCapturedBytes(
 	};
 }
 
-export function spawnDetached(argv: readonly string[], options: SpawnEnvironment = {}): boolean {
+export function spawnDetached(
+	argv: readonly string[],
+	options: SpawnEnvironment & { windowsHide?: boolean } = {},
+): boolean {
 	if (argv.length === 0) return false;
 	try {
 		Bun.spawn([...argv], {
@@ -163,7 +166,7 @@ export function spawnDetached(argv: readonly string[], options: SpawnEnvironment
 			...(options.env !== undefined ? { env: options.env } : {}),
 			stdout: "ignore",
 			stderr: "ignore",
-			windowsHide: true,
+			windowsHide: options.windowsHide ?? true,
 			detached: process.platform !== "win32",
 		}).unref();
 		return true;

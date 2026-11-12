@@ -50,6 +50,16 @@ retain upstream context where platform assignments differ from this fork's activ
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 
+### Ubuntu dependency sources
+
+Source no-agent and Linux Desktop smoke/E2E shards retain their normal classifier conditions.
+Before apt resolves package versions, the shared apt action rewrites Azure Ubuntu URLs and runner
+`mirror+file` indirection to Ubuntu's official HTTPS archive/security endpoints, including legacy
+`.list`, deb822 `.sources`, and mirror-list files. Suites, signing keys and third-party sources stay
+unchanged. `apt-get update --error-on=any` rejects incomplete indexes before planning the cache key.
+Run 43054002496 failed before Desktop tests because Azure mirror DNS resolution prevented fetching
+`libsoup-3.0`; bypassing that mirror restores coverage without changing runner-wide DNS settings.
+
 ### Suspended cross-platform coverage
 
 Workflow Bun setup reads the root `package.json` `packageManager` pin through `bun-version-file`.
