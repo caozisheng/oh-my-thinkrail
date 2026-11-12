@@ -62,6 +62,25 @@ export function verifyMetadata(raw: unknown, headSha: string): CliMetadata {
 	return metadata;
 }
 
+export function metadataFromWindowsIdentity(
+	raw: unknown,
+	arches: LinuxArch[],
+	headSha: string,
+): CliMetadata {
+	const info = raw as { upstreamTag?: unknown; sha?: unknown; upstreamSha?: unknown };
+	return verifyMetadata(
+		cliMetadata(
+			releaseMetadata(
+				{ tag_name: info.upstreamTag, draft: false, prerelease: false },
+				String(info.sha),
+				String(info.upstreamSha),
+			),
+			arches,
+		),
+		headSha,
+	);
+}
+
 export function collectAsset(
 	metadata: CliMetadata,
 	arch: LinuxArch,
@@ -163,12 +182,14 @@ if (import.meta.main) {
 		writeFileSync("packages/shared/src/version.ts", stampVersion(readMetadata(metadataFile)));
 	} else if (command === "collect") {
 		const arch = parseArches(process.argv[3] ?? "")[0] as LinuxArch;
-		collectAsset(
-			readMetadata(metadataFile),
-			arch,
-			`apps/cli/dist/${assetName(arch)}`,
-			"release-assets",
-		);
+		const metadata = existsSync(metadataFile)
+			? readMetadata(metadataFile)
+			: metadataFromWindowsIdentity(
+					JSON.parse(readFileSync(".windows-release.json", "utf8")),
+					[arch],
+					headSha(),
+				);
+		collectAsset(metadata, arch, `apps/cli/dist/${assetName(arch)}`, "release-assets");
 	} else if (command === "publish") {
 		const metadata = readMetadata(metadataFile);
 		const files = finalizeAssets(metadata, "release-assets");

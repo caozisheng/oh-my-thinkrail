@@ -35,8 +35,10 @@ Settings card's manual **Check again** is the only retry path.
 Fork tags are `vX.Y.Z.<fork sha8>` and the running build carries the same identity, so the comparison is
 that triple plus the sha: a larger base is an update, a smaller base is ignored (never a downgrade), an equal
 base with a different sha is an update (a re-published rebuild), and an equal base with the same sha is
-current. A tag outside the strict pattern is no answer at all. Linux CLI Releases use `cli-v…` tags and are never marked latest
-([[module-ci-release]]), so they never reach this check. The release page is composed locally from the
+current. A tag outside the strict pattern is no answer at all. The check never inspects release assets, so
+Linux CLI binaries attached to the same `vX.Y.Z.<sha8>` Latest Release are ignored
+([[module-ci-release]]). Standalone Linux CLI Releases use `cli-v…` tags and are never marked latest,
+so they never reach this check. The release page is composed locally from the
 validated tag; the response's own URL is never used or trusted.
 
 ## Notification and memory

@@ -3,7 +3,15 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { collectAssets, releaseMetadata, stampVersion } from "./windows-release";
+import { cliMetadata, collectAsset } from "./linux-cli-release";
+import {
+	collectAssets,
+	combinedReleaseArgs,
+	finalizeCombinedAssets,
+	readReleaseMetadata,
+	releaseMetadata,
+	stampVersion,
+} from "./windows-release";
 
 const sha = "abcdef0123456789abcdef0123456789abcdef01";
 const upstreamSha = "1234567890123456789012345678901234567890";
@@ -17,10 +25,17 @@ test("manual release smoke and collection consume the renamed Electrobun ZIP", (
 		"utf8",
 	);
 	const source = readFileSync(join(root, ".github/scripts/windows-release.ts"), "utf8");
+	expect(workflow).toContain("name: Release (Windows desktop + Linux CLI)");
 	expect(workflow).toContain(`bun run smoke:desktop:installer ${installer} stable`);
+	expect(workflow).toContain("needs: [prepare, build, linux]");
+	expect(workflow).toContain('bun .github/scripts/linux-cli-release.ts collect "$ARCH"');
+	expect(workflow).toContain("thinkrail-linux-");
+	expect(workflow).not.toContain("gh release create");
 	expect(source.replace(/\s+/g, "")).toContain(
 		`collectAssets(metadata,"${installer}","release-assets"`,
 	);
+	expect(source).toContain("finalizeCombinedAssets");
+	expect(source).not.toContain("gh release create");
 });
 
 describe("Windows desktop release identity", () => {
@@ -75,6 +90,95 @@ describe("Windows desktop release identity", () => {
 				artifact: name,
 				sha256: digest,
 			});
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("Combined Windows + Linux release assets", () => {
+	const metadata = releaseMetadata(latest, sha, upstreamSha);
+
+	test("re-verifies forwarded metadata against the checkout", () => {
+		expect(readReleaseMetadata(JSON.parse(JSON.stringify(metadata)), sha)).toEqual(metadata);
+		expect(() => readReleaseMetadata(metadata, upstreamSha)).toThrow("Checkout mismatch");
+		expect(() => readReleaseMetadata({ ...metadata, version: "1.2.4.abcdef01" }, sha)).toThrow();
+	});
+
+	test("merges Linux CLI binaries into one Latest release without dropping Windows identity", () => {
+		const root = mkdtempSync(join(tmpdir(), "combined-release-"));
+		try {
+			const output = join(root, "assets");
+			writeFileSync(join(root, "installer.zip"), "fixture installer");
+			const windowsName = collectAssets(metadata, join(root, "installer.zip"), output);
+			const windowsDigest = createHash("sha256").update("fixture installer").digest("hex");
+			const linuxMeta = cliMetadata(metadata, ["x64", "arm64"]);
+			const linuxSums: string[] = [];
+			for (const arch of linuxMeta.arches) {
+				const source = join(root, `cli-${arch}`);
+				writeFileSync(source, `binary ${arch}`);
+				collectAsset(linuxMeta, arch, source, output);
+				linuxSums.push(
+					`${createHash("sha256").update(`binary ${arch}`).digest("hex")}  thinkrail-linux-${arch}\n`,
+				);
+			}
+			const files = finalizeCombinedAssets(metadata, output);
+			expect(files.map((file) => file.slice(output.length + 1))).toEqual([
+				windowsName,
+				"thinkrail-linux-x64",
+				"thinkrail-linux-arm64",
+				"SHA256SUMS",
+				"build-info.json",
+			]);
+			expect(readFileSync(join(output, "SHA256SUMS"), "utf8")).toBe(
+				`${windowsDigest}  ${windowsName}\n${linuxSums.join("")}`,
+			);
+			expect(JSON.parse(readFileSync(join(output, "build-info.json"), "utf8"))).toMatchObject({
+				...metadata,
+				artifact: windowsName,
+				sha256: windowsDigest,
+				artifacts: [
+					{ artifact: windowsName, sha256: windowsDigest },
+					{
+						artifact: "thinkrail-linux-x64",
+						sha256: createHash("sha256").update("binary x64").digest("hex"),
+					},
+					{
+						artifact: "thinkrail-linux-arm64",
+						sha256: createHash("sha256").update("binary arm64").digest("hex"),
+					},
+				],
+			});
+			const args = combinedReleaseArgs(metadata, "owner/repo", files);
+			expect(args.slice(0, 4)).toEqual(["gh", "release", "create", "v1.2.3.abcdef01"]);
+			expect(args).toContain("--title");
+			expect(args[args.indexOf("--title") + 1]).toBe(
+				"oh-my-thinkrail 1.2.3.abcdef01 (Windows x64 + Linux x64/arm64)",
+			);
+			expect(args).not.toContain("--latest=false");
+			expect(args[args.indexOf("--target") + 1]).toBe(sha);
+			expect(args).toContain(join(output, "thinkrail-linux-x64"));
+			expect(args).toContain(join(output, "thinkrail-linux-arm64"));
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	test("refuses to publish when a Linux CLI asset is missing or tampered", () => {
+		const root = mkdtempSync(join(tmpdir(), "combined-release-missing-"));
+		try {
+			const output = join(root, "assets");
+			writeFileSync(join(root, "installer.zip"), "fixture installer");
+			collectAssets(metadata, join(root, "installer.zip"), output);
+			expect(() => finalizeCombinedAssets(metadata, output)).toThrow("Missing release asset");
+			const linuxMeta = cliMetadata(metadata, ["x64", "arm64"]);
+			for (const arch of linuxMeta.arches) {
+				const source = join(root, `cli-${arch}`);
+				writeFileSync(source, `binary ${arch}`);
+				collectAsset(linuxMeta, arch, source, output);
+			}
+			writeFileSync(join(output, "thinkrail-linux-arm64"), "tampered");
+			expect(() => finalizeCombinedAssets(metadata, output)).toThrow("mismatch");
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

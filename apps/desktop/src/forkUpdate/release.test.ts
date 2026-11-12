@@ -22,6 +22,23 @@ test("parses only strict fork release tags", () => {
 	}
 });
 
+test("ignores release assets and only reads the tag identity", () => {
+	expect(
+		parseForkRelease({
+			tag_name: "v0.3.0.1a2b3c4d",
+			draft: false,
+			prerelease: false,
+			assets: [
+				{ name: "oh-my-thinkrail-0.3.0.1a2b3c4d-windows-x64.zip" },
+				{ name: "thinkrail-linux-x64" },
+				{ name: "thinkrail-linux-arm64" },
+				{ name: "SHA256SUMS" },
+				{ name: "build-info.json" },
+			],
+		}),
+	).toEqual(release("0.3.0.1a2b3c4d"));
+});
+
 test("ignores draft, prerelease and malformed payloads", () => {
 	expect(parseForkRelease(null)).toBeNull();
 	expect(parseForkRelease([])).toBeNull();

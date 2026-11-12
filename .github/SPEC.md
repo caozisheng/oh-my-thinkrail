@@ -189,18 +189,24 @@ tags, GitHub Releases or signed installers; protected release/signing gates rema
 
 ## Fork Windows releases
 
-`release-windows-desktop.yml` is manually triggered and builds only unsigned Windows x64 Desktop.
-The upstream version is resolved once from `JetBrains/thinkrail`'s latest published non-prerelease
-Release and must be a `vX.Y.Z` or `X.Y.Z` tag. It labels the current fork checkout, not upstream
-source: the release version is `X.Y.Z.<first 8 hex of fork SHA>`. Full fork SHA and upstream Release
-provenance accompany the installer ZIP and SHA-256 checksum. Shared version stamping stays in the
-disposable build checkout; the fork build carries no upstream analytics project key or update feed.
+`release-windows-desktop.yml` (Actions name: **Release (Windows desktop + Linux CLI)**) is manually
+triggered and builds unsigned Windows x64 Desktop in parallel with unsigned Linux CLI x64 and arm64
+from one resolved identity. The upstream version is resolved once from `JetBrains/thinkrail`'s latest
+published non-prerelease Release and must be a `vX.Y.Z` or `X.Y.Z` tag. It labels the current fork
+checkout, not upstream source: the release version is `X.Y.Z.<first 8 hex of fork SHA>`. Full fork SHA
+and upstream Release provenance accompany the assets and SHA-256 checksums. Shared version stamping
+stays in the disposable build checkout; the fork build carries no upstream analytics project key or
+update feed.
 
-Expanded-app and first-install smoke are required before a separate contents-write job publishes a
-Release targeting the full fork SHA. Existing tags or releases are rejected rather than replaced;
-runs serialize without cancelling an active release. No signing credentials, CLI artifacts, updater
-payloads or other operating systems are part of this path. Downloads and release notes explicitly
-identify the unsigned independent fork and the Windows SmartScreen risk.
+Expanded-app and first-install smoke, plus Linux CLI `--version`/`--help`/binary smoke, are required
+before a separate contents-write job publishes one **Latest** Release targeting the full fork SHA. The
+Release title is `oh-my-thinkrail <version> (Windows x64 + Linux x64/arm64)` and the assets are the
+Windows installer ZIP, `thinkrail-linux-x64`, `thinkrail-linux-arm64`, a combined `SHA256SUMS`, and
+`build-info.json` that keeps the Windows `artifact`/`sha256` fields and lists every file under
+`artifacts`. If either side fails, nothing is published. Existing tags or releases are rejected rather
+than replaced; runs serialize without cancelling an active release. No signing credentials or updater
+payloads are part of this path. Downloads and release notes explicitly identify the unsigned
+independent fork, the Windows SmartScreen risk, and that `thinkrail update` would reinstall upstream.
 
 A published Release is also the fork build's upgrade signal: [[submodule-desktop-fork-update]] reads this
 repository's `releases/latest`, so a Release must stay non-draft and non-prerelease with its `vX.Y.Z.<sha8>`
@@ -224,12 +230,13 @@ and publishes; where a manual run refuses an existing `cli-v…` tag, an automat
 Runs share one non-cancelling concurrency group, so at most one waits behind the active release.
 
 The tag is `cli-vX.Y.Z.<sha8>` and the Release is created with `--latest=false`. The Windows advisory
-reads only `releases/latest` and accepts only `vX.Y.Z.<sha8>`, so a CLI release can neither be offered to
-Windows users nor displace the Windows Release as latest; the separate prefix also lets both releases
-exist for one fork commit. Asset names and `SHA256SUMS` lines match the upstream installer contract, but
-`install.sh` and `thinkrail update` still resolve `JetBrains/thinkrail` stable `vX.Y.Z` tags, so fork CLI
-installs are manual and `thinkrail update` would replace them with upstream. A fork-aware installer and
-self-update are deferred.
+reads only `releases/latest` and accepts only `vX.Y.Z.<sha8>`, so a CLI-only release can neither be
+offered to Windows users nor displace the combined Release as latest; the separate prefix also lets both
+releases exist for one fork commit. The combined Windows workflow additionally attaches the same Linux
+CLI binaries to the `vX.Y.Z.<sha8>` Latest Release; that does not use the `cli-v…` tag. Asset names and
+`SHA256SUMS` lines match the upstream installer contract, but `install.sh` and `thinkrail update` still
+resolve `JetBrains/thinkrail` stable `vX.Y.Z` tags, so fork CLI installs are manual and
+`thinkrail update` would replace them with upstream. A fork-aware installer and self-update are deferred.
 
 ## Native build contract
 

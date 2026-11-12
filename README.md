@@ -138,35 +138,39 @@ Issue association and Tomato sessions.
 
 - **Your `pi` setup.** ThinkRail reads your existing `pi` configuration (`~/.pi/agent`). To use another one (for example, a personal `~/.pi/agent-personal`), or to pass extra environment variables to the agent, terminals and MCP servers, set them in Settings → Environment. The configuration becomes active on the next start. Settings → Models also holds `pi`'s prompt-cache warming (off, only while a run is active, or also between runs); ThinkRail keeps it to active runs unless you choose otherwise, so idle chats don't spend in the background.
 
-## Windows Desktop releases
+## Releases
 
-Run **Actions → Release Windows desktop → Run workflow** and select the branch to build (the
-workflow must first be merged into the default branch to appear there). It builds only Windows x64
-Desktop and publishes the installer to this repository's [Releases](https://github.com/caozisheng/oh-my-thinkrail/releases)
-after expanded-app and installer smoke checks pass.
+Run **Actions → Release (Windows desktop + Linux CLI) → Run workflow** and select the branch to build
+(the workflow must first be merged into the default branch to appear there). It builds Windows x64
+Desktop and the Linux CLI for x64 and arm64 from the same commit, then publishes one **Latest**
+Release to this repository's [Releases](https://github.com/caozisheng/oh-my-thinkrail/releases)
+after desktop and CLI smoke checks pass. If either side fails, nothing is published.
 
 Versions use the latest official `JetBrains/thinkrail` Release plus the first eight characters of
-this fork's build commit, for example `0.3.2.abcdef01`. The installer is
-`oh-my-thinkrail-<version>-windows-x64.zip`; `SHA256SUMS` and `build-info.json` record its checksum,
-full fork commit and upstream version provenance. The upstream version is a label, not a guarantee
-that this fork contains every change in that upstream release. Existing tags/releases are never overwritten.
+this fork's build commit, for example `0.3.2.abcdef01`. The Release title is
+`oh-my-thinkrail <version> (Windows x64 + Linux x64/arm64)`. Assets are
+`oh-my-thinkrail-<version>-windows-x64.zip`, `thinkrail-linux-x64`, `thinkrail-linux-arm64`, plus a
+combined `SHA256SUMS` and `build-info.json` that record checksums, the full fork commit and upstream
+version provenance. The upstream version is a label, not a guarantee that this fork contains every
+change in that upstream release. Existing tags/releases are never overwritten.
 
 These are **unsigned, independent fork builds**, not JetBrains-signed distributions. Windows
 SmartScreen may warn. Extract the complete ZIP and keep the setup EXE beside its payload when running
 setup. Automatic desktop updates stay disabled; instead the packaged app checks this repository's
 latest Release at launch, notifies you once per new version, and Settings → Software updates links to
-the release page so you install subsequent releases manually. Release builds
+the release page so you install subsequent releases manually. The desktop check only reads the release
+tag, so the added Linux CLI assets do not affect it. Release builds
 carry no upstream PostHog project key. Source-run privacy behavior is unchanged below.
 
 
-## Linux CLI releases
+## Linux CLI-only releases
 
-Run **Actions → Release Linux CLI → Run workflow** (merged into the default branch first). It builds
-the single-file `thinkrail` CLI for Linux x64 and arm64 on native runners, smoke-boots each binary,
-and publishes `thinkrail-linux-x64`, `thinkrail-linux-arm64`, `SHA256SUMS` and `build-info.json` under a
-`cli-v<version>` tag, using the same version scheme as the Windows releases. Choose one `arch`, or
-`dry_run` to build and smoke without publishing. CLI releases are never marked **Latest**, so the
-Windows desktop update check keeps pointing at Windows releases.
+The standalone **Actions → Release Linux CLI → Run workflow** path (merged into the default branch
+first) still builds the single-file `thinkrail` CLI for Linux x64 and arm64 on native runners,
+smoke-boots each binary, and publishes `thinkrail-linux-x64`, `thinkrail-linux-arm64`, `SHA256SUMS`
+and `build-info.json` under a `cli-v<version>` tag, using the same version scheme as the combined
+releases. Choose one `arch`, or `dry_run` to build and smoke without publishing. These CLI-only
+releases are never marked **Latest**, so they do not displace the combined Windows+Linux Release.
 
 **Auto-release switch (off by default).** The workflow also listens to pushes to `main` (docs-only
 pushes such as `*.md` changes are ignored), but a push only releases when the repository variable
@@ -184,7 +188,7 @@ The upstream `install.sh` and `thinkrail update` only know `JetBrains/thinkrail`
 fork CLI by hand and do not run `thinkrail update` on it (that would install upstream ThinkRail):
 
 ```bash
-tag=cli-v0.3.2.abcdef01   # pick from Releases
+tag=v0.3.2.abcdef01       # Latest combined release, or cli-v0.3.2.abcdef01
 arch=x64                  # or arm64
 base=https://github.com/caozisheng/oh-my-thinkrail/releases/download/$tag
 curl -fL -O "$base/thinkrail-linux-$arch" -O "$base/SHA256SUMS"
