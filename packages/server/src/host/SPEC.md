@@ -21,6 +21,11 @@ URL and a real default or explicitly selected target branch. It pushes the fixed
 creates drafts only. Existing matching requests are reused without editing. Delivery readiness is determined by the agent's work and validation, not a prior implementation-stage journal receipt; the delivery card freezes the current clean checkout and exact PR/MR content. The exact submitted questionnaire receipt, repository identity, remote, Issue snapshot and checkout are still revalidated before mutation. A changed checkout requires a fresh card; uncertain intents remain fenced. The agent receives no token,
 path override or merge/close capability.
 
+Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags for the
+prepare prerequisites and existing-request checks. These are distinct from the journal's reconciliation
+error; neither message authorizes retrying a possibly dispatched mutation. There is no strict-check
+setting on this capability. Installed runtime contents alone do not prove a running process reloaded.
+
 ## Responsibility
 
 The wire and composition root: `Bun.serve` HTTP+WS, static SPA serving, the WS method→handler registry,
