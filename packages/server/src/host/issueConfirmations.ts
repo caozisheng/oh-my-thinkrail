@@ -16,6 +16,9 @@ import { CodedError } from "@thinkrail/shared/codedError";
 const maxPayloadBytes = 131072;
 const maxRecordBytes = maxPayloadBytes + 4096;
 const maxOperations = 1000;
+const maxRecoveryCandidates = 32;
+// Shared across store instances in this process; this cannot attest to another process exiting.
+const activeExecutions = new Set<string>();
 interface Prepared {
 	sessionId: string;
 	operationId: string;
@@ -28,14 +31,64 @@ interface Intent {
 	digest: string;
 	toolCallId: string;
 }
+interface RecoveryCandidate {
+	candidateDigest: string;
+	candidate: unknown;
+}
 interface Operation {
+	revision?: number;
+	recoveries?: RecoveryCandidate[];
 	prepared: Prepared;
 	intent?: Intent;
 	completed?: { result: unknown };
+	failure?: { code: string; reason: string };
 }
-function stop(): never {
-	throw new CodedError("RESOURCE_UNAVAILABLE", "Issue confirmation requires reconciliation.");
+const blockedMessages = {
+	invalid_input: "Use valid session, operation, digest and tool-call identifiers.",
+	invalid_payload: "Provide bounded plain JSON for the confirmation payload.",
+	unsafe_directory: "Restore the trusted journal directory before continuing.",
+	journal_invalid:
+		"The journal is invalid. Reconcile its records before continuing; do not retry mutation.",
+	journal_unavailable:
+		"The journal could not be read or persisted. Restore access and inspect its state before continuing.",
+	payload_changed:
+		"This operation has a frozen payload. Inspect it; prepare a new operation and confirmation for changed content only when no intent is uncertain.",
+	operation_missing: "Prepare this operation and obtain its confirmation before execution.",
+	digest_mismatch: "Inspect the frozen payload and use its digest with the matching confirmation.",
+	confirmation_mismatch:
+		"This operation already has an intent for another confirmation. Inspect its status and reconcile before continuing.",
+	uncertain_intent:
+		"A mutation may have been dispatched. Inspect and reconcile the existing intent before preparing or executing another operation; changing the operation ID cannot bypass it.",
+	capacity_reached:
+		"The journal limit has been reached. Reconcile and retain its records before continuing.",
+	intent_conflict:
+		"Another execution reserved this journal revision. Inspect its status before continuing.",
+	preflight_failed:
+		"Read-only validation failed before any intent was reserved. Inspect current facts and obtain a refreshed confirmation.",
+} as const;
+type BlockedReason = keyof typeof blockedMessages;
+function stop(reason: BlockedReason = "journal_invalid"): never {
+	throw new CodedError(
+		"ISSUE_CONFIRMATION_BLOCKED",
+		`Issue confirmation blocked (${reason}). ${blockedMessages[reason]}`,
+	);
 }
+
+export type IssueConfirmationInspection =
+	| { status: "missing" }
+	| {
+			status: "prepared" | "uncertain";
+			digest: string;
+			payload: unknown;
+			failure?: { code: string; reason: string };
+	  }
+	| {
+			status: "completed";
+			digest: string;
+			payload: unknown;
+			result: unknown;
+			failure?: { code: string; reason: string };
+	  };
 function hash(text: string): string {
 	return createHash("sha256").update(text).digest("hex");
 }
@@ -64,12 +117,20 @@ function exact(value: unknown, keys: string[]): value is Record<string, unknown>
 		keys.every((key) => Object.hasOwn(value, key))
 	);
 }
+function hasResult(value: unknown): value is Record<string, unknown> {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		!Array.isArray(value) &&
+		Object.hasOwn(value, "result")
+	);
+}
 function absent(error: unknown): boolean {
 	return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 function directory(path: string): void {
 	const stat = lstatSync(path);
-	if (stat.isSymbolicLink() || !stat.isDirectory()) stop();
+	if (stat.isSymbolicLink() || !stat.isDirectory()) stop("unsafe_directory");
 }
 function flushDirectory(path: string): void {
 	let fd: number | undefined;
@@ -88,18 +149,18 @@ function flushDirectory(path: string): void {
 		if (fd !== undefined) closeSync(fd);
 	}
 }
-function json(value: unknown): string {
+function json(value: unknown, reason: BlockedReason = "invalid_payload"): string {
 	const ancestors = new Set<object>();
 	function validate(input: unknown): void {
 		if (input === null || typeof input === "string" || typeof input === "boolean") return;
 		if (typeof input === "number" && Number.isFinite(input)) return;
-		if (typeof input !== "object" || ancestors.has(input)) stop();
+		if (typeof input !== "object" || ancestors.has(input)) stop(reason);
 		ancestors.add(input);
 		if (Array.isArray(input)) {
-			if (Reflect.ownKeys(input).length !== input.length + 1) stop();
+			if (Reflect.ownKeys(input).length !== input.length + 1) stop(reason);
 			for (let n = 0; n < input.length; n++) {
 				const descriptor = Object.getOwnPropertyDescriptor(input, String(n));
-				if (!descriptor || !("value" in descriptor)) stop();
+				if (!descriptor || !("value" in descriptor)) stop(reason);
 				validate(descriptor.value);
 			}
 		} else {
@@ -107,10 +168,11 @@ function json(value: unknown): string {
 				Object.getPrototypeOf(input) !== Object.prototype &&
 				Object.getPrototypeOf(input) !== null
 			)
-				stop();
+				stop(reason);
 			for (const key of Reflect.ownKeys(input)) {
 				const descriptor = Object.getOwnPropertyDescriptor(input, key);
-				if (typeof key !== "string" || !descriptor?.enumerable || !("value" in descriptor)) stop();
+				if (typeof key !== "string" || !descriptor?.enumerable || !("value" in descriptor))
+					stop(reason);
 				validate(descriptor.value);
 			}
 		}
@@ -118,7 +180,7 @@ function json(value: unknown): string {
 	}
 	validate(value);
 	const text = JSON.stringify(value);
-	if (Buffer.byteLength(text) > maxPayloadBytes) stop();
+	if (Buffer.byteLength(text) > maxPayloadBytes) stop(reason);
 	return text;
 }
 
@@ -126,16 +188,16 @@ function json(value: unknown): string {
 export function createIssueConfirmationStore(root: string) {
 	const base = resolve(root);
 	function sessionPath(sessionId: string): string {
-		if (!validId(sessionId)) stop();
+		if (!validId(sessionId)) stop("invalid_input");
 		directory(base);
 		return join(base, hash(sessionId));
 	}
-	function read(path: string): unknown | null {
+	function read(path: string, durable = true): unknown | null {
 		try {
 			const stat = lstatSync(path);
 			if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 1 || stat.size > maxRecordBytes)
 				stop();
-			const fd = openSync(path, "r+");
+			const fd = openSync(path, durable ? "r+" : "r");
 			try {
 				const current = fstatSync(fd);
 				if (!current.isFile() || current.size !== stat.size || current.size > maxRecordBytes)
@@ -152,14 +214,15 @@ export function createIssueConfirmationStore(root: string) {
 					new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length)),
 				);
 				if (value === null) stop();
-				fsyncSync(fd);
+				if (durable) fsyncSync(fd);
 				return value;
 			} finally {
 				closeSync(fd);
 			}
 		} catch (error) {
 			if (absent(error)) return null;
-			return stop();
+			if (error instanceof CodedError) throw error;
+			return stop("journal_unavailable");
 		}
 	}
 	function write(path: string, value: unknown, parent: string): void {
@@ -183,7 +246,7 @@ export function createIssueConfirmationStore(root: string) {
 			!validOperation(value.operationId) ||
 			typeof value.digest !== "string" ||
 			!/^[a-f0-9]{64}$/.test(value.digest) ||
-			hash(json(value.payload)) !== value.digest
+			hash(json(value.payload, "journal_invalid")) !== value.digest
 		)
 			stop();
 		return {
@@ -193,7 +256,7 @@ export function createIssueConfirmationStore(root: string) {
 			payload: value.payload,
 		};
 	}
-	function scan(sessionId: string) {
+	function scan(sessionId: string, durable = true) {
 		const path = sessionPath(sessionId);
 		try {
 			directory(path);
@@ -203,14 +266,18 @@ export function createIssueConfirmationStore(root: string) {
 			throw error;
 		}
 		const names = readdirSync(path);
-		if (names.length > maxOperations * 3) stop();
+		if (names.length > maxOperations * (5 + maxRecoveryCandidates)) stop();
 		const ops = new Map<string, Operation>();
 		for (const name of names) {
 			if (!/^[a-f0-9]{64}\.json$/.test(name)) {
-				if (!/^[1-9][0-9]{0,3}\.(intent|completed)$/.test(name)) stop();
+				if (
+					!/^[1-9][0-9]{0,3}\.(intent|completed|failure|recovery|recovery-call)$/.test(name) &&
+					!/^[1-9][0-9]{0,3}\.[1-9][0-9]?\.recovery$/.test(name)
+				)
+					stop();
 				continue;
 			}
-			const prepared = parsePrepared(read(join(path, name)));
+			const prepared = parsePrepared(read(join(path, name), durable));
 			if (
 				prepared.sessionId !== sessionId ||
 				`${hash(prepared.operationId)}.json` !== name ||
@@ -228,7 +295,7 @@ export function createIssueConfirmationStore(root: string) {
 		let pending = false;
 		let completions = 0;
 		for (let n = 1; n <= revisions; n++) {
-			const raw = read(join(path, `${n}.intent`));
+			const raw = read(join(path, `${n}.intent`), durable);
 			if (
 				!exact(raw, ["sessionId", "operationId", "digest", "toolCallId"]) ||
 				raw.sessionId !== sessionId ||
@@ -239,13 +306,29 @@ export function createIssueConfirmationStore(root: string) {
 				stop();
 			const op = ops.get(raw.operationId);
 			if (!op || op.intent || op.prepared.digest !== raw.digest) stop();
+			op.revision = n;
 			op.intent = {
 				sessionId,
 				operationId: raw.operationId,
 				digest: raw.digest,
 				toolCallId: raw.toolCallId,
 			};
-			const completed = read(join(path, `${n}.completed`));
+			const failure = read(join(path, `${n}.failure`), durable);
+			if (failure !== null) {
+				if (
+					!exact(failure, ["sessionId", "operationId", "digest", "code", "reason"]) ||
+					failure.sessionId !== sessionId ||
+					failure.operationId !== raw.operationId ||
+					failure.digest !== raw.digest ||
+					typeof failure.code !== "string" ||
+					!/^[A-Z_]{1,80}$/.test(failure.code) ||
+					typeof failure.reason !== "string" ||
+					failure.reason.length > 4096
+				)
+					stop("journal_invalid");
+				op.failure = { code: failure.code, reason: failure.reason };
+			}
+			const completed = read(join(path, `${n}.completed`), durable);
 			if (completed === null) {
 				if (n !== revisions) stop();
 				pending = true;
@@ -258,21 +341,89 @@ export function createIssueConfirmationStore(root: string) {
 					completed.toolCallId !== raw.toolCallId
 				)
 					stop();
-				json(completed.result);
+				json(completed.result, "journal_invalid");
 				op.completed = { result: completed.result };
 				completions++;
 			}
 		}
 		if (names.filter((name) => name.endsWith(".completed")).length !== completions) stop();
-		flushDirectory(path);
-		flushDirectory(base);
+		const recoveryNames = new Map<number, Map<number, string>>();
+		for (const name of names) {
+			const match = /^([1-9][0-9]{0,3})(?:\.([1-9][0-9]?))?\.recovery$/.exec(name);
+			if (!match) {
+				if (name.endsWith(".recovery-call") && Number(name.split(".")[0]) > revisions) stop();
+				continue;
+			}
+			const revision = Number(match[1]);
+			const version = Number(match[2] ?? 1);
+			if (revision > revisions || version > maxRecoveryCandidates) stop();
+			const versions = recoveryNames.get(revision) ?? new Map<number, string>();
+			if (versions.has(version)) stop();
+			versions.set(version, name);
+			recoveryNames.set(revision, versions);
+		}
+		for (const op of ops.values()) {
+			if (!op.revision) continue;
+			const versions = recoveryNames.get(op.revision) ?? new Map<number, string>();
+			op.recoveries = [];
+			for (let version = 1; version <= versions.size; version++) {
+				const name = versions.get(version);
+				if (!name) stop();
+				const candidate = read(join(path, name), durable);
+				if (
+					!exact(candidate, [
+						"sessionId",
+						"operationId",
+						"digest",
+						"candidate",
+						"candidateDigest",
+					]) ||
+					candidate.sessionId !== sessionId ||
+					candidate.operationId !== op.prepared.operationId ||
+					candidate.digest !== op.prepared.digest ||
+					typeof candidate.candidateDigest !== "string" ||
+					candidate.candidateDigest !== hash(json(candidate.candidate, "journal_invalid")) ||
+					!hasResult(candidate.candidate)
+				)
+					stop();
+				op.recoveries.push({
+					candidateDigest: candidate.candidateDigest,
+					candidate: candidate.candidate,
+				});
+			}
+			const recoveryCall = read(join(path, `${op.revision}.recovery-call`), durable);
+			if (
+				recoveryCall !== null &&
+				(!exact(recoveryCall, ["sessionId", "operationId", "candidateDigest", "toolCallId"]) ||
+					recoveryCall.sessionId !== sessionId ||
+					recoveryCall.operationId !== op.prepared.operationId ||
+					!validToolCallId(recoveryCall.toolCallId) ||
+					!op.recoveries.some(
+						(candidate) => candidate.candidateDigest === recoveryCall.candidateDigest,
+					))
+			)
+				stop();
+		}
+
+		if (
+			names.filter((name) => name.endsWith(".failure")).length !==
+			[...ops.values()].filter((op) => op.failure).length
+		)
+			stop("journal_invalid");
+		if (durable) {
+			flushDirectory(path);
+			flushDirectory(base);
+		}
 		return { path, ops, revisions, pending };
 	}
+	const activeKey = (sessionId: string, operationId: string) =>
+		`${base}/${sessionId}/${operationId}`;
 	async function guarded<T>(fn: () => T | Promise<T>): Promise<T> {
 		try {
 			return await fn();
-		} catch {
-			return stop();
+		} catch (error) {
+			if (error instanceof CodedError) throw error;
+			return stop("journal_unavailable");
 		}
 	}
 	return {
@@ -282,17 +433,18 @@ export function createIssueConfirmationStore(root: string) {
 			payload: unknown,
 		): Promise<{ digest: string; payload: unknown }> {
 			return guarded(() => {
-				if (!validOperation(operationId)) stop();
+				if (!validOperation(operationId)) stop("invalid_input");
 				const encoded = json(payload);
 				const digest = hash(encoded);
 				const snapshot: unknown = JSON.parse(encoded);
 				const state = scan(sessionId);
 				const existing = state.ops.get(operationId);
 				if (existing) {
-					if (existing.prepared.digest !== digest) stop();
+					if (existing.prepared.digest !== digest) stop("payload_changed");
 					return { digest, payload: existing.prepared.payload };
 				}
-				if (state.pending || state.ops.size >= maxOperations) stop();
+				if (state.pending) stop("uncertain_intent");
+				if (state.ops.size >= maxOperations) stop("capacity_reached");
 				try {
 					mkdirSync(state.path, { mode: 0o700 });
 				} catch (error) {
@@ -305,9 +457,140 @@ export function createIssueConfirmationStore(root: string) {
 				} catch (error) {
 					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 					const winner = scan(sessionId).ops.get(operationId);
-					if (!winner || winner.prepared.digest !== digest) stop();
+					if (!winner || winner.prepared.digest !== digest) stop("payload_changed");
 				}
 				return { digest, payload: snapshot };
+			});
+		},
+		/** Read-only diagnostics; prepared payloads remain immutable and uncertain intents stay fenced. */
+		inspect(sessionId: string, operationId: string): Promise<IssueConfirmationInspection> {
+			return guarded(() => {
+				if (!validOperation(operationId)) stop("invalid_input");
+				const op = scan(sessionId, false).ops.get(operationId);
+				if (!op) return { status: "missing" };
+				const frozen = { digest: op.prepared.digest, payload: op.prepared.payload };
+				if (op.completed) return { status: "completed", ...frozen, result: op.completed.result };
+				return {
+					status: op.intent ? "uncertain" : "prepared",
+					...frozen,
+					...(op.failure ? { failure: op.failure } : {}),
+				};
+			});
+		},
+		getRecovery(
+			sessionId: string,
+			operationId: string,
+		): Promise<{ candidateDigest: string; candidate: unknown } | null> {
+			return guarded(() => {
+				if (!validOperation(operationId)) stop("invalid_input");
+				const state = scan(sessionId, false);
+				const op = state.ops.get(operationId);
+				if (!op?.intent) return null;
+				if (op.completed) {
+					const call = read(join(state.path, `${op.revision}.recovery-call`), false);
+					if (!exact(call, ["sessionId", "operationId", "candidateDigest", "toolCallId"]))
+						return null;
+					return (
+						op.recoveries?.find(
+							(candidate) => candidate.candidateDigest === call.candidateDigest,
+						) ?? null
+					);
+				}
+				return op.recoveries?.at(-1) ?? null;
+			});
+		},
+		prepareRecovery(
+			sessionId: string,
+			operationId: string,
+			candidate: unknown,
+		): Promise<{ candidateDigest: string }> {
+			return guarded(() => {
+				if (!validOperation(operationId)) stop("invalid_input");
+				const encoded = json(candidate);
+				const frozen: unknown = JSON.parse(encoded);
+				if (!hasResult(frozen)) stop("invalid_payload");
+				const state = scan(sessionId);
+				const op = state.ops.get(operationId);
+				if (!op?.intent || op.completed) stop("operation_missing");
+				if (activeExecutions.has(activeKey(sessionId, operationId))) stop("uncertain_intent");
+				const candidateDigest = hash(encoded);
+				const record = {
+					sessionId,
+					operationId,
+					digest: op.prepared.digest,
+					candidate: frozen,
+					candidateDigest,
+				};
+				const candidates = op.recoveries ?? [];
+				if (candidates.at(-1)?.candidateDigest === candidateDigest) return { candidateDigest };
+				if (candidates.length >= maxRecoveryCandidates) stop("capacity_reached");
+				const file = join(state.path, `${op.revision}.${candidates.length + 1}.recovery`);
+				write(file, record, state.path);
+				return { candidateDigest };
+			});
+		},
+		/**
+		 * Reconcile an observed receipt, never resend. The host must first obtain explicit human
+		 * confirmation that the original process ended; only local active calls can be checked here.
+		 * verify must only read remote state and validate the frozen candidate against fresh facts.
+		 */
+		completeRecovery(
+			sessionId: string,
+			operationId: string,
+			candidateDigest: string,
+			recoveryToolCallId: string,
+			verify: () => Promise<void>,
+		): Promise<unknown> {
+			return guarded(async () => {
+				if (
+					!validOperation(operationId) ||
+					!/^[a-f0-9]{64}$/.test(candidateDigest) ||
+					!validToolCallId(recoveryToolCallId) ||
+					typeof verify !== "function"
+				)
+					stop("invalid_input");
+				if (activeExecutions.has(activeKey(sessionId, operationId))) stop("uncertain_intent");
+				const state = scan(sessionId);
+				const op = state.ops.get(operationId);
+				if (!op?.intent) stop("operation_missing");
+				const n = op.revision;
+				const candidateRecord = op.completed
+					? op.recoveries?.find((candidate) => candidate.candidateDigest === candidateDigest)
+					: op.recoveries?.at(-1);
+				if (!candidateRecord || candidateRecord.candidateDigest !== candidateDigest)
+					stop("digest_mismatch");
+				const callFile = join(state.path, `${n}.recovery-call`);
+				const callRecord = {
+					sessionId,
+					operationId,
+					candidateDigest,
+					toolCallId: recoveryToolCallId,
+				};
+				const previous = read(callFile);
+				if (previous !== null && JSON.stringify(previous) !== JSON.stringify(callRecord))
+					stop("confirmation_mismatch");
+				if (op.completed) {
+					if (previous === null) stop("confirmation_mismatch");
+					return op.completed.result;
+				}
+				await verify();
+				const current = scan(sessionId);
+				const currentOp = current.ops.get(operationId);
+				if (
+					!currentOp?.intent ||
+					currentOp.completed ||
+					currentOp.recoveries?.at(-1)?.candidateDigest !== candidateDigest ||
+					activeExecutions.has(activeKey(sessionId, operationId))
+				)
+					stop("uncertain_intent");
+				const currentCall = read(callFile);
+				if (currentCall !== null && JSON.stringify(currentCall) !== JSON.stringify(callRecord))
+					stop("confirmation_mismatch");
+				if (currentCall === null) write(callFile, callRecord, state.path);
+				if (!hasResult(candidateRecord.candidate)) stop();
+				const result = candidateRecord.candidate.result;
+				write(join(state.path, `${n}.completed`), { ...op.intent, result }, state.path);
+				return result;
 			});
 		},
 		get(
@@ -315,7 +598,7 @@ export function createIssueConfirmationStore(root: string) {
 			operationId: string,
 		): Promise<{ digest: string; payload: unknown } | null> {
 			return guarded(() => {
-				if (!validOperation(operationId)) stop();
+				if (!validOperation(operationId)) stop("invalid_input");
 				const op = scan(sessionId).ops.get(operationId);
 				return op ? { digest: op.prepared.digest, payload: op.prepared.payload } : null;
 			});
@@ -326,6 +609,8 @@ export function createIssueConfirmationStore(root: string) {
 			digest: string,
 			toolCallId: string,
 			run: () => Promise<unknown>,
+			preflight?: () => Promise<void>,
+			dispatchState?: () => boolean,
 		): Promise<unknown> {
 			return guarded(async () => {
 				if (
@@ -335,28 +620,71 @@ export function createIssueConfirmationStore(root: string) {
 					!/^[a-f0-9]{64}$/.test(digest) ||
 					typeof run !== "function"
 				)
-					stop();
-				const state = scan(sessionId);
-				const op = state.ops.get(operationId);
-				if (!op || op.prepared.digest !== digest) stop();
+					stop("invalid_input");
+				let state = scan(sessionId);
+				let op = state.ops.get(operationId);
+				if (!op) stop("operation_missing");
+				if (op.prepared.digest !== digest) stop("digest_mismatch");
 				if (op.intent) {
-					if (op.intent.toolCallId !== toolCallId || !op.completed) stop();
+					if (!op.completed) stop("uncertain_intent");
+					if (op.intent.toolCallId !== toolCallId) stop("confirmation_mismatch");
 					return op.completed.result;
 				}
-				if (state.pending || state.revisions >= maxOperations) stop();
+				if (state.pending) stop("uncertain_intent");
+				try {
+					await preflight?.();
+				} catch (error) {
+					if (error instanceof CodedError) throw error;
+					stop("preflight_failed");
+				}
+				state = scan(sessionId);
+				op = state.ops.get(operationId);
+				if (!op || op.prepared.digest !== digest) stop("digest_mismatch");
+				if (op.intent || state.pending) stop("uncertain_intent");
+				if (state.revisions >= maxOperations) stop("capacity_reached");
 				const intent = { sessionId, operationId, digest, toolCallId };
 				const revision = state.revisions + 1;
 				try {
 					write(join(state.path, `${revision}.intent`), intent, state.path);
 				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code === "EEXIST") stop();
+					if ((error as NodeJS.ErrnoException).code === "EEXIST") stop("intent_conflict");
 					throw error;
 				}
 				let encodedResult: string;
+				const executionKey = activeKey(sessionId, operationId);
+				activeExecutions.add(executionKey);
 				try {
 					encodedResult = json(await run());
-				} catch {
-					return stop();
+				} catch (error) {
+					if (dispatchState && !dispatchState()) {
+						const result = {
+							status: "not-dispatched",
+							code: error instanceof CodedError ? error.code : "RESOURCE_UNAVAILABLE",
+							nextAction:
+								"No remote mutation was dispatched. Review current facts and prepare a new confirmation for another attempt.",
+						};
+						write(join(state.path, `${revision}.completed`), { ...intent, result }, state.path);
+						return result;
+					}
+					const known =
+						error instanceof CodedError &&
+						["ISSUE_DELIVERY_REFUSED", "ISSUE_CONFIRMATION_BLOCKED"].includes(error.code);
+					write(
+						join(state.path, `${revision}.failure`),
+						{
+							sessionId,
+							operationId,
+							digest,
+							code: error instanceof CodedError ? error.code : "RESOURCE_UNAVAILABLE",
+							reason: known
+								? error.message.slice(0, 4096)
+								: "Remote execution did not complete with a verified receipt; inspect remote state before recovery.",
+						},
+						state.path,
+					);
+					return stop("uncertain_intent");
+				} finally {
+					activeExecutions.delete(executionKey);
 				}
 				const result: unknown = JSON.parse(encodedResult);
 				directory(base);
@@ -407,4 +735,14 @@ export function createIssueConfirmationStore(root: string) {
 	};
 }
 
-export type IssueConfirmationStore = ReturnType<typeof createIssueConfirmationStore>;
+// Optional on the port so existing structural adapters remain compatible.
+export type IssueConfirmationStore = Omit<
+	ReturnType<typeof createIssueConfirmationStore>,
+	"inspect" | "prepareRecovery" | "completeRecovery" | "getRecovery"
+> &
+	Partial<
+		Pick<
+			ReturnType<typeof createIssueConfirmationStore>,
+			"inspect" | "prepareRecovery" | "completeRecovery" | "getRecovery"
+		>
+	>;

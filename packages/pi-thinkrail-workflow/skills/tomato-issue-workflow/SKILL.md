@@ -140,8 +140,19 @@ its own card authorizes the current commit and PR/MR content. Prepare with proje
 and, when needed, targetBranch. Use the unchanged returned card, then execute after its submitted answer.
 It authorizes only non-force push and Draft PR/MR creation or reuse of the displayed existing request.
 The card authorizes no commit, ready transition, merge or closure. Changed versions invalidate it.
-Uncertain operations remain fenced: stop and report the original operation; never change IDs or bypass
-through shell/provider APIs. A missing capability requires an upgrade. Standalone PR work uses **shipping-a-pr**.
+Every refusal must state the checked facts, reason and next action. Request `inspect:true` with the
+original operationId to read status and frozen questions. For supported policy failures, prepare with
+`continueDespiteChecks:true` to obtain the warned one-shot card; the flag alone authorizes nothing.
+For other deterministic failures, correct or explicitly review facts and obtain a fresh exact card. A changed committed version always needs a new card. After delivery completes, later CI
+repairs are new, separately confirmed pushes to the same MR; monitor the pipeline belonging to the new
+head and continue the repair loop until checks pass or a concrete blocker is reported.
+
+A result marked uncertain requires a read-only status inspection and remote reconciliation before
+resuming. Do not change IDs to bypass its intent. When reconciliation cannot determine whether a write
+happened, surface the exact possible duplicate effects and ask the user whether to authorize another
+attempt. If the host lacks a receipt-backed recovery/retry capability, report that concrete missing
+capability and request its implementation; do not claim a questionnaire alone unlocked the intent or
+resend via shell. No silent permanent block or blanket bypass. A missing capability requires an upgrade. Standalone PR work uses **shipping-a-pr**.
 These gates grant no remote authority themselves; the required summary handoff remains independent.
 
 ## Ending

@@ -194,6 +194,30 @@ test("a fresh host prepares confirmations from durable session bindings without 
 	await expect(prepareConfirmation("bound-session", confirmation)).resolves.toHaveProperty(
 		"digest",
 	);
+	const inspected = await prepareConfirmation("bound-session", {
+		operationId: "design-review",
+		inspect: true,
+	});
+	expect(inspected).toMatchObject({
+		status: "prepared",
+		questions: { questions: expect.any(Array) },
+	});
+	await expect(
+		prepareConfirmation("bound-session", { ...confirmation, inspect: true }),
+	).rejects.toThrow("Invalid Issue request");
+	await expect(
+		prepareConfirmation("unbound-session", { operationId: "design-review", inspect: true }),
+	).rejects.toThrow("Invalid Issue request");
+	await expect(
+		prepareConfirmation("bound-session", { operationId: "missing", recovery: "reconcile" }),
+	).resolves.toEqual({ status: "missing" });
+	await expect(
+		prepareConfirmation("bound-session", {
+			operationId: "missing",
+			recovery: "reconcile",
+			projectId: "one",
+		}),
+	).rejects.toThrow("Invalid Issue request");
 	await expect(prepareConfirmation("unbound-session", confirmation)).rejects.toThrow(
 		"Invalid Issue request",
 	);

@@ -256,14 +256,24 @@ and moves that label to `workflow::in-progress`. Implementation confirmation acc
 `workflow::in-progress`, binds a completed design and each selected clean checkout SHA, then moves
 the label to `workflow::in-review`. This source-to-target transition is identical on GitHub and GitLab.
 Comment and resulting labels are re-read; unrelated labels and the Issue body are preserved. Unknown,
-conflicting, closed or concurrent state is refused. This new confirmation path does not use the legacy
-GitLab approval labels or grant permission to start another stage.
+conflicting, closed or concurrent state is refused unless an explicit one-shot warned card is requested
+for the supported stage policy exceptions; the card states actual labels/state/receipt gaps, and execution
+rechecks frozen facts. Unsupported exceptions do not silently proceed. This new confirmation path does
+not use legacy GitLab approval labels or grant permission to start another stage.
 
 Delivery is separately confirmed per repository, fixing the commit, authenticated repository identity,
 canonical push URL, source/target branches and complete draft text. Non-force push uses the exact SHA;
-one matching existing PR/MR is reused without editing. Otherwise only a Draft PR/MR is created.
-Automatic commits, force push, merge and Issue closure are outside this surface. Post-write uncertainty
-retains its intent and blocks replay for reconciliation.
+one matching existing PR/MR at the same SHA is reused without editing. An older head on that same
+source/target repository and branch is updated by the confirmed non-force push, then re-read to verify
+the same request id/iid now points at the new SHA; it is never replaced by a duplicate. Otherwise only a
+Draft PR/MR is created.
+Automatic commits, force push, merge and Issue closure are outside this surface. Delivery failure
+reasons and journal status are inspectable; deterministic preflight happens before intent reservation.
+Post-write uncertainty retains its intent and blocks blind replay. Read-only inspection exposes
+status/reasons, and receipt adoption requires a frozen observed-result card, original-process-ended
+human confirmation, and a fresh remote recheck before completing the original intent. Stage exact-body
+matching alone does not prove note authorship; the adoption card discloses that limitation. Automatic
+or user-authorized resend after unresolved uncertainty remains unimplemented.
 
 ## Workspace/session coordination
 

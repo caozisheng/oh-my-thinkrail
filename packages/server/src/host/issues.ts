@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
 	canonicalIssueInstanceUrl,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
@@ -36,15 +37,22 @@ import {
 	createIssueAgentSessionHost,
 	type IssueAgentSessionHostOptions,
 } from "./issueAgentSessions";
-import { createIssueConfirmationStore } from "./issueConfirmations";
+import {
+	createIssueConfirmationStore,
+	type IssueConfirmationInspection,
+} from "./issueConfirmations";
 import { createIssueCredentials } from "./issueCredentials";
-import { createIssueDeliveryActions, deliveryQuestions } from "./issueDeliveryActions";
+import {
+	createIssueDeliveryActions,
+	type DeliveryPayload,
+	deliveryQuestions,
+} from "./issueDeliveryActions";
 import {
 	createIssueSessionStore,
 	type IssueSessionAssociation,
 	type IssueSessionStore,
 } from "./issueSessions";
-import { createIssueStageActions, stageQuestions } from "./issueStageActions";
+import { createIssueStageActions, type StagePayload, stageQuestions } from "./issueStageActions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
@@ -415,13 +423,14 @@ export function createIssuesHost(
 					targetBranch: metadata.defaultBranch,
 				};
 			},
-			push: async (repository, input) => {
+			push: async (repository, input, onDispatch) => {
 				const current = await trustedCheckout(repository);
 				if (current.sha !== input.sha || current.branch !== input.branch) invalid();
 				// Recheck immediately before dispatch: URL config may have changed since review.
 				const urls = await originUrls(repository.path);
 				const effective = urls.push ? await deliveryPushUrl(repository.path, urls.push) : null;
 				if (!effective || effective !== safeRepositoryUrl(input.url)) invalid();
+				onDispatch();
 				const pushed = await gitAsync(repository.path, [
 					"-c",
 					"push.followTags=false",
@@ -446,24 +455,204 @@ export function createIssuesHost(
 			},
 		});
 	}
+	function recoveryQuestions(operationId: string, candidateDigest: string, candidate: unknown) {
+		return {
+			questions: [
+				{
+					question:
+						"Has the original operation/process ended, and do you approve adopting this observed remote result without resending?",
+					header: "Reconcile",
+					preview: `Operation: ${operationId}\nRecovery version: ${candidateDigest}\n${JSON.stringify(candidate, null, 2)}\n\nThis only records the observed remote receipt for the original operation and releases its uncertainty fence. Exact matching content does not prove original authorship; you are approving adoption of this observed result. It sends no push, note, label update or PR/MR creation. Confirm that the original request/process has ended before approving.`,
+					options: [
+						{
+							label: "Looks right",
+							description:
+								"The original process ended; adopt this exact observed result without another remote write.",
+						},
+					],
+				},
+			],
+		};
+	}
 	const agentSessions = createIssueAgentSessionHost({
 		service,
 		prepareConfirmation: async (sessionId, input) => {
+			if (input.recovery === "reconcile") {
+				if (input.continueDespiteChecks) invalid();
+				if (
+					input.inspect ||
+					input.report ||
+					input.projectId ||
+					input.title ||
+					input.body !== undefined ||
+					input.targetBranch ||
+					input.continueDespiteChecks
+				)
+					invalid();
+				await confirmationBinding(sessionId);
+				const store = journal();
+				const state = await store.inspect(sessionId, input.operationId);
+				if (state.status !== "uncertain") return state;
+				const payload = state.payload as DeliveryPayload | StagePayload;
+				const observed =
+					payload.stage === "delivery"
+						? await deliveries().observe(sessionId, payload)
+						: await stages().observe(sessionId, payload);
+				const frozen = await store.prepareRecovery(sessionId, input.operationId, observed);
+				return {
+					status: "recovery-prepared",
+					...frozen,
+					questions: recoveryQuestions(input.operationId, frozen.candidateDigest, observed),
+				};
+			}
+			if (input.inspect) {
+				if (
+					input.report ||
+					input.projectId ||
+					input.title ||
+					input.body !== undefined ||
+					input.targetBranch ||
+					input.continueDespiteChecks
+				)
+					invalid();
+				await confirmationBinding(sessionId);
+				let state: IssueConfirmationInspection | undefined;
+				try {
+					state = await journal().inspect?.(sessionId, input.operationId);
+				} catch (error) {
+					if (error instanceof CodedError && error.code === "ISSUE_CONFIRMATION_BLOCKED")
+						return {
+							status: "blocked",
+							reason: error.message,
+							nextAction: "Resolve the journal cause shown above, then inspect again.",
+						};
+					throw error;
+				}
+				if (!state) invalid();
+				if (state.status === "missing") return state;
+				let questions: ReturnType<typeof stageQuestions> | undefined;
+				try {
+					const payload = state.payload as StagePayload | DeliveryPayload;
+					if (payload?.stage === "delivery") questions = deliveryQuestions(payload);
+					else if (payload?.stage === "design" || payload?.stage === "implementation")
+						questions = stageQuestions(payload);
+				} catch {
+					questions = undefined;
+				}
+				return {
+					status: state.status,
+					digest: state.digest,
+					...(questions ? { questions } : {}),
+					...(state.status === "completed" ? { result: state.result } : {}),
+					...(state.failure ? { failure: state.failure } : {}),
+					nextAction: !questions
+						? "The frozen payload cannot be displayed. Preserve this operation and inspect its local application schema before continuing."
+						: state.status === "prepared"
+							? "This operation has no mutation intent. Use its frozen card, or prepare a distinct newly reviewed operation for changed content."
+							: state.status === "completed"
+								? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
+								: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
+				};
+			}
 			if (input.projectId) {
 				if (!input.title || input.body === undefined || input.report) invalid();
-				return deliveries().prepare(sessionId, {
-					operationId: input.operationId,
-					projectId: input.projectId,
-					title: input.title,
-					body: input.body,
-					...(input.targetBranch ? { targetBranch: input.targetBranch } : {}),
-				});
+				try {
+					return await deliveries().prepare(sessionId, {
+						operationId: input.operationId,
+						projectId: input.projectId,
+						title: input.title,
+						body: input.body,
+						...(input.targetBranch ? { targetBranch: input.targetBranch } : {}),
+						...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
+					});
+				} catch (error) {
+					if (error instanceof CodedError && error.code === "ISSUE_DELIVERY_REFUSED")
+						return {
+							status: "blocked",
+							reason: error.message,
+							canContinue: error.message.includes("[issue-not-open]"),
+							nextAction: error.message.includes("[issue-not-open]")
+								? "Prepare with continueDespiteChecks:true to obtain a one-shot warned card."
+								: "Correct the invalid or unavailable execution prerequisite described above, then prepare a fresh exact card. This condition is not made valid by a policy override.",
+						};
+					throw error;
+				}
 			}
 			if (!input.report || input.title || input.body || input.targetBranch) invalid();
-			return stages().prepare(sessionId, { operationId: input.operationId, report: input.report });
+			try {
+				return await stages().prepare(sessionId, {
+					operationId: input.operationId,
+					report: input.report,
+					...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
+				});
+			} catch (error) {
+				if (error instanceof CodedError && error.code === "ISSUE_CONFIRMATION_BLOCKED")
+					return {
+						status: "blocked",
+						reason: error.message,
+						canContinue: error.message.includes("Retry with continueDespiteChecks:true"),
+						nextAction: error.message.includes("Retry with continueDespiteChecks:true")
+							? "Prepare with continueDespiteChecks:true for a one-shot warned card if you choose to accept the displayed policy exception."
+							: "Inspect the original operation and current facts, then prepare a refreshed card if no intent is uncertain.",
+					};
+				throw error;
+			}
 		},
 		executeConfirmation: async (sessionId, operationId, toolCallId) => {
-			const stored = await journal().get(sessionId, operationId);
+			await confirmationBinding(sessionId);
+			const store = journal();
+			const recovery = await store.getRecovery(sessionId, operationId);
+			if (recovery) {
+				const originalReceipt = await store.inspect(sessionId, operationId);
+				if (originalReceipt.status === "completed") {
+					const original = await store.get(sessionId, operationId);
+					if (!original) invalid();
+					const payload = original.payload as DeliveryPayload | StagePayload;
+					const binding = await confirmationBinding(sessionId);
+					const ws = getWorkspace(binding.workspaceId);
+					const { messages } = await getSessionMessages(
+						sessionId,
+						binding.workspaceId,
+						ws.worktreePath,
+					);
+					const originalQuestions =
+						payload.stage === "delivery" ? deliveryQuestions(payload) : stageQuestions(payload);
+					if (isTrustedQuestionnaireReceipt(messages, toolCallId, originalQuestions))
+						return originalReceipt.result;
+				}
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (
+					!isTrustedQuestionnaireReceipt(
+						messages,
+						toolCallId,
+						recoveryQuestions(operationId, recovery.candidateDigest, recovery.candidate),
+					)
+				)
+					invalid();
+				const original = await store.get(sessionId, operationId);
+				if (!original) invalid();
+				return store.completeRecovery(
+					sessionId,
+					operationId,
+					recovery.candidateDigest,
+					toolCallId,
+					async () => {
+						const payload = original.payload as DeliveryPayload | StagePayload;
+						const actual =
+							payload.stage === "delivery"
+								? await deliveries().observe(sessionId, payload)
+								: await stages().observe(sessionId, payload);
+						if (!isDeepStrictEqual(actual, recovery.candidate)) invalid();
+					},
+				);
+			}
+			const stored = await store.get(sessionId, operationId);
 			if (!stored) invalid();
 			return (stored.payload as { stage: string }).stage === "delivery"
 				? deliveries().execute(sessionId, operationId, toolCallId)

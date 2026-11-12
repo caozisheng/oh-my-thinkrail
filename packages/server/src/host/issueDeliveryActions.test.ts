@@ -45,7 +45,7 @@ async function fixture() {
 		iid: 38,
 		title: "Issue",
 		description: "Description",
-		state: "opened" as const,
+		state: "opened" as "opened" | "closed",
 		labels: ["workflow::in-review"],
 		updatedAt: "1",
 	};
@@ -103,8 +103,10 @@ async function fixture() {
 		repositories: async () => [structuredClone(repository)],
 		checkout: async () => structuredClone(state),
 		repositoryRemote: async () => ({ ...host, remote }),
-		push: async (repo, input) => {
+		push: async (repo, input, onDispatch) => {
+			onDispatch();
 			effects.push({ repository: repo.projectId, ...input });
+			if (requests.length === 1) requests = requests.map((entry) => ({ ...entry, sha: input.sha }));
 			if (race) requests = [request()];
 		},
 		verifyAnswer: async (_sessionId, _payload: DeliveryPayload, toolCallId) => {
@@ -209,6 +211,30 @@ test("historical implementation commits do not block review of the current check
 	expect(f.effects).toEqual([]);
 });
 
+test("a closed Issue offers a warned one-shot card rather than a permanent delivery block", async () => {
+	const f = await fixture();
+	f.issue.state = "closed";
+	await expect(f.prepare()).rejects.toMatchObject({
+		code: "ISSUE_DELIVERY_REFUSED",
+		message: expect.stringContaining("continueDespiteChecks:true"),
+	});
+	const card = await f.actions.prepare("session", {
+		operationId: "deliver",
+		projectId: f.repository.projectId,
+		title: "Deliver exact title",
+		body: "Exact draft body",
+		continueDespiteChecks: true,
+	});
+	expect(card.questions.questions[0]?.preview).toContain("ONE-SHOT EXCEPTION");
+	expect(card.questions.questions[0]?.preview).toContain("issue-not-open");
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+	expect(f.effects).toEqual([]);
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toHaveLength(2);
+	expect(f.issue.state).toBe("closed");
+});
+
 test("one exact existing PR is reused without push or modification", async () => {
 	const f = await fixture();
 	f.setRequests([f.request()]);
@@ -219,6 +245,54 @@ test("one exact existing PR is reused without push or modification", async () =>
 		number: 9,
 	});
 	expect(f.effects).toEqual([]);
+});
+
+test("an older MR head can be updated repeatedly without creating another request", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	const card = await f.prepare();
+	expect(card.questions.questions[0]?.preview).toContain("Update existing PR/MR #9");
+	expect(card.questions.questions[0]?.preview).toContain("b".repeat(40));
+	f.approve();
+	const result = await f.actions.execute("session", "deliver", "answer");
+	expect(result).toMatchObject({ number: 9, created: false, sha: f.state.sha });
+	expect(f.effects).toHaveLength(1);
+	f.state.sha = "c".repeat(40);
+	await f.actions.prepare("session", {
+		operationId: "deliver-next",
+		projectId: f.repository.projectId,
+		title: "Fix CI",
+		body: "New committed repair",
+	});
+	await f.actions.execute("session", "deliver-next", "answer");
+	expect(f.effects).toHaveLength(2);
+	expect(f.effects[1]).toMatchObject({ sha: "c".repeat(40) });
+});
+
+test("pipeline and review metadata changes do not block a confirmed MR update", async () => {
+	const f = await fixture();
+	const old = { ...f.request(), sha: "b".repeat(40) };
+	f.setRequests([old]);
+	await f.prepare();
+	f.setRequests([{ ...old, mergeStatus: "can_be_merged", detailedMergeStatus: "ci_must_pass" }]);
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toHaveLength(1);
+});
+
+test("recovery observes the same updated MR without dispatching another push", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	await f.prepare();
+	const stored = await f.journal.get("session", "deliver");
+	if (!stored) throw new Error("Missing payload");
+	await expect(f.actions.observe("session", stored.payload as DeliveryPayload)).rejects.toThrow();
+	f.setRequests([f.request()]);
+	const observed = await f.actions.observe("session", stored.payload as DeliveryPayload);
+	expect(observed.result).toMatchObject({ number: 9, sha: f.state.sha, created: false });
+	expect(f.effects).toEqual([]);
+	f.setRequests([{ ...f.request(), id: 92, iid: 10 }]);
+	await expect(f.actions.observe("session", stored.payload as DeliveryPayload)).rejects.toThrow();
 });
 
 test("prepare refuses design stage, invalid SHA and missing default", async () => {
@@ -257,12 +331,6 @@ test("prepare identifies checkout and existing-request refusals without exposing
 				f.host.targetBranch = f.state.branch;
 			},
 		],
-		[
-			"existing-request-sha-mismatch",
-			(f: Awaited<ReturnType<typeof fixture>>) => {
-				f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
-			},
-		],
 	] as const) {
 		const f = await fixture();
 		mutate(f);
@@ -272,6 +340,18 @@ test("prepare identifies checkout and existing-request refusals without exposing
 		});
 		expect(f.effects).toEqual([]);
 	}
+});
+
+test("deterministic snapshot mismatch before intent remains prepared for corrected confirmation", async () => {
+	const f = await fixture();
+	await f.prepare();
+	f.approve();
+	f.state.sha = "b".repeat(40);
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toMatchObject({
+		message: expect.stringContaining("checkout-commit-changed"),
+	});
+	expect(await f.journal.inspect("session", "deliver")).toMatchObject({ status: "prepared" });
+	expect(f.effects).toEqual([]);
 });
 
 test("local edits do not block authorization or change the pushed commit", async () => {
@@ -302,10 +382,9 @@ test("explicit target is frozen instead of guessing main", async () => {
 	expect((await f.prepare("release")).questions.questions[0]?.preview).toContain("Target: release");
 });
 
-test("ambiguous, stale or closed existing PRs fail closed", async () => {
+test("ambiguous or closed existing PRs fail closed", async () => {
 	for (const requests of [
 		(f: Awaited<ReturnType<typeof fixture>>) => [f.request(), { ...f.request(), iid: 10 }],
-		(f: Awaited<ReturnType<typeof fixture>>) => [{ ...f.request(), sha: "b".repeat(40) }],
 		(f: Awaited<ReturnType<typeof fixture>>) => [{ ...f.request(), state: "closed" as const }],
 	]) {
 		const f = await fixture();
@@ -345,6 +424,7 @@ test("changed checkout, repository path, remote identity, target or Issue invali
 		mutate(f);
 		await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
 		expect(f.effects).toEqual([]);
+		expect((await f.journal.inspect?.("session", "deliver"))?.status).toBe("prepared");
 	}
 });
 

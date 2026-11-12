@@ -6,7 +6,7 @@ function fixture() {
 		iid: 38,
 		title: "Confirm",
 		description: "Original",
-		state: "opened" as const,
+		state: "opened" as "opened" | "closed",
 		labels: ["team", "workflow::backlog"],
 		updatedAt: "1",
 	};
@@ -15,6 +15,8 @@ function fixture() {
 	const prepared = new Map<string, { digest: string; payload: unknown }>();
 	const completed = new Map<string, unknown>();
 	let answered = false;
+	let dirty = false;
+	let intents = 0;
 	let sha = "a".repeat(40);
 	const binding = {
 		sessionId: "session",
@@ -56,7 +58,7 @@ function fixture() {
 				role: "primary" as const,
 			},
 		],
-		checkout: async () => ({ sha, branch: "feature", dirty: false }),
+		checkout: async () => ({ sha, branch: "feature", dirty }),
 		verifyAnswer: async () => {
 			if (!answered) throw new Error("missing answer");
 		},
@@ -73,8 +75,11 @@ function fixture() {
 				_digest: string,
 				_call: string,
 				run: () => Promise<unknown>,
+				preflight?: () => Promise<void>,
 			) => {
 				if (completed.has(op)) return completed.get(op);
+				await preflight?.();
+				intents++;
 				const result = await run();
 				completed.set(op, result);
 				return result;
@@ -90,6 +95,18 @@ function fixture() {
 	});
 	return {
 		actions,
+		get intents() {
+			return intents;
+		},
+		setDirty: (value: boolean) => {
+			dirty = value;
+		},
+		close: () => {
+			issue = { ...issue, state: "closed" };
+		},
+		get issue() {
+			return issue;
+		},
 		writes,
 		notes,
 		binding,
@@ -107,6 +124,30 @@ function fixture() {
 		},
 	};
 }
+
+test("stage recovery observes a unique report and labels without writing again", async () => {
+	const f = fixture();
+	await f.actions.prepare("session", { operationId: "design", report: "Full design" });
+	f.approve();
+	await f.actions.execute("session", "design", "answer");
+	const payload = {
+		sessionId: "session",
+		reference: f.binding.reference,
+		stage: "design" as const,
+		operationId: "design",
+		report: "Full design",
+		issueRevision: "ignored-for-observation",
+		designOperationId: null,
+		commits: [],
+	};
+	const before = f.writes.length;
+	expect(await f.actions.observe("session", payload)).toMatchObject({
+		result: { stage: "design", noteId: 1 },
+	});
+	expect(f.writes).toHaveLength(before);
+	f.notes.push({ id: 2, body: "Full design", createdAt: "later" });
+	await expect(f.actions.observe("session", payload)).rejects.toThrow("ambiguous-or-missing");
+});
 
 test("design requires a real answer before publishing exact report and preserving unrelated labels", async () => {
 	const f = fixture();
@@ -168,3 +209,75 @@ test("implementation cannot silently invent an approved design", async () => {
 	).rejects.toThrow();
 	expect(f.writes).toEqual([]);
 });
+
+test("missing design requires a warned card and a real answer", async () => {
+	const f = fixture();
+	f.binding.stage = "implementation";
+	f.setLabels(["team", "workflow::in-progress"]);
+	await expect(
+		f.actions.prepare("session", { operationId: "impl", report: "Report" }),
+	).rejects.toThrow("No completed design receipt was found. Retry with continueDespiteChecks:true");
+	const card = await f.actions.prepare("session", {
+		operationId: "impl",
+		report: "Report",
+		continueDespiteChecks: true,
+	});
+	expect(card.questions.questions[0]?.preview).toContain("Warnings requiring explicit approval:");
+	expect(card.questions.questions[0]?.preview).toContain("No completed design receipt");
+	await expect(f.actions.execute("session", "impl", "answer")).rejects.toThrow("missing answer");
+	expect(f.writes).toEqual([]);
+	expect(f.intents).toBe(0);
+	f.approve();
+	await f.actions.execute("session", "impl", "answer");
+	expect(f.writes[1]).toEqual({ labels: ["team", "workflow::in-review"] });
+});
+
+test("dirty checkout, closed Issue and invalid multiple labels require explicit reviewed exceptions", async () => {
+	const f = fixture();
+	f.binding.stage = "implementation";
+	f.setLabels(["team", "workflow::backlog", "workflow::in-review"]);
+	f.setDirty(true);
+	f.close();
+	const card = await f.actions.prepare("session", {
+		operationId: "impl",
+		report: "Report",
+		continueDespiteChecks: true,
+	});
+	const preview = card.questions.questions[0]?.preview;
+	for (const warning of [
+		"Issue is closed",
+		"multiple workflow labels",
+		"expected source stage",
+		"No completed design receipt",
+		"Checkout is dirty",
+	])
+		expect(preview).toContain(warning);
+	await expect(f.actions.execute("session", "impl", "answer")).rejects.toThrow();
+	expect(f.writes).toEqual([]);
+	f.approve();
+	await f.actions.execute("session", "impl", "answer");
+	expect(f.writes[1]).toEqual({ labels: ["team", "workflow::in-review"] });
+	expect(f.issue.state).toBe("closed");
+});
+
+for (const fact of ["issue", "sha", "dirty", "labels", "binding"] as const) {
+	test(`warned cards reject changed ${fact} before intent or writes`, async () => {
+		const f = fixture();
+		f.binding.stage = "implementation";
+		f.setDirty(true);
+		await f.actions.prepare("session", {
+			operationId: "impl",
+			report: "Report",
+			continueDespiteChecks: true,
+		});
+		f.approve();
+		if (fact === "issue") f.changeIssue();
+		if (fact === "sha") f.changeSha();
+		if (fact === "dirty") f.setDirty(false);
+		if (fact === "labels") f.setLabels(["other"]);
+		if (fact === "binding") f.binding.reference.number = 39;
+		await expect(f.actions.execute("session", "impl", "answer")).rejects.toThrow();
+		expect(f.writes).toEqual([]);
+		expect(f.intents).toBe(0);
+	});
+}

@@ -13,21 +13,34 @@ tags: [host, public-surface-checked]
 `issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
 sessions. Their fixed previews reuse `ask_user_question`; transcript verification admits only the exact
 submitted `Looks right` response. The private `issue-confirmations` journal snapshots bounded payloads,
-reserves exclusive immutable intents before mutation, and makes completed receipts idempotent. Pending
-intents block re-execution and require reconciliation; no automated replay or invented approval exists.
+reserves exclusive immutable intents before mutation, and makes completed receipts idempotent. A read-only
+inspection reports missing/prepared/uncertain/completed status. Deterministic preflight happens before
+intent reservation; after reservation, uncertain mutation stays fenced and requires remote inspection and
+explicit user-directed recovery.
 Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live provider
 identity. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP clone
 URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
-creates drafts only. Existing matching requests are reused without editing. Delivery readiness is determined by the agent's work and validation, not a prior implementation-stage journal receipt; the delivery card freezes the current committed checkout and exact PR/MR content. Local staged,
+creates drafts only. A matching existing request at an older SHA is updated in place after its card is
+confirmed; an exact-head request is reused without modification. Delivery readiness is determined by the agent's work and validation, not a prior implementation-stage journal receipt; the delivery card freezes the current committed checkout and exact PR/MR content. Local staged,
 unstaged and untracked files are excluded and do not block preparation or execution. The agent verifies
 necessary files are committed and asks the human about doubtful exclusions; the host does not infer
 file necessity. No stash, deletion, commit or local ignore mutation is performed by delivery. The exact submitted questionnaire receipt, repository identity, remote, Issue snapshot and checkout are still revalidated before mutation. A changed checkout requires a fresh card; uncertain intents remain fenced. The agent receives no token,
 path override or merge/close capability.
 
-Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags for the
-prepare prerequisites and existing-request checks. These are distinct from the journal's reconciliation
-error; neither message authorizes retrying a possibly dispatched mutation. There is no strict-check
-setting on this capability. Installed runtime contents alone do not prove a running process reloaded.
+Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags and a concrete
+next action. Read-only preflight failures occur before intent reservation and remain eligible for a
+refreshed confirmation. Once an intent is reserved, only a completed receipt or explicit inspection and
+user-directed recovery can proceed; no replacement ID bypasses uncertainty. `continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
+include closed Issue, missing design receipt, unexpected workflow labels and uncommitted files; delivery
+permits a warned closed-Issue operation. The frozen payload includes each exception and still requires
+the exact real answer. New facts invalidate that authority. Invalid identities, unavailable credentials
+and uncertain intents still need repair or reconciliation. `recovery:"reconcile"` freezes observed
+stage note/label or delivery MR evidence for the original operation; its exact card requires human
+confirmation that the original request/process ended and approval to adopt the result. Completion
+rechecks the observed result and records the recovery toolCallId without any remote write. Recovery
+cannot complete during an active original execution in this host. Cross-process termination is a human
+assertion; generic override and uncertain resend are not implemented by this flag. There is no silent or permanent force-continue switch. Bounded failure
+sidecars retain only known sanitized confirmation/delivery reasons for inspection after dispatch.
 
 ## Responsibility
 
