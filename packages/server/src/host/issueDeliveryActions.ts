@@ -85,7 +85,9 @@ function validRequest(
 	} catch {
 		stop("existing-request-url-invalid");
 	}
-	if (request.sha !== payload.sha) stop("existing-request-sha-mismatch");
+	if (typeof request.sha !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.sha))
+		stop("existing-request-sha-invalid");
+	if (draft && request.sha !== payload.sha) stop("existing-request-sha-mismatch");
 	if (
 		!Number.isSafeInteger(request.id) ||
 		request.id < 1 ||
@@ -101,14 +103,15 @@ function validRequest(
 		request.targetBranch !== payload.targetBranch ||
 		request.sourceProjectId !== Number(payload.repositoryId) ||
 		request.targetProjectId !== Number(payload.repositoryId) ||
-		request.sha !== payload.sha ||
 		(draft && request.draft !== true)
 	)
 		stop("existing-request-identity-invalid");
 }
 export function deliveryQuestions(payload: DeliveryPayload) {
 	const action = payload.existing
-		? `Reuse existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. No push or PR/MR modification.`
+		? payload.existing.sha === payload.sha
+			? `Reuse existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. No push or PR/MR modification.`
+			: `Update existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. Non-force push ${payload.existing.sha} → ${payload.sha} to ${payload.url}, branch ${payload.branch}. Keep this request, title, body and draft status; do not create another PR/MR.`
 		: `Non-force push exact commit ${payload.sha} to ${payload.url}, branch ${payload.branch}; then create a draft PR/MR targeting ${payload.targetBranch}.`;
 	return {
 		questions: [
@@ -250,6 +253,22 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			guard();
 			if (!isDeepStrictEqual(before, payload.existing)) stop();
 			let request = before;
+			if (request && request.sha !== payload.sha) {
+				await options.push(payload.repository, {
+					sha: payload.sha,
+					branch: payload.branch,
+					url: payload.url,
+				});
+				guard();
+				delivery = await revalidate();
+				const updated = await existing(delivery, payload);
+				guard();
+				if (
+					!updated || updated.id !== request.id || updated.iid !== request.iid ||
+					updated.webUrl !== request.webUrl || updated.sha !== payload.sha
+				) stop("updated-request-not-observed");
+				request = updated;
+			}
 			if (!request) {
 				await options.push(payload.repository, {
 					sha: payload.sha,

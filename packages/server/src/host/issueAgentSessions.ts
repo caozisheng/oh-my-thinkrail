@@ -20,6 +20,7 @@ export interface IssueAgentSessionHostOptions {
 		sessionId: string,
 		input: {
 			operationId: string;
+			inspect?: boolean;
 			report?: string;
 			projectId?: string;
 			title?: string;

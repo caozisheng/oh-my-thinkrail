@@ -105,6 +105,7 @@ async function fixture() {
 		repositoryRemote: async () => ({ ...host, remote }),
 		push: async (repo, input) => {
 			effects.push({ repository: repo.projectId, ...input });
+			if (requests.length === 1) requests = requests.map((entry) => ({ ...entry, sha: input.sha }));
 			if (race) requests = [request()];
 		},
 		verifyAnswer: async (_sessionId, _payload: DeliveryPayload, toolCallId) => {
@@ -221,6 +222,28 @@ test("one exact existing PR is reused without push or modification", async () =>
 	expect(f.effects).toEqual([]);
 });
 
+test("an older MR head can be updated repeatedly without creating another request", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	const card = await f.prepare();
+	expect(card.questions.questions[0]?.preview).toContain("Update existing PR/MR #9");
+	expect(card.questions.questions[0]?.preview).toContain("b".repeat(40));
+	f.approve();
+	const result = await f.actions.execute("session", "deliver", "answer");
+	expect(result).toMatchObject({ number: 9, created: false, sha: f.state.sha });
+	expect(f.effects).toHaveLength(1);
+	f.state.sha = "c".repeat(40);
+	await f.actions.prepare("session", {
+		operationId: "deliver-next",
+		projectId: f.repository.projectId,
+		title: "Fix CI",
+		body: "New committed repair",
+	});
+	await f.actions.execute("session", "deliver-next", "answer");
+	expect(f.effects).toHaveLength(2);
+	expect(f.effects[1]).toMatchObject({ sha: "c".repeat(40) });
+});
+
 test("prepare refuses design stage, invalid SHA and missing default", async () => {
 	for (const mutate of [
 		(f: Awaited<ReturnType<typeof fixture>>) => {
@@ -255,12 +278,6 @@ test("prepare identifies checkout and existing-request refusals without exposing
 			"target-equals-source",
 			(f: Awaited<ReturnType<typeof fixture>>) => {
 				f.host.targetBranch = f.state.branch;
-			},
-		],
-		[
-			"existing-request-sha-mismatch",
-			(f: Awaited<ReturnType<typeof fixture>>) => {
-				f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
 			},
 		],
 	] as const) {
@@ -302,10 +319,9 @@ test("explicit target is frozen instead of guessing main", async () => {
 	expect((await f.prepare("release")).questions.questions[0]?.preview).toContain("Target: release");
 });
 
-test("ambiguous, stale or closed existing PRs fail closed", async () => {
+test("ambiguous or closed existing PRs fail closed", async () => {
 	for (const requests of [
 		(f: Awaited<ReturnType<typeof fixture>>) => [f.request(), { ...f.request(), iid: 10 }],
-		(f: Awaited<ReturnType<typeof fixture>>) => [{ ...f.request(), sha: "b".repeat(40) }],
 		(f: Awaited<ReturnType<typeof fixture>>) => [{ ...f.request(), state: "closed" as const }],
 	]) {
 		const f = await fixture();

@@ -38,13 +38,13 @@ import {
 } from "./issueAgentSessions";
 import { createIssueConfirmationStore } from "./issueConfirmations";
 import { createIssueCredentials } from "./issueCredentials";
-import { createIssueDeliveryActions, deliveryQuestions } from "./issueDeliveryActions";
+import { createIssueDeliveryActions, deliveryQuestions, type DeliveryPayload } from "./issueDeliveryActions";
 import {
 	createIssueSessionStore,
 	type IssueSessionAssociation,
 	type IssueSessionStore,
 } from "./issueSessions";
-import { createIssueStageActions, stageQuestions } from "./issueStageActions";
+import { createIssueStageActions, stageQuestions, type StagePayload } from "./issueStageActions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
@@ -449,6 +449,25 @@ export function createIssuesHost(
 	const agentSessions = createIssueAgentSessionHost({
 		service,
 		prepareConfirmation: async (sessionId, input) => {
+			if (input.inspect) {
+				if (input.report || input.projectId || input.title || input.body !== undefined || input.targetBranch) invalid();
+				await confirmationBinding(sessionId);
+				const state = await journal().inspect?.(sessionId, input.operationId);
+				if (!state) invalid();
+				if (state.status === "missing") return state;
+				const payload = state.payload as StagePayload | DeliveryPayload;
+				return {
+					status: state.status,
+					digest: state.digest,
+					questions: payload.stage === "delivery" ? deliveryQuestions(payload) : stageQuestions(payload),
+					...(state.status === "completed" ? { result: state.result } : {}),
+					nextAction: state.status === "prepared"
+						? "This operation has no mutation intent. Use its frozen card, or prepare a distinct newly reviewed operation for changed content."
+						: state.status === "completed"
+							? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
+							: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
+				};
+			}
 			if (input.projectId) {
 				if (!input.title || input.body === undefined || input.report) invalid();
 				return deliveries().prepare(sessionId, {

@@ -24,8 +24,7 @@ afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const unavailable = {
-	code: "RESOURCE_UNAVAILABLE",
-	message: "Issue confirmation requires reconciliation.",
+	code: "ISSUE_CONFIRMATION_BLOCKED",
 };
 
 test("immutable preparation, durable completion and replay survive restart", async () => {
@@ -117,6 +116,7 @@ test("torn journal, mismatched identities and symlink files fail closed", async 
 		if (!file) throw new Error("Missing prepared record");
 		writeFileSync(join(path, file), corruption);
 		await expect(store.get("session", "op")).rejects.toMatchObject(unavailable);
+		await expect(store.inspect("session", "op")).rejects.toMatchObject(unavailable);
 		await expect(store.listCompleted()).rejects.toMatchObject(unavailable);
 	}
 	const { root, store } = setup();
@@ -219,4 +219,84 @@ test("invalid opaque tool-call IDs are rejected on execution and journal read", 
 			unavailable,
 		);
 	}
+});
+
+test("inspection survives restart without changing records and exposes frozen recovery states", async () => {
+	const { root, store } = setup();
+	expect(await store.inspect("session", "missing")).toEqual({ status: "missing" });
+	expect(readdirSync(root)).toEqual([]);
+	const prepared = await store.prepare("session", "op", { questions: ["Looks right"] });
+	const path = join(root, hash("session"));
+	const snapshot = () =>
+		readdirSync(path)
+			.sort()
+			.map((name) => [name, readFileSync(join(path, name), "utf8")]);
+	const before = snapshot();
+	const restarted = createIssueConfirmationStore(root);
+	expect(await restarted.inspect("session", "op")).toEqual({ status: "prepared", ...prepared });
+	expect(snapshot()).toEqual(before);
+	// A prepared-only operation can be confirmed with a new receipt; no payload replacement occurs.
+	expect(await restarted.prepare("session", "op", prepared.payload)).toEqual(prepared);
+	await expect(restarted.prepare("session", "op", { changed: true })).rejects.toMatchObject({
+		code: unavailable.code,
+		message: expect.stringContaining("(payload_changed)"),
+	});
+	await restarted.execute("session", "op", prepared.digest, "new-confirmation", async () => ({
+		id: 1,
+	}));
+	const completed = snapshot();
+	expect(await store.inspect("session", "op")).toEqual({
+		status: "completed",
+		...prepared,
+		result: { id: 1 },
+	});
+	expect(snapshot()).toEqual(completed);
+});
+
+test("uncertain inspection retains frozen questions and cannot be bypassed with a new ID", async () => {
+	const { root, store } = setup();
+	const prepared = await store.prepare("session", "op", { questions: ["Looks right"] });
+	await expect(
+		store.execute("session", "op", prepared.digest, "call", async () => {
+			throw new Error("secret remote failure");
+		}),
+	).rejects.toMatchObject({
+		code: unavailable.code,
+		message: expect.stringContaining("(uncertain_intent)"),
+	});
+	const restarted = createIssueConfirmationStore(root);
+	expect(await restarted.inspect("session", "op")).toEqual({ status: "uncertain", ...prepared });
+	await expect(restarted.prepare("session", "replacement", {})).rejects.toMatchObject({
+		code: unavailable.code,
+		message: expect.stringContaining("(uncertain_intent)"),
+	});
+	let calls = 0;
+	await expect(
+		restarted.execute("session", "op", prepared.digest, "new-call", async () => ++calls),
+	).rejects.toMatchObject({
+		code: unavailable.code,
+		message: expect.stringContaining("(uncertain_intent)"),
+	});
+	expect(calls).toBe(0);
+});
+
+test("deterministic pre-dispatch failures preserve their reason and leave preparation safe", async () => {
+	const { store } = setup();
+	const prepared = await store.prepare("session", "op", {});
+	let calls = 0;
+	for (const [operation, digest, call, reason] of [
+		["missing", prepared.digest, "call", "operation_missing"],
+		["op", "0".repeat(64), "call", "digest_mismatch"],
+		["op", prepared.digest, "bad call", "invalid_input"],
+	] as const) {
+		await expect(
+			store.execute("session", operation, digest, call, async () => ++calls),
+		).rejects.toMatchObject({
+			code: unavailable.code,
+			message: expect.stringContaining(`(${reason})`),
+		});
+	}
+	expect(calls).toBe(0);
+	expect(await store.inspect("session", "op")).toEqual({ status: "prepared", ...prepared });
+	await store.prepare("session", "fresh", {});
 });
