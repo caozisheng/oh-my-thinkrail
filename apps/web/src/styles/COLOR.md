@@ -137,7 +137,11 @@ Every case is a JSON edit followed by `bun run colors:generate`.
    generator refuses to run while a role names a key that does not exist, or a key no role reads.
 
 Never: a raw hex or `rgb()` in a component, an inline `style` object, a `bg-[var(--palette-entry)]`
-escape hatch, or a second name for a value that already has one.
+escape hatch, or a second name for a value that already has one. The one exception is the Issues-owned
+provider-label capsule: the server validates provider hex data and the renderer writes only those values
+to two private CSS custom properties on that capsule; its stylesheet consumes them only for that element.
+Missing, malformed, or insufficient-contrast foreground data uses the validated-color contrast chooser or
+semantic neutral fallback. No provider value becomes a class, selector, stylesheet rule or arbitrary CSS.
 
 ## What is pinned by tests
 

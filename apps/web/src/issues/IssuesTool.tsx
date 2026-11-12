@@ -16,7 +16,13 @@ import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
 import { selectIssueRepositoryProjects, useAppStore } from "../store";
-import { getTransport, wsErrorCode } from "../transport";
+import { getTransport, transportEndpointIdentity, wsErrorCode } from "../transport";
+import {
+	expandedIssueDisclosure,
+	issueDisclosureKey,
+	readIssueDisclosure,
+	writeIssueDisclosure,
+} from "./disclosure";
 import type { IssuePreview } from "./IssueBody";
 import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
 import { IssuesPanel } from "./IssuesPanel";
@@ -123,6 +129,28 @@ export function IssuesTool({
 	const actionLock = useRef(false);
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}:${trusted}`;
 	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
+	const disclosureIdentity = snapshot?.connection
+		? issueDisclosureKey({
+				endpoint: transportEndpointIdentity(),
+				instanceUrl: snapshot.connection.instanceUrl,
+				projectId,
+				remoteProjectId: snapshot.connection.remoteProjectId,
+			})
+		: null;
+	const [disclosure, setDisclosure] = useState(expandedIssueDisclosure);
+	const loadedDisclosureKey = useRef<string | null>(null);
+	useEffect(() => {
+		loadedDisclosureKey.current = disclosureIdentity;
+		if (!disclosureIdentity) {
+			setDisclosure(expandedIssueDisclosure());
+			return;
+		}
+		try {
+			setDisclosure(readIssueDisclosure(window.localStorage, disclosureIdentity));
+		} catch {
+			setDisclosure(expandedIssueDisclosure());
+		}
+	}, [disclosureIdentity]);
 	const requestSequence = useRef(0);
 	const previewSequence = useRef(0);
 	const [preview, setPreview] = useState<IssuePreview | null>(null);
@@ -451,6 +479,12 @@ export function IssuesTool({
 				key={`${identity}:${active?.connection?.connected === true}`}
 				previewSupported={previewSupported}
 				preview={activePreview}
+				initialDisclosure={disclosure}
+				onDisclosureChange={(value) => {
+					setDisclosure(value);
+					if (disclosureIdentity && loadedDisclosureKey.current === disclosureIdentity)
+						writeIssueDisclosure(window.localStorage, disclosureIdentity, value);
+				}}
 				onTogglePreview={(issue) => {
 					void togglePreview(issue);
 				}}

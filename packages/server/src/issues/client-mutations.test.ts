@@ -109,17 +109,19 @@ describe("GitLab provider mutations and MR reads", () => {
 		const urls: string[] = [];
 		const api = client(async (url) => {
 			urls.push(url);
-			const page = new URL(url).searchParams.get("page");
-			return Response.json([
-				{
-					...issue,
-					labels: [
-						{ name: "workflow::design", color: "#aa22ff", text_color: "#ffffff" },
-						"legacy-label",
-						{ name: "bad-color", color: "rgb(1,2,3)" },
-					],
-				},
-			], { headers: { "x-next-page": "" } });
+			return Response.json(
+				[
+					{
+						...issue,
+						labels: [
+							{ name: "workflow::design", color: "#aa22ff", text_color: "#ffffff" },
+							"legacy-label",
+							{ name: "bad-color", color: "rgb(1,2,3)" },
+						],
+					},
+				],
+				{ headers: { "x-next-page": "" } },
+			);
 		});
 		expect(await api.issues()).toMatchObject([
 			{
@@ -127,7 +129,9 @@ describe("GitLab provider mutations and MR reads", () => {
 				labelColors: [{ name: "workflow::design", color: "#AA22FF", textColor: "#FFFFFF" }],
 			},
 		]);
-		expect(new URL(urls[0] ?? "https://invalid").searchParams.get("with_labels_details")).toBe("true");
+		expect(new URL(urls[0] ?? "https://invalid").searchParams.get("with_labels_details")).toBe(
+			"true",
+		);
 	});
 
 	test("partial issue updates preserve omitted fields and permit clearing labels", async () => {

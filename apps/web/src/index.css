@@ -5,6 +5,7 @@
 @import "./styles/generated/spacing.css";
 @import "./styles/tokens.css";
 @import "./styles/global.css";
+@import "./issues/labels.css";
 
 @source "../../../packages/ui";
 @source "../../../packages/resource-renderers/src";

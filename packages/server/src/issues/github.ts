@@ -94,7 +94,7 @@ function repository(project: string | number): { key: string; base: string } {
 				: pathWithNamespace(project);
 	return { key, base: /^\d+$/.test(key) ? `/repositories/${key}` : `/repos/${key}` };
 }
-function labels(value: unknown): { labels: string[]; labelColors: IssueRecord["labelColors"] } {
+function labels(value: unknown): Pick<IssueRecord, "labels" | "labelColors"> {
 	if (!Array.isArray(value)) invalid();
 	const labelColors: NonNullable<IssueRecord["labelColors"]> = [];
 	const names = value.map((label) => {
@@ -112,13 +112,12 @@ function issue(value: unknown): IssueRecord | null {
 	const v = record(value);
 	if (Object.hasOwn(v, "pull_request")) return null;
 	if (v.state !== "open" && v.state !== "closed") invalid();
-	const parsedLabels = labels(v.labels);
 	return {
 		iid: positive(v.number),
 		title: text(v.title),
 		description: v.body === null ? "" : text(v.body),
 		state: v.state === "open" ? "opened" : "closed",
-		...parsedLabels,
+		...labels(v.labels),
 		updatedAt: timestamp(v.updated_at),
 	};
 }
