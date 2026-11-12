@@ -115,7 +115,7 @@ export function deliveryQuestions(payload: DeliveryPayload) {
 			{
 				question: EN["issue.confirm.delivery.question"] ?? "",
 				header: EN["issue.confirm.delivery.header"] ?? "",
-				preview: `Issue: ${payload.reference.instanceUrl} / ${payload.reference.projectId} #${payload.reference.number}\nRepository: ${payload.repository.name} (${payload.repository.projectId})\nPath: ${payload.repository.path}\nSource: ${payload.branch} @ ${payload.sha}\nRemote: ${payload.url}\nTarget: ${payload.targetBranch}\n\nTitle: ${payload.title}\n\n${payload.body}\n\n${action}\nNo merge or Issue closure is authorized.`,
+				preview: `Issue: ${payload.reference.instanceUrl} / ${payload.reference.projectId} #${payload.reference.number}\nRepository: ${payload.repository.name} (${payload.repository.projectId})\nPath: ${payload.repository.path}\nSource: ${payload.branch} @ ${payload.sha}\nRemote: ${payload.url}\nTarget: ${payload.targetBranch}\nUncommitted workspace changes are excluded; only this exact commit will be delivered.\n\nTitle: ${payload.title}\n\n${payload.body}\n\n${action}\nNo merge or Issue closure is authorized.`,
 				options: [{ label: "Looks right", description: EN["issue.confirm.delivery.option"] ?? "" }],
 			},
 		],
@@ -163,7 +163,6 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 		if (!repository) stop("repository-not-participating");
 		const state = await options.checkout(repository);
 		guard();
-		if (state.dirty) stop("checkout-dirty");
 		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(state.sha)) stop("checkout-sha-invalid");
 		if (!branch(state.branch)) stop("source-branch-invalid");
 		const host = await options.repositoryRemote(repository);
@@ -232,7 +231,7 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 				if (matches.length !== 1 || !isDeepStrictEqual(matches[0], payload.repository)) stop();
 				const state = await options.checkout(payload.repository);
 				guard();
-				if (state.dirty || state.sha !== payload.sha || state.branch !== payload.branch) stop();
+				if (state.sha !== payload.sha || state.branch !== payload.branch) stop();
 				const issue = await remote.issue(payload.reference.number);
 				guard();
 				if (!isDeepStrictEqual(issue, payload.issueSnapshot)) stop();

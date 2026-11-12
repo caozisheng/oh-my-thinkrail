@@ -88,8 +88,10 @@ After each stage, a separate question card confirms the complete report before i
 moves an Issue with no workflow label or `workflow::backlog` to `workflow::in-progress`; implementation
 moves `workflow::in-progress` to `workflow::in-review`, preserving unrelated labels. Delivery is another
 separate confirmation per repository and creates only Draft PRs/MRs after a non-force push. Delivery
-reviews the current clean commit and PR/MR content directly; it does not require historical design or
-implementation stage-confirmation records.
+reviews the current committed version and PR/MR content directly; it does not require historical design or
+implementation stage-confirmation records. Local uncommitted files are not pushed and do not block the
+card: the agent verifies necessary changes are committed and asks about doubtful files, leaving private
+configuration and unrelated edits intact.
 With host protocol v114 or newer, the existing eye-button preview shows the complete Issue:
 its description followed by all ordinary comments, authors, timestamps and Markdown attachments.
 The title remains an external link, and the preview keeps its original expand/collapse layout.

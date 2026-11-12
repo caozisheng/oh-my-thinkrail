@@ -221,13 +221,10 @@ test("one exact existing PR is reused without push or modification", async () =>
 	expect(f.effects).toEqual([]);
 });
 
-test("prepare refuses design stage, dirty checkout, invalid SHA and missing default", async () => {
+test("prepare refuses design stage, invalid SHA and missing default", async () => {
 	for (const mutate of [
 		(f: Awaited<ReturnType<typeof fixture>>) => {
 			f.binding.stage = "design";
-		},
-		(f: Awaited<ReturnType<typeof fixture>>) => {
-			f.state.dirty = true;
 		},
 		(f: Awaited<ReturnType<typeof fixture>>) => {
 			f.state.sha = "a".repeat(41);
@@ -248,12 +245,6 @@ test("prepare refuses design stage, dirty checkout, invalid SHA and missing defa
 
 test("prepare identifies checkout and existing-request refusals without exposing private data", async () => {
 	for (const [reason, mutate] of [
-		[
-			"checkout-dirty",
-			(f: Awaited<ReturnType<typeof fixture>>) => {
-				f.state.dirty = true;
-			},
-		],
 		[
 			"source-branch-invalid",
 			(f: Awaited<ReturnType<typeof fixture>>) => {
@@ -283,6 +274,28 @@ test("prepare identifies checkout and existing-request refusals without exposing
 	}
 });
 
+test("local edits do not block authorization or change the pushed commit", async () => {
+	const f = await fixture();
+	f.state.dirty = true;
+	const card = await f.prepare();
+	expect(card.questions.questions[0]?.preview).toContain(
+		"Uncommitted workspace changes are excluded",
+	);
+	f.state.dirty = false;
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects[0]).toMatchObject({ sha: f.state.sha, branch: f.state.branch });
+});
+
+test("local edits made after review do not invalidate the committed snapshot", async () => {
+	const f = await fixture();
+	await f.prepare();
+	f.state.dirty = true;
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toHaveLength(2);
+});
+
 test("explicit target is frozen instead of guessing main", async () => {
 	const f = await fixture();
 	f.host.targetBranch = "";
@@ -309,9 +322,6 @@ test("changed checkout, repository path, remote identity, target or Issue invali
 		},
 		(f: Awaited<ReturnType<typeof fixture>>) => {
 			f.state.branch = "other";
-		},
-		(f: Awaited<ReturnType<typeof fixture>>) => {
-			f.state.dirty = true;
 		},
 		(f: Awaited<ReturnType<typeof fixture>>) => {
 			f.repository.path = "/replaced";

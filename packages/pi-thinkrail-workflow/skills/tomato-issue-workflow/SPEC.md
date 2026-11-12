@@ -53,6 +53,15 @@ Design and implementation may alternate; acceptance and closure stay in the trac
 [approved Issue design](../../../../docs/plans/2026-11-04-issues-workflow-design.md#最新简化决定),
 not its superseded gated lifecycle description.
 
+## Delivery checkout preparation
+
+The worker's `delivery-worktree.md` owns task-completeness review: necessary files are committed,
+questionable files require human questions, and deliberately local changes/configuration stay intact.
+A dirty status alone is not an authorization failure. The host freezes the committed version rather
+than judging which local edits are necessary; validation reports distinguish that commit from local
+joint testing. Preparation refusal is distinct from uncertain execution, and immutable operation
+checks still prohibit replacement IDs to bypass uncertainty. This guidance is unverified by use.
+
 ## Handoff artifacts
 
 In both stages, referenced local design documents and implementation plans accompany the handoff as
