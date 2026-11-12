@@ -309,9 +309,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	async function sessionStatus(workspaceId: string, sessionId?: string) {
-		const status = sessionId ? await options.sessionExists(sessionId, workspaceId) : false;
-		if (status === "busy") stop();
-		return status;
+		return sessionId ? options.sessionExists(sessionId, workspaceId) : false;
 	}
 
 	async function newSession(workspaceId: string): Promise<string> {
@@ -732,7 +730,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					const workspaceId = ws.id;
 					const existing =
 						record.design?.workspaceId === workspaceId ? record.design.sessionId : undefined;
-					if (existing && (await sessionStatus(workspaceId, existing)) === "idle")
+					if (existing && (await sessionStatus(workspaceId, existing)))
 						return { workspaceId, sessionId: existing };
 					await options.save(key, {
 						...record,
@@ -769,7 +767,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					const ownership = primary;
 					const { workspaceId, session } = ownership;
 					const status = await sessionStatus(workspaceId, session?.id);
-					if (session && status === "idle") return { workspaceId, sessionId: session.id };
+					if (session && status) return { workspaceId, sessionId: session.id };
 					await options.save(key, {
 						...record,
 						implementation: ownership,

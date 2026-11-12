@@ -882,7 +882,7 @@ for (const stage of ["design", "implementation"] as const)
 	test(`busy ${stage} reopen sends nothing and creates no replacement`, async () => {
 		const f = fixture();
 		await f.host.connect({ projectId: "one", input: f.input });
-		await (stage === "design" ? f.host.beginDesign : f.host.beginImplementation)({
+		const initial = await (stage === "design" ? f.host.beginDesign : f.host.beginImplementation)({
 			...f.target,
 			locale: "en",
 		});
@@ -890,12 +890,13 @@ for (const stage of ["design", "implementation"] as const)
 			...f.options,
 			sessions: { ...f.options.sessions, status: async () => "busy" as const },
 		});
-		await expect(
-			(stage === "design" ? restored.beginDesign : restored.beginImplementation)({
-				...f.target,
-				locale: "en",
-			}),
-		).rejects.toThrow();
+		const resumed = await (stage === "design"
+			? restored.beginDesign
+			: restored.beginImplementation)({
+			...f.target,
+			locale: "en",
+		});
+		expect(resumed).toEqual(initial);
 		expect(f.prompts).toHaveLength(1);
 		expect(f.created).toBe(1);
 	}, 60000);

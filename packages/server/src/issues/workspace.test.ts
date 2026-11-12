@@ -35,6 +35,7 @@ async function fixture() {
 	const events: string[] = [];
 	const createdNames: string[] = [];
 	let failSave = 0;
+	let sessionSequence = 0;
 	let failCreate = false;
 	let failSession = false;
 	let saves = 0;
@@ -81,7 +82,7 @@ async function fixture() {
 		createSession: async (workspaceId) => {
 			events.push(`session:${workspaceId}`);
 			if (failSession) throw new Error("secret session error");
-			const id = `session-${sessions.size}`;
+			const id = `session-${sessionSequence++}`;
 			sessions.set(id, "idle");
 			return id;
 		},
@@ -420,14 +421,28 @@ test("concurrent launches serialize one issue and share one session", async () =
 	expect(f.workspaces).toHaveLength(1);
 });
 
-test("busy recorded session blocks without prompting/creating; missing session is replaced", async () => {
+for (const status of ["idle", "busy"] as const) {
+	for (const stage of ["design", "implementation"] as const) {
+		test(`${stage} reuses the recorded ${status} session without creating another`, async () => {
+			const f = await fixture();
+			const coordinator = f.coordinator();
+			const launch = await coordinator[stage](ref);
+			f.sessions.set(launch.sessionId, status);
+			f.events.length = 0;
+
+			expect(await f.coordinator()[stage](ref)).toEqual(launch);
+			expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(0);
+			expect(f.workspaces).toHaveLength(stage === "implementation" ? 1 : 0);
+		});
+	}
+}
+
+test("missing recorded implementation session is replaced", async () => {
 	const f = await fixture();
 	const launch = await f.coordinator().implementation(ref);
-	f.sessions.set(launch.sessionId, "busy");
-	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
-	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(1);
 	f.sessions.delete(launch.sessionId);
-	await f.coordinator().implementation(ref);
+	const replacement = await f.coordinator().implementation(ref);
+	expect(replacement.sessionId).not.toBe(launch.sessionId);
 	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(2);
 });
 
@@ -515,14 +530,6 @@ test("completed workspace missing from Git registry is not recreated", async () 
 	f.trees.splice(0);
 	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
 	expect(f.events.filter((event) => event === "create")).toHaveLength(1);
-});
-
-test("design busy session is not prompted or replaced", async () => {
-	const f = await fixture();
-	const launch = await f.coordinator().design(ref);
-	f.sessions.set(launch.sessionId, "busy");
-	await expect(f.coordinator().design(ref)).rejects.toThrow();
-	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(1);
 });
 
 test("successful sessions clear pending markers without discarding either stage's records", async () => {
