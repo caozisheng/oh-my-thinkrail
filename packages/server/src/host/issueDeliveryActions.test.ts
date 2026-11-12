@@ -246,6 +246,43 @@ test("prepare refuses design stage, dirty checkout, invalid SHA and missing defa
 	}
 });
 
+test("prepare identifies checkout and existing-request refusals without exposing private data", async () => {
+	for (const [reason, mutate] of [
+		[
+			"checkout-dirty",
+			(f: Awaited<ReturnType<typeof fixture>>) => {
+				f.state.dirty = true;
+			},
+		],
+		[
+			"source-branch-invalid",
+			(f: Awaited<ReturnType<typeof fixture>>) => {
+				f.state.branch = "";
+			},
+		],
+		[
+			"target-equals-source",
+			(f: Awaited<ReturnType<typeof fixture>>) => {
+				f.host.targetBranch = f.state.branch;
+			},
+		],
+		[
+			"existing-request-sha-mismatch",
+			(f: Awaited<ReturnType<typeof fixture>>) => {
+				f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+			},
+		],
+	] as const) {
+		const f = await fixture();
+		mutate(f);
+		await expect(f.prepare()).rejects.toMatchObject({
+			code: "ISSUE_DELIVERY_REFUSED",
+			message: expect.stringContaining(`[${reason}]`),
+		});
+		expect(f.effects).toEqual([]);
+	}
+});
+
 test("explicit target is frozen instead of guessing main", async () => {
 	const f = await fixture();
 	f.host.targetBranch = "";
