@@ -104,8 +104,7 @@ jobs:
     name: E2E (no-agent) shard ${{ matrix.shard }}/3
     timeout-minutes: 30
     needs: changes
-    # Temporarily paused until Ubuntu WebKit dependency downloads recover; restore the app condition.
-    if: ${{ false }}
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
@@ -225,7 +224,7 @@ jobs:
     name: Desktop smoke & e2e shard ${{ matrix.shard }}/4
     timeout-minutes: 30
     needs: changes
-    if: ${{ false }}
+    if: needs.changes.outputs.artifacts == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

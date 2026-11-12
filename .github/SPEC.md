@@ -50,14 +50,15 @@ retain upstream context where platform assignments differ from this fork's activ
 Windows preview artifacts build on main/feature pushes or manual dispatch and remain unsigned;
 there is no push-triggered tag, GitHub Release or npm publication.
 
-### Temporary Ubuntu dependency outage
+### Ubuntu dependency sources
 
-Source no-agent shards and Linux Desktop smoke/E2E shards are temporarily disabled in `ci.yml`.
-The Desktop jobs fail before tests while apt fetches WebKit system dependencies (`libsoup-3.0`):
-run 43054002496 records DNS failures for `azure.archive.ubuntu.com`. Restore the source job's
-`app` condition and Desktop job's `artifacts` condition when dependency installation recovers.
-Linux binary browser jobs and Windows smoke checks retain their existing conditions.
-This pause does not account for local Chromium test failures.
+Source no-agent and Linux Desktop smoke/E2E shards retain their normal classifier conditions.
+Before apt resolves package versions, the shared apt action rewrites Azure Ubuntu URLs and runner
+`mirror+file` indirection to Ubuntu's official HTTPS archive/security endpoints, including legacy
+`.list`, deb822 `.sources`, and mirror-list files. Suites, signing keys and third-party sources stay
+unchanged. `apt-get update --error-on=any` rejects incomplete indexes before planning the cache key.
+Run 43054002496 failed before Desktop tests because Azure mirror DNS resolution prevented fetching
+`libsoup-3.0`; bypassing that mirror restores coverage without changing runner-wide DNS settings.
 
 ### Suspended cross-platform coverage
 
