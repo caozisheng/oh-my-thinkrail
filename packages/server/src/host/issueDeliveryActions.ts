@@ -50,10 +50,10 @@ export interface IssueDeliveryActionOptions {
 	verifyAnswer(sessionId: string, payload: DeliveryPayload, toolCallId: string): Promise<void>;
 	journal: IssueConfirmationStore;
 }
-function stop(): never {
+function stop(reason: string = "execution-snapshot-changed"): never {
 	throw new CodedError(
-		"RESOURCE_UNAVAILABLE",
-		"Issue delivery is stale or requires reconciliation.",
+		"ISSUE_DELIVERY_REFUSED",
+		`Issue delivery refused [${reason}]. No automatic retry is authorized; journal reconciliation is a separate failure.`,
 	);
 }
 function branch(value: string): boolean {
@@ -83,8 +83,9 @@ function validRequest(
 	try {
 		url = new URL(request.webUrl);
 	} catch {
-		stop();
+		stop("existing-request-url-invalid");
 	}
+	if (request.sha !== payload.sha) stop("existing-request-sha-mismatch");
 	if (
 		!Number.isSafeInteger(request.id) ||
 		request.id < 1 ||
@@ -103,7 +104,7 @@ function validRequest(
 		request.sha !== payload.sha ||
 		(draft && request.draft !== true)
 	)
-		stop();
+		stop("existing-request-identity-invalid");
 }
 export function deliveryQuestions(payload: DeliveryPayload) {
 	const action = payload.existing
@@ -129,7 +130,7 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			(request) =>
 				request.sourceBranch === payload.branch && request.targetBranch === payload.targetBranch,
 		);
-		if (requests.length > 1) stop();
+		if (requests.length > 1) stop("existing-requests-ambiguous");
 		const request = requests[0] ?? null;
 		if (request) validRequest(request, payload, false);
 		return request;
@@ -149,34 +150,37 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			!input.title.trim() ||
 			!input.body.trim()
 		)
-			stop();
+			stop("input-invalid");
 		const binding = await options.binding(sessionId);
-		if (binding.sessionId !== sessionId || binding.stage !== "implementation") stop();
+		if (binding.sessionId !== sessionId) stop("session-mismatch");
+		if (binding.stage !== "implementation") stop("session-not-implementation");
 		const { remote, guard } = await options.access(binding);
 		const repositories = await options.repositories(binding);
 		guard();
 		const selected = repositories.filter((repo) => repo.projectId === input.projectId);
-		if (selected.length !== 1) stop();
+		if (selected.length !== 1) stop("repository-not-participating");
 		const repository = selected[0];
-		if (!repository) stop();
+		if (!repository) stop("repository-not-participating");
 		const state = await options.checkout(repository);
 		guard();
-		if (state.dirty || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(state.sha) || !branch(state.branch))
-			stop();
+		if (state.dirty) stop("checkout-dirty");
+		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(state.sha)) stop("checkout-sha-invalid");
+		if (!branch(state.branch)) stop("source-branch-invalid");
 		const host = await options.repositoryRemote(repository);
 		guard();
 		const targetBranch = input.targetBranch ?? host.targetBranch;
 		if (
 			!/^[1-9][0-9]*$/.test(host.repositoryId) ||
 			!Number.isSafeInteger(Number(host.repositoryId)) ||
-			!host.url ||
-			!branch(targetBranch) ||
-			targetBranch === state.branch
+			!host.url
 		)
-			stop();
+			stop("remote-identity-invalid");
+		if (!branch(targetBranch)) stop("target-branch-invalid");
+		if (targetBranch === state.branch) stop("target-equals-source");
 		const issueSnapshot = await remote.issue(binding.reference.number);
 		guard();
-		if (issueSnapshot.iid !== binding.reference.number || issueSnapshot.state !== "opened") stop();
+		if (issueSnapshot.iid !== binding.reference.number) stop("issue-identity-mismatch");
+		if (issueSnapshot.state !== "opened") stop("issue-not-open");
 		const payload: DeliveryPayload = {
 			stage: "delivery",
 			sessionId,
