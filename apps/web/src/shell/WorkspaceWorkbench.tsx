@@ -931,6 +931,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 			))}
 			<Workbench
 				workspaceId={workspaceId}
+				worktreePath={workspace?.worktreePath ?? ""}
 				document={rendered.document}
 				attention={rendered.attention}
 				maxSideGroups={layoutPreferences.maxSideGroups}

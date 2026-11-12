@@ -64,6 +64,8 @@ export interface Project {
 	path: string;
 	slug: string;
 	lastOpened: number;
+	/** Open projects list highest rank first; absent reads as `lastOpened`. */
+	rank?: number;
 	/** The one built-in container of chats without a project: not a repository, never git, never closed. */
 	kind?: "chats";
 	closed?: true;
@@ -219,6 +221,17 @@ export interface ProjectGroupRemoveInput extends ProjectGroupTarget {
 
 export interface ProjectGroupRemove {
 	projects: Project[];
+}
+
+export function projectRank(project: Pick<Project, "rank" | "lastOpened">): number {
+	return project.rank ?? project.lastOpened;
+}
+
+export function compareProjectRank(
+	a: Pick<Project, "id" | "rank" | "lastOpened">,
+	b: Pick<Project, "id" | "rank" | "lastOpened">,
+): number {
+	return projectRank(b) - projectRank(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 /** Tools (pi tool names) granted while the server keeps the command + args or URL hashed as `target`. */
@@ -443,6 +456,13 @@ export interface OpenPrResult {
 export type ExistingWorktreeCandidate =
 	| { path: string; branch: string; status: "available" }
 	| { path: string; status: "detached" };
+
+/** The open workspace holding an absolute path, matched on real paths; `relativePath` is POSIX and contained. */
+export interface WorkspacePathMatch {
+	workspaceId: string;
+	projectId: string;
+	relativePath: string;
+}
 
 export interface EditorInfo {
 	id: string;
@@ -2278,6 +2298,24 @@ export interface TemplateInfo {
 
 export interface Template extends TemplateInfo {
 	content: string;
+}
+
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³]) *(?:\.|$)/i;
+
+export function isWindowsDeviceName(name: string): boolean {
+	return WINDOWS_DEVICE_NAME.test(name);
+}
+
+export function isValidTemplateName(name: string): boolean {
+	if (name.length === 0) return false;
+	if (name.startsWith(".")) return false;
+	return (
+		!name.includes("/") &&
+		!name.includes("\\") &&
+		!name.includes("\0") &&
+		!name.includes(":") &&
+		!isWindowsDeviceName(name)
+	);
 }
 
 export type ReviewCommentKind = "inline" | "diff" | "file" | "review";

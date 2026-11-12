@@ -16,7 +16,7 @@ The responsive composition root: top-level app chrome, active-project/workspace 
 
 - **Owns:** `Shell` as the one composition root; topbar and persistent location context; active-project/workspace routing; single Settings, analytics-consent, survey-invitation, survey-window, attention-notification permission-preface, and Toaster mounts plus the keyboard-opened Create workspace dialog, the `Mod+K` / double-Shift search palette host and the `Mod+Shift+F` Find in Files host (and the once-mounted attention-notification observer from [[submodule-web-notifications]]); theme application and global shortcuts; the command catalog the palette runs ([[submodule-web-commands]], [[submodule-web-search]]); the injected Layout, Keyboard and optional application Update settings sections; and integration of the workbench engine with store, persistence, panels, transport-backed domain state, and error boundaries.
 - **Public surface:** `Shell`.
-- **Allowed deps:** child layout modules; `updates`; `search` + `commands` (the palette and the command contract it composes for it); `findInFiles` (the window `FindInFilesHost` composes); `panels`; `issues` (the project Issues tool through its barrel); `chat` app-integration hydration/rendering; `store`, `transport`, contracts (types, wire constants, and the shared `createQuitConfirmation` rule), `@thinkrail/ui/*`, `@thinkrail/locales` (UI strings), `i18n` (`useLocaleSync`, mounted once), `components/ErrorBoundary`, `components/QuietScrollArea`, `constants`, `lib`, and `themes`.
+- **Allowed deps:** child layout modules; `updates`; `search` + `commands` (the palette and the command contract it composes for it); `findInFiles` (the window `FindInFilesHost` composes); `panels`; `issues` (the project Issues tool through its barrel); `chat` app-integration hydration/rendering; `store`, `transport`, contracts (types, wire constants, and the shared `createQuitConfirmation` rule), `@thinkrail/ui/*`, `@thinkrail/locales` (UI strings), `i18n` (`useLocaleSync`, mounted once), `components/ErrorBoundary`, `components/QuietScrollArea`, `constants`, `lib`, `themes`, and `clientPreferences` (`markdownOutlinePreference` persists the store's Markdown outline visibility and side per client, through the same adapter `layoutState` uses).
 - **Forbidden:** server/shared/pi imports; being imported by panels/store/transport; putting arrangement knowledge into a feature panel; or sending current frame/view state through transport.
 
 ## Internal modules
@@ -218,6 +218,23 @@ transition. ChatView's `/name` command is the independent keyboard entry point t
 - Row and header glyphs reuse the `ProjectTree` vocabulary: a leading `RiChat2Line` (wrapped in `RunningIcon` while running) and a trailing `AttentionDot` for a session that needs attention — no bespoke per-outcome glyphs.
 
 Letter chords match physical `KeyboardEvent.code`, never layout-dependent `key`. The layout and create chords remain app-owned inside xterm, do not repeat, and are suppressed while a modal dialog is open. With no active workspace, right/bottom chords neither act nor swallow the browser chord; `Mod+B` toggles the Project Home Projects pane with the focus rules above. With no context project, `Mod+N` likewise neither acts nor swallows. Terminal `Ctrl+R` still belongs to xterm; `Ctrl+Shift+R`, macOS `Cmd+R`, F5, and browser reload remain untouched. All other arrangement operations are exposed by the layout command/menu system in [[submodule-web-shell-layout]].
+
+**Desktop deep links.** `main.tsx` calls `installDeepLinks` once. It reads the optional
+`NativeDeepLinkBridge` (`__THINKRAIL_NATIVE_DEEP_LINKS__`, [[module-contracts]]) from the preload; a browser
+has none and the installer is a no-op there. Requests run one at a time in arrival order. Each waits for the
+first welcome, supersedes a still-pending incoming route (`supersedePendingRoute`, [[submodule-web-navigation]]:
+on a cold launch the restored last location would otherwise land later, count as a navigation and drop the
+link) and begins a `paletteNavigator.beginPick()` guard, then asks `panels/workspaceForPath.resolveWorkspaceFile`
+for the open workspace that holds the absolute path — the host matches real paths, so a `/tmp` or symlinked
+spelling of either side resolves. A later pick or any navigation while the path resolves drops the link
+silently. Nothing outside the open projects is opened. A path no open workspace contains, or a workspace root
+itself, toasts `shell.deepLink.notInProject` and changes nothing. Otherwise the link enters the workspace
+through the shared `paletteNavigator` (Find in Files' entry: the row loaded when this client lacks it, a
+deleting or vanished workspace refused, a newer navigation overtakes it), then calls
+`openFileAtLine(..., "keep")` with the match's workspace-relative path, so opening and revealing name the same tab. Monaco clamps a
+line or column past the end of the file. When the host refuses the read (missing, a directory, `.git`, a
+symlink escaping the worktree, too large), no tab appears and `shell.deepLink.openFailed` says so. The
+workspace has already been entered by then.
 
 **Native shortcuts.** Shell always mounts the `AppShortcuts` leaf. `useAppShortcuts` reads `NativeShortcutsBridge` (`__THINKRAIL_NATIVE_SHORTCUTS__`, [[module-contracts]]; desktop hosts only) once. Without the bridge it adds no listeners and renders nothing. With the bridge, the leaf renders the hint, so hint changes re-render only that leaf. Every app-level close/quit/settings shortcut dispatches through one command table, `shortcutCommands.ts`: a command id (`close-item`, `quit`, `open-settings`) maps to Ctrl chords per shortcut platform, each chord carrying its terminal rule, and the hook supplies the id → handler map. Both native commands from `subscribeCommand` and web keydown chords run the same handler. The shortcut platform is `platformFamily()` (`apple` / `windows` / `linux`) when the bridge exists, else `browser`.
 

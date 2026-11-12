@@ -121,7 +121,9 @@ replaces the previous handler for that page. The common project-open helper disa
 awaits the association prompt and Skip explicitly before returning (except for an explicitly pre-auth
 host or a fixture modelling an already-associated project, where no prompt can appear). A one-shot visibility check is not readiness: association reads finish after project adoption,
 and keyboard shortcuts do not trigger Playwright locator handlers. Deferring dismissal until the next
-palette assertion can lose the opening shortcut or close the palette while clicking Skip. Project navigation tests using their own open path register the same handler;
+palette assertion can lose the opening shortcut or close the palette while clicking Skip. The project
+ordering fixture also awaits Skip before testing restored row focus, so the association dialog cannot
+steal that focus after a menu move. Project navigation tests using their own open path register the same handler;
 the held-picker race test instead dismisses explicitly before releasing its reply barrier. This models the user's dismissal,
 not a disabled product feature or a force-click through the modal. `issues-association.spec.ts` deliberately
 uses no auto-dismiss handler and verifies the prompt, single token field, and Skip preserving the project
@@ -177,7 +179,8 @@ restart; it proves the dock's finished total, the inspector's per-kind fold, a r
 page, the archived log and an interrupted run's missing log. An archived in-flight record carries no
 authority — the host reads it as interrupted — so this is not a seeded running resource. `resetApp` clears
 the archive with the rest of the lane's state. Tagged provider-backed probes launch real commands and
-children through agent tools, inspect bounded plain-text logs/transcripts in the inspector, verify chat
+children through agent tools, inspect bounded plain-text logs/transcripts in the inspector, fold a
+one-row dock and keep that fold across the inspector, verify chat
 isolation, reload and closed-inspector completion, and exercise individual Stop and confirmed Stop all. They never
 select a model or seed a running-resource catalog. SDK faux-provider unit tests are not evidence of
 browser agent execution. `attention-background-work.live` pins the background-work unread hold end to end:
@@ -189,7 +192,9 @@ publishes an unread completion and the worktree row shows running, not a dot; wi
 absolute path of the runner's `bun`, since the host's hermetic `PATH` has none. It adds a user server
 through the Settings form while the workspace's persisted chat is open (entering a workspace auto-opens
 its latest chat, so the test waits for that tab first instead of racing it), sees it Connected · 4 tools
-once that chat reloads, and disabled for that chat from the Resources inspector, then removes it; it opens a chat from a not-running
+once that chat reloads, selects it in the Resources inspector — its detail lists the chat's seeded
+`mcp__fixture__echo` call (transcript text, not execution authority) and expands it into the transcript's
+card body — and disables it for that chat from the detail header, then removes it; it opens a chat from a not-running
 server's row, reconnects that server per chat once it fails and shows its masked log, and names an
 unreadable user `mcp.json` with an edit hint; and it proves a repository-defined server flags the chat's
 attention marker, waits for Review & approve, and starts once approved. Each test removes the `mcp.json`
@@ -657,7 +662,8 @@ focus, tabs/question/footer at one y across paging and choosing, notes and Other
 place under a height that never shrinks, Discuss marking/cancelling/sending (asserted in the session file),
 the receipt's fold, per-question Options and remembered manual fold, and the keyboard model (arrows only
 move, Enter picks, Space opens a note, `d` discusses, fields park on their own row, the platform chord
-submits or nudges) (`ask-user-question.spec.ts`). `ask-previews.spec.ts` writes mockups
+submits or nudges), and an open note closing on a background press or on focus leaving the card without
+stealing the press aimed at a row or Add note below it (`ask-user-question.spec.ts`). `ask-previews.spec.ts` writes mockups
 into the fixture repository (removed in `finally`) and pins the question preview and the option pane (HTML,
 before/after, mermaid, none) at one card height, full-screen keys that never page or skip, a file removed
 under its preview, and the picked file's path in the persisted answer; `plan-ask.spec.ts` adds the same file

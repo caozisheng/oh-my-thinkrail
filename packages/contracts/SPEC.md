@@ -116,7 +116,7 @@ these structural guards do not grant trust or enable an RPC by themselves.
   `CONTINUATION_UNKNOWN` (`chat.continuationStatus` for an operation the host neither holds nor linked —
   a restart lost it mid-flight; the card offers Retry), `CONTINUATION_IN_FLIGHT` (`chat.continue` for
   another project while the chat is already being continued — the first gesture is never silently
-  joined by a different choice), `TEXT_SEARCH_TIMEOUT` / `TEXT_SEARCH_FAILED` (a text search git could not
+  joined by a different choice), `COPY_TOO_LARGE` (a Files tree folder paste with more entries than the host copies — nothing was written; the client words it), `ENTRY_CHANGED` (an entry a Files tree paste or a trash claim was acting on was replaced, moved out of the worktree or turned into a link mid-operation — the host stopped instead of following it; a paste keeps what it already wrote, a delete or a whole-file revert left the entry in place; the client words it), `TEXT_SEARCH_TIMEOUT` / `TEXT_SEARCH_FAILED` (a text search git could not
   finish in its budget, or could not run — the host's logged classifier; the client only sees the search
   end `failed`), `RESOURCE_UNAVAILABLE`, and `SUBAGENT_TRANSCRIPT_NOT_FOUND` — the latter is
   `subagent.getTranscript`'s **permanent** miss, the
@@ -195,6 +195,11 @@ these structural guards do not grant trust or enable an RPC by themselves.
   `USER_FONT_EXTENSIONS` naming the host's `/fonts/` route and its upload guard,
   `THEME_MODES`, `isThemeMode`, `isSystemThemePair`, `normalizeThemePreference`,
   `parsePiPackageInput` (§ pi packages),
+  **`isValidTemplateName(name)`** (the one prompt-template name rule — the host's traversal gate in
+  [[submodule-server-templates]] and the web template editor's inline check call this same function) +
+  **`isWindowsDeviceName(name)`** (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9` and the
+  `¹²³` variants, any case, alone or before spaces or an extension, as Windows 10 reads `NUL .md` as `NUL`;
+  also the clone destination's device-name check),
   `JBCENTRAL_QUOTA_REFRESH_SECONDS`, `isJbcentralQuotaRefreshSeconds`, `isJbcentralConnected`,
   `SESSION_RENAME_PROTOCOL_VERSION`, `SESSION_TITLE_MAX_LENGTH`, `normalizeSessionTitle`,
   `FIRST_PROMPT_MAX_LENGTH` + **`firstPromptHead(text)`** + **`firstPromptOfTexts(texts)`** +
@@ -356,7 +361,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
     it into the session, and an older host simply omits it (the client shows its generic label).
   - the **extension-UI frames** **`ExtUiRequest`** / **`ExtUiResponse`** — our wire shape for pi's in-process
     `uiContext` calls (`select`/`confirm`/`input`/`editor` round-trip; `notify`/`setStatus`/`setWidget`/
-    `setTitle`/`dismiss` are fire-and-forget), carried on the `pi.extensionUi` channel. One member is
+    `setTitle`/`setEditorText`/`pasteToEditor`/`dismiss` are fire-and-forget), carried on the
+    `pi.extensionUi` channel. `setEditorText` and `pasteToEditor` (`EXTENSION_EDITOR_TEXT_PROTOCOL_VERSION`,
+    v128) carry `text` for the addressed session's composer: the first replaces the draft (an empty string
+    clears it), the second inserts like a paste. Older clients ignore the unknown kinds. One member is
     host-authored, not pi's: `notice` (v99) carries a closed `ProviderWarning` code for a session, such
     as the Anthropic extra-usage warning. It has no text, so the client localizes it, and older clients
     ignore the unknown kind. A round-trip
@@ -404,7 +412,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
     [[submodule-web-chat]].
 - **domain.ts** — app entities: `Project` (git repo + unique `slug` + optional **`closed: true`** — the
   persisted open-rail membership bit; absence means open for backward compatibility, and closing never
-  changes the project's id or deletes its workspace associations — plus the skill-trust fields **`trusted`**
+  changes the project's id or deletes its workspace associations — plus optional **`rank`**, the host-owned
+  place among the open projects (highest first; absent reads as `lastOpened`, so a pre-v130 record or host
+  keeps the newest-opened order). The pure **`projectRank`** / **`compareProjectRank`** (id breaks ties)
+  are the one ordering, so the host's `project.list` and every client's rail agree — plus the skill-trust fields **`trusted`**
   (the per-project grant), **`acknowledgedSkills`** (re-confirm-new — which committed aliases are OK'd) and
   **`disabledSkills`** / **`disabledGroups`** (project-baseline per-skill and per-group off — a group is a
   plugin, a source tier, or the special `@plugins`) plus **`enabledGroups`** (per-group on against the host
@@ -465,7 +476,16 @@ these structural guards do not grant trust or enable an RPC by themselves.
   Pull request segments derive their next action from, independent of whether a review exists),
   **`ExistingWorktreeCandidate`** (a `workspace.listExisting` row: absolute `path` + `branch`, or a
   `detached` row the chooser disables),
+  **`WorkspacePathMatch`** (a `workspace.resolvePath` answer: `workspaceId`, `projectId`, and a POSIX
+  `relativePath` contained in that workspace),
   `FileNode` (file-tree node; worktree-relative `/` path, `gitignored` set by the host when git ignores it),
+  the Files tree's two mutations from **`FS_MUTATIONS_PROTOCOL_VERSION`** (v131): `fs.copy`
+  (`{ sourceWorkspaceId, sourcePath, destinationWorkspaceId, destinationDirectory }` → `{ path }`, a file,
+  folder or symlink copied — never moved, even across workspaces — under a collision-free ` copy` / ` copy N`
+  name, refused with `COPY_TOO_LARGE` for a folder past the host's entry bound, stopped with
+  `ENTRY_CHANGED` when an entry changes under it) and `fs.delete` (`{ workspaceId, path }` → ack, a move to
+  the OS trash, `ENTRY_CHANGED` when the entry changed while it was claimed); a client hides both from
+  older hosts,
   **`ResourceMeta`** (what a resource's bytes *are*, host-decided and pinned by
   `RESOURCE_META_PROTOCOL_VERSION` = v75: sha-256 `hash` + `byteLength`, both `null` when the resource is
   absent; `text` = valid UTF-8, BOM-aware, and not claimed by a recognized binary magic number (an ASCII
@@ -770,7 +790,9 @@ these structural guards do not grant trust or enable an RPC by themselves.
   focused in-app item, and `open-settings`, open Settings unless a modal is open), and its one action `quit()` asks the host for an ordinary coordinated quit. The
   notification bridge exposes `show({ title, subtitle?, body, silent? })` (fire-and-forget OS notification,
   no callback or id) and an optional `isWindowFocused()` that reports OS-level window focus — true even
-  when DevTools has renderer focus, unlike `document.hasFocus()`. A browser
+  when DevTools has renderer focus, unlike `document.hasFocus()`. The deep-link bridge pushes
+  `NativeOpenFileRequest` (`file`, `line`, optional `column`) from an OS `thinkrail://` URL; it is a
+  desktop-only subscription seam, not host-wire state. A browser
   connection has none of these bridges and renders none of their affordances.
 - **quitConfirmation.ts** — the single home of the quit-confirmation gesture shared by the desktop main
   process (macOS Cmd+Q, key state polled through CoreGraphics) and the web shell (Linux Ctrl+Q, key state
@@ -790,7 +812,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
   closed without deleting associated state), **`project.rename`** (`{ id, name }` → the updated `Project`;
   changes only the display `name` — path, slug, and id stay — and broadcasts the full `project.updated`;
   `PROJECT_RENAME_PROTOCOL_VERSION` pins its v85 introduction so a newer client omits the action against
-  an older host), **`project.inspect`** (classify a path) + **`project.init`**
+  an older host), **`project.move`** (`{ id, targetId, placement: "before" | "after" }` → the moved
+  `Project`; places one open repository project next to another — never the Chats container — and
+  broadcasts each record whose `rank` changed; `PROJECT_ORDER_PROTOCOL_VERSION` pins its v130
+  introduction), **`project.inspect`** (classify a path) + **`project.init`**
   (`git init` + commit, then open) + **`project.create`** (`{ parentPath, name, displayName? }` → the opened
   `Project`: make the folder `name` under `parentPath`, creating missing parents, then the same bootstrap as
   init, and name the project `displayName` — what the user typed — when it differs from the folder;
@@ -835,11 +860,16 @@ these structural guards do not grant trust or enable an RPC by themselves.
   **`ModelContextSetting[]`** — the eligible OpenAI models' `provider`/`id`/`name`, pi's effective
   `contextWindow`, and the explicit models.json `override` or `null` for pi's default. The mutation takes
   `{target: "available" | {provider,id}, contextWindow: number | null}`: `null` removes the override;
-  a number must satisfy **`isModelContextWindow`** within **`MODEL_CONTEXT_WINDOW_LIMITS`**
-  (272,000–1,000,000), the app's editing policy rather than a verified provider capacity, enforced on
-  both sides. External values outside it are read without clamping, and the `available` target covers
-  only settings **`isSharedModelContextTarget`** accepts (no override, or one inside the range): an
-  override the app could not have written is changed only by naming its `{provider,id}`. Saves emit the
+  a number must satisfy **`isModelContextWindow`** within the target's
+  **`modelContextWindowLimits(provider)`** — **`MODEL_CONTEXT_WINDOW_LIMITS`** (272,000–1,000,000) for
+  `available` and every provider but a custom server's — the app's editing policy rather than a verified
+  provider capacity, enforced on both sides. From **`CUSTOM_MODEL_CONTEXT_PROTOCOL_VERSION`** (v129) the
+  list also carries every available `custom-*` provider model (`isCustomEndpointId`), editable only by a
+  targeted save within **`CUSTOM_MODEL_CONTEXT_WINDOW_LIMITS`** (1,024–10,000,000: a guard against typos,
+  wide enough for any served window); an older host refuses that target as ineligible. External values
+  outside a range are read without clamping, and the `available` target covers only settings
+  **`isSharedModelContextTarget`** accepts (not a custom server's, and no override or one inside the
+  range): an override the app could not have written is changed only by naming its `{provider,id}`. Saves emit the
   existing `provider.changed` invalidation; no AppConfig state or raw configuration crosses the wire) /
   **`cacheWarming.get`** / **`cacheWarming.set`** (v121, `CACHE_WARMING_SETTINGS_PROTOCOL_VERSION`; both
   return a **`CacheWarmingSetting`** — pi's `cacheWarming` mode, one of **`CACHE_WARMING_MODES`** `off` /
@@ -853,7 +883,8 @@ these structural guards do not grant trust or enable an RPC by themselves.
   tested by `isCustomEndpointId`). A `CustomEndpointModel` carries only what a server reported —
   `contextWindow` / `maxTokens` / `reasoning` / `vision` / `chatTemplateThinking` are `null` when it did
   not say (distinct from an explicit `false`, so a re-detect can clear a capability), and a `tools` hint is
-  never saved. `chatTemplateThinking` is additive on the wire: a draft without it is read as `null`, so an
+  never saved. A listed `contextWindow` is the detected one; a window the user set is a
+  `model.contextSettings` override and never travels in a draft. `chatTemplateThinking` is additive on the wire: a draft without it is read as `null`, so an
   older client never changes a saved thinking format. Probing takes `{baseUrl, apiKey? | endpointId?}` (an `endpointId` without `apiKey` reuses
   that endpoint's saved key host-side, only for its unchanged address) and returns either the normalized
   `baseUrl` with the models, or a closed `CustomEndpointProbeFailure` (`invalid-url`, `unauthorized`,
@@ -899,6 +930,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
   **`workspace.listExisting`** (the selected project's unattached Git worktrees, with detached rows
   disabled by status) / **`workspace.openExisting`** (revalidate + register one branch-backed checkout as
   `kind: "external"`, emitting the ordinary `workspace.created`, without mutating Git or disk) /
+  **`workspace.resolvePath`** (`{ path }` → `WorkspacePathMatch | null`, v132,
+  **`WORKSPACE_PATH_RESOLVE_PROTOCOL_VERSION`**: the open workspace that holds an absolute native path, matched
+  on real paths so a symlinked or `/tmp`-style spelling of either side still matches; `null` outside every
+  open workspace and for `..`, `.git` or a root itself — [[submodule-server-workspaces]]) /
   **`workspace.rename`** (`{ id, name }` → the locked updated `Workspace`; managed worktrees only;
   changes the display name while preserving the Git branch + cwd, and broadcasts the ordinary full-snapshot
   `workspace.updated`; `WORKSPACE_RENAME_PROTOCOL_VERSION` pins its v55 introduction so a newer client with
@@ -1066,7 +1101,7 @@ these structural guards do not grant trust or enable an RPC by themselves.
   the browser / **`host.updateAvailable`** — the backward-compatible full CLI-update snapshot: initially
   published when a launcher finds a newer release, then replaced as a v70 host-run moves through
   running/succeeded/failed; absent on discovery failure/no-update / **`project.updated`** — the
-  full persisted `Project` snapshot after open/reopen/close, including `closed` membership, so every client
+  full persisted `Project` snapshot after open/reopen/close/rename/move, including `closed` membership and `rank`, so every client
   atomically converges its rail + Recents without optimistic removal / `pi.event` / `pi.extensionUi` /
   **`session.created`** (the initial `SessionSummary`, broadcast when a new host-owned session registers so
   other frontends can list it in history without opening local placement) / **`session.deleted`** (workspace +
@@ -1497,7 +1532,7 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 127`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 132`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
 hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 125`, on-demand Issue joins v126 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` (below), allocated above upstream's v118–v124 floors. Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
@@ -1658,9 +1693,13 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v127. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v132. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
 joins (v126) and the project group home (v127) sit above them. Clients and host must use the named constants, never the original
 upstream numbers.
+
+## Latest upstream capability floors
+
+The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, and workspace path resolution v132. Upstream original v115–v119 numbers must not gate these features on fork hosts.

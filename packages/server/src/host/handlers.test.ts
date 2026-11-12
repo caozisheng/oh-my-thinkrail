@@ -25,10 +25,13 @@ import type {
 	Workspace,
 	WorkspaceCreation,
 	WorkspaceCreationRemoved,
+	WorkspaceFsChangedPayload,
+	WorkspacePathMatch,
 	WorkspaceWatchReadyResult,
 } from "@thinkrail/contracts";
 import {
 	BRANCH_STATUS_PROTOCOL_VERSION,
+	INITIAL_TERMINAL_TAB_KEY,
 	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 	WS_METHODS,
@@ -51,8 +54,10 @@ import {
 import { defaultSessionDirFor, writeFixtureSession } from "../history/testFixtures";
 import { addComment, getReviewSnapshot } from "../reviews";
 import { resetConfigCache } from "../settings";
+import { listTerminals } from "../terminal";
 import { todoReviewRecord } from "../todos";
-import { stopAllWatches } from "../watch";
+import { setTrashImplementationForTests } from "../trash";
+import { setWatchPublisher, stopAllWatches } from "../watch";
 import {
 	awaitWorkspaceCreation,
 	getWorkspace,
@@ -149,6 +154,8 @@ beforeEach(() => {
 
 afterEach(() => {
 	stopAllWatches();
+	setWatchPublisher(null);
+	setTrashImplementationForTests(undefined);
 	resetConfigCache();
 	resetFeedbackForTests();
 	resetSurveyForTests();
@@ -163,6 +170,69 @@ afterEach(() => {
 test("every contract method has a registered handler", () => {
 	const unregistered = Object.values(WS_METHODS).filter((m) => requestMethodDiagnostic(m) !== m);
 	expect(unregistered).toEqual([]);
+});
+
+test("file mutation handlers invalidate watcher-ignored paths after success", async () => {
+	const directory = join(repo, "node_modules", "demo");
+	mkdirSync(directory, { recursive: true });
+	writeFileSync(join(directory, "source.txt"), "content");
+	writeFileSync(
+		join(dataDir, "workspaces.json"),
+		JSON.stringify([
+			{
+				id: "w1",
+				projectId: "p1",
+				name: "Default",
+				worktreePath: repo,
+				createdAt: 1,
+			},
+		]),
+	);
+	const frames: WorkspaceFsChangedPayload[] = [];
+	setWatchPublisher((payload) => frames.push(payload));
+	setTrashImplementationForTests(async (input) => {
+		if (typeof input !== "string") throw new Error("expected one path");
+		rmSync(input, { recursive: true });
+	});
+
+	expect(
+		await handleRequest(
+			"fs.copy",
+			{
+				sourceWorkspaceId: "w1",
+				sourcePath: "node_modules/demo/source.txt",
+				destinationWorkspaceId: "w1",
+				destinationDirectory: "node_modules/demo",
+			},
+			CTX,
+		),
+	).toEqual({ path: "node_modules/demo/source copy.txt" });
+	expect(
+		await handleRequest(
+			"fs.delete",
+			{ workspaceId: "w1", path: "node_modules/demo/source copy.txt" },
+			CTX,
+		),
+	).toEqual({ ok: true });
+	expect(
+		await handleRequest("fs.delete", { workspaceId: "w1", path: "node_modules/demo" }, CTX),
+	).toEqual({ ok: true });
+	expect(frames.filter((frame) => frame.paths.length > 0)).toEqual([
+		{
+			workspaceId: "w1",
+			paths: ["node_modules/demo/source copy.txt"],
+			truncated: false,
+			skillChange: "unknown",
+		},
+		{
+			workspaceId: "w1",
+			paths: ["node_modules/demo/source copy.txt"],
+			truncated: false,
+			skillChange: "unknown",
+		},
+		{ workspaceId: "w1", paths: ["node_modules/demo"], truncated: false, skillChange: "unknown" },
+	]);
+	expect(existsSync(directory)).toBe(false);
 });
 
 test("clone handlers resolve the destination and return an opened local project", async () => {
@@ -692,7 +762,7 @@ test("extension.list reflects disabledExtensions written through settings.update
 			title: "Web access",
 			description: expect.any(String),
 			enabled: true,
-			tools: ["web_search", "fetch_content", "get_search_content"],
+			tools: ["web_search", "source_check", "fetch_content", "get_search_content", "web_enable"],
 			hasChildExtensions: true,
 		},
 	]);
@@ -1212,6 +1282,20 @@ test("a review send that names its chat lands every file's drafts there as one p
 		setSessionManagerFactory((cwd) => SessionManager.create(cwd));
 		cleanup();
 	}
+});
+
+test("a path resolved into a Default it had to ensure gets the Default's first terminal", async () => {
+	const match = (await handleRequest(
+		"workspace.resolvePath",
+		{ path: join(repo, "README.md") },
+		CTX,
+	)) as WorkspacePathMatch;
+	expect(match).toMatchObject({ projectId: "p1", relativePath: "README.md" });
+	expect(getWorkspace(match.workspaceId)).toMatchObject({ kind: "default" });
+	expect(getWorkspace(match.workspaceId).initialTerminalPending).toBeUndefined();
+	expect(listTerminals(match.workspaceId)).toEqual([
+		{ tabKey: INITIAL_TERMINAL_TAB_KEY, title: "Terminal 1" },
+	]);
 });
 
 test("workspace mutation handlers reject the Default before any side effect", async () => {

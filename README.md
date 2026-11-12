@@ -104,6 +104,8 @@ an Issue's Markdown body and images in place, including closed Issues. Only one 
 time; refresh collapses it. The preview does not include comments; use the title link for the full
 provider page. Private attachment images may require access through the provider website.
 
+- **An IDE around the agent.** ThinkRail comes with Monaco editor tabs, a file tree integrated with git to show code changes as they happen, terminals, and document support. Rendered Markdown previews have a heading outline that follows the section you're reading; hide it or move it to either side.
+
 To connect, enter a **Repository address** and a personal access token in the Issues tool:
 
 - `https://github.com/owner/repository.git` selects GitHub automatically. Classic and fine-grained PATs
@@ -136,7 +138,18 @@ speech service. Structured agent questions support rich previews,
 per-option notes, and a Discuss action. These upstream capabilities remain separate from this fork's
 Issue association and Tomato sessions.
 
+- **Agent tools beyond the shell.** Thanks to the ThinkRail GUI, your AI agent can ask you structured multiple-choice questions in the chat instead of guessing, draw Mermaid diagrams, and show comparisons and file previews. When the agent proposes a UI change, it shows a before/after mockup you can comment on like a diff.
+
+  - Settings → Extensions lists the ThinkRail extensions the agent may use. It can also install any `pi` package by source (npm, git or a local folder), for you or for a repository, showing what each one adds and letting you switch individual packages, their extensions and skills, and `pi`'s built-ins on or off.
+  - The tools behind the questions, diagrams, and previews are also published as plain `pi` packages: `pi install npm:@thinkrail/pi-ask-user-question` for the questions  [`@thinkrail/pi-ask-user-question`](https://www.npmjs.com/package/@thinkrail/pi-ask-user-question)) and `pi install npm:@thinkrail/pi-visualize` for the diagrams and previews [`@thinkrail/pi-visualize`](https://www.npmjs.com/package/@thinkrail/pi-visualize)), so a vanilla `pi` in the terminal gets the same tools.
+
+- **MCP servers.** Connect the MCP servers in your `pi` `mcp.json`, or configure them in Settings. ThinkRail asks in the chat before calls that the server does not mark read-only, or always allows the tools you trust in a project. Servers a repository defines stay off until you approve them. ThinkRail signs you in to OAuth servers from Settings and shows each chat's servers next to its background commands and subagents, with each server's state and the chat's calls to it.
+
+- **Your providers, your credentials.** Sign in with [JetBrains AI](https://www.jetbrains.com/ai/) or connect any provider through `pi`'s own auth. ThinkRail has no accounts of its own.
+
 - **Your `pi` setup.** ThinkRail reads your existing `pi` configuration (`~/.pi/agent`). To use another one (for example, a personal `~/.pi/agent-personal`), or to pass extra environment variables to the agent, terminals and MCP servers, set them in Settings → Environment. The configuration becomes active on the next start. Settings → Models also holds `pi`'s prompt-cache warming (off, only while a run is active, or also between runs); ThinkRail keeps it to active runs unless you choose otherwise, so idle chats don't spend in the background.
+
+- **Your language.** ThinkRail uses your system language or a language you pick in Settings → Language: English, Japanese, Russian, Simplified Chinese, Spanish, or Traditional Chinese (Taiwan). You can add a language ThinkRail doesn't ship yet by putting a translated locale file, for example `de.json`, in `~/.oh-my-thinkrail/locales`. (Tell your AI agent to do it for you!)
 
 ## Releases
 
@@ -161,6 +174,7 @@ latest Release at launch, notifies you once per new version, and Settings → So
 the release page so you install subsequent releases manually. The desktop check only reads the release
 tag, so the added Linux CLI assets do not affect it. Release builds
 carry no upstream PostHog project key. Source-run privacy behavior is unchanged below.
+
 
 
 ## Linux CLI-only releases

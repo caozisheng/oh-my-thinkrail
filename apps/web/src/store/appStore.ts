@@ -52,6 +52,7 @@ import type {
 } from "@thinkrail/contracts";
 import {
 	canMarkCompletionUnread,
+	compareProjectRank,
 	customMessageText,
 	DEFAULT_CONFIG,
 	type ExtensionSettingValues,
@@ -172,6 +173,10 @@ export interface FileReveal {
 	length?: number;
 	tick: number;
 }
+export interface FileClipboard {
+	workspaceId: string;
+	path: string;
+}
 export interface ChatTab {
 	kind: "chat";
 	id: string;
@@ -221,6 +226,7 @@ export function isFileComparison<T extends { kind: string; before?: string | und
 	return tab.kind === "diff" && tab.before !== undefined;
 }
 export type ChangesLayout = "stacked" | "single";
+export type MarkdownOutlineSide = "left" | "right";
 type FilesMode = "all" | "changed";
 export type FilesScrollView = "all" | "changedList" | "changedTree";
 export interface FilesTreeView {
@@ -503,6 +509,12 @@ export interface ChatReadingAnchor {
 	offset: number;
 }
 
+export interface ComposerEdit {
+	id: string;
+	kind: "replace" | "paste";
+	text: string;
+}
+
 export interface SessionRuntime {
 	turns: ChatTurn[];
 	turnIdByMessageIndex?: (string | null)[];
@@ -521,6 +533,7 @@ export interface SessionRuntime {
 	stats: SessionStats | null;
 	commands: SlashCommandInfo[];
 	draft: string;
+	composerEdit: ComposerEdit | null;
 	promptImages: PromptImagesState;
 	readingAnchor: ChatReadingAnchor | null;
 	pendingExtUi: ExtUiDialogRequest | null;
@@ -555,6 +568,7 @@ function newRuntime(
 		stats: null,
 		commands: [],
 		draft: "",
+		composerEdit: null,
 		promptImages: newPromptImagesState(),
 		readingAnchor: null,
 		pendingExtUi: null,
@@ -954,6 +968,19 @@ function reduceExtUi(
 	request: Exclude<ExtUiRequest, { kind: "setTitle" }>,
 ): SessionRuntime {
 	switch (request.kind) {
+		case "setEditorText":
+			return { ...rt, composerEdit: { id: request.id, kind: "replace", text: request.text } };
+		case "pasteToEditor": {
+			const pending = rt.composerEdit;
+			return {
+				...rt,
+				composerEdit: {
+					id: request.id,
+					kind: pending?.kind ?? "paste",
+					text: `${pending?.text ?? ""}${request.text}`,
+				},
+			};
+		}
 		case "dismiss":
 			if (rt.pendingExtUi?.id === request.id) {
 				const [next, ...rest] = rt.extUiQueue;
@@ -1172,6 +1199,8 @@ interface AppState {
 	fileLineWidthBounded: boolean;
 	voiceInputEnabled: boolean;
 	chatMessageOrder: ChatMessageOrder;
+	markdownOutlineVisible: boolean | null;
+	markdownOutlineSide: MarkdownOutlineSide;
 	defaultModel: WireModel | undefined;
 	defaultEffort: ThinkingLevel | undefined;
 	reviewModel: WireModel | undefined;
@@ -1345,6 +1374,8 @@ interface AppState {
 	setChangesView: (view: "list" | "tree") => void;
 	filesMode: FilesMode;
 	setFilesMode: (mode: FilesMode) => void;
+	fileClipboard: FileClipboard | null;
+	setFileClipboard: (clipboard: FileClipboard | null) => void;
 	filesTreeByWorkspace: Record<string, FilesTreeView>;
 	hydrateFilesTree: (views: Record<string, FilesTreeView>) => void;
 	setFilesTreeExpanded: (workspaceId: string, paths: readonly string[], expanded: boolean) => void;
@@ -1506,6 +1537,7 @@ interface AppState {
 	setStats: (sessionId: string, stats: SessionStats) => void;
 	setCommands: (sessionId: string, commands: SlashCommandInfo[]) => void;
 	setChatDraft: (sessionId: string, text: string) => void;
+	consumeComposerEdit: (sessionId: string, editId: string) => void;
 	updateChatPromptImages: (
 		sessionId: string,
 		update: (current: PromptImagesState) => PromptImagesState,
@@ -1541,6 +1573,8 @@ interface AppState {
 	closeSearch: () => void;
 	setDoubleShiftSearch: (enabled: boolean) => void;
 	setChatMessageOrder: (order: ChatMessageOrder) => void;
+	setMarkdownOutlineVisible: (visible: boolean) => void;
+	setMarkdownOutlineSide: (side: MarkdownOutlineSide) => void;
 	applyConfig: (config: AppConfig) => void;
 	requestToolView: (workspaceId: string, tool: LayoutToolId) => void;
 	requestChangesView: (workspaceId: string, path: string | null, scope?: GitDiffScope) => void;
@@ -1561,7 +1595,11 @@ interface AppState {
 	dismissToast: (id: string) => void;
 }
 
-function sortProjects(projects: Project[]): Project[] {
+function sortOpenProjects(projects: Project[]): Project[] {
+	return [...projects].sort(compareProjectRank);
+}
+
+function sortRecentProjects(projects: Project[]): Project[] {
 	return [...projects].sort((a, b) => b.lastOpened - a.lastOpened);
 }
 
@@ -2224,6 +2262,8 @@ const REPLAYABLE_EXT_UI: ReadonlySet<ExtUiRequest["kind"]> = new Set([
 	"setStatus",
 	"setWidget",
 	"setTitle",
+	"setEditorText",
+	"pasteToEditor",
 	"notice",
 ]);
 
@@ -2508,6 +2548,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 	reviewFocusRequest: null,
 	changesView: "tree",
 	filesMode: "all",
+	fileClipboard: null,
 	filesTreeByWorkspace: {},
 	changesLayout: "stacked",
 	diffScopeByWorkspace: {},
@@ -2550,6 +2591,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 	fileLineWidthBounded: DEFAULT_CONFIG.fileLineWidthBounded,
 	voiceInputEnabled: DEFAULT_CONFIG.voiceInputEnabled,
 	chatMessageOrder: "oldest-first",
+	markdownOutlineVisible: null,
+	markdownOutlineSide: "right",
 	customLayoutPresets: DEFAULT_CONFIG.customLayoutPresets,
 	defaultModel: DEFAULT_CONFIG.defaultModel,
 	defaultEffort: DEFAULT_CONFIG.defaultEffort,
@@ -2759,7 +2802,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 		speech,
 	) =>
 		set((state) => {
-			const openProjects = sortProjects(projects.filter((project) => project.closed !== true));
+			const openProjects = sortOpenProjects(projects.filter((project) => project.closed !== true));
 			return {
 				protocolVersion,
 				welcomeProtocolVersion: protocolVersion,
@@ -2769,7 +2812,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 					: {},
 				mcpByWorkspace: selectSupportsMcp({ protocolVersion }) ? state.mcpByWorkspace : {},
 				projects: openProjects,
-				recentProjects: sortProjects(recentProjects),
+				recentProjects: sortRecentProjects(recentProjects),
 				hostPlatform: hostPlatform ?? null,
 				hostUpdate: hostUpdate ?? null,
 				hostAppVersion: hostAppVersion ?? null,
@@ -2784,10 +2827,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 	applyHostUpdate: (hostUpdate) => set({ hostUpdate }),
 	installProjectSnapshot: (projects, recentProjects) =>
 		set((state) => {
-			const openProjects = sortProjects(projects.filter((project) => project.closed !== true));
+			const openProjects = sortOpenProjects(projects.filter((project) => project.closed !== true));
 			return {
 				projects: openProjects,
-				recentProjects: sortProjects(recentProjects),
+				recentProjects: sortRecentProjects(recentProjects),
 				...reconcileProjectNavigation(state, openProjects),
 				...pruneExpandedProjects(state, openProjects),
 			};
@@ -2797,10 +2840,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 			const projects =
 				project.closed === true
 					? state.projects.filter((candidate) => candidate.id !== project.id)
-					: sortProjects(upsertProject(state.projects, project));
+					: sortOpenProjects(upsertProject(state.projects, project));
 			return {
 				projects,
-				recentProjects: sortProjects(upsertProject(state.recentProjects, project)),
+				recentProjects: sortRecentProjects(upsertProject(state.recentProjects, project)),
 				...reconcileProjectNavigation(state, projects),
 				...pruneExpandedProjects(state, projects),
 			};
@@ -2887,6 +2930,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 				specsByWorkspace: omitKey(state.specsByWorkspace, workspaceId),
 				diffScopeByWorkspace: omitKey(state.diffScopeByWorkspace, workspaceId),
 				filesTreeByWorkspace: omitKey(state.filesTreeByWorkspace, workspaceId),
+				fileClipboard:
+					state.fileClipboard?.workspaceId === workspaceId ? null : state.fileClipboard,
 				reviewsByWorkspace: omitKey(state.reviewsByWorkspace, workspaceId),
 				changesRequest:
 					state.changesRequest?.workspaceId === workspaceId ? null : state.changesRequest,
@@ -3486,6 +3531,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 		),
 	setChangesView: (view) => set({ changesView: view }),
 	setFilesMode: (filesMode) => set({ filesMode }),
+	setFileClipboard: (fileClipboard) => set({ fileClipboard }),
 	hydrateFilesTree: (filesTreeByWorkspace) => set({ filesTreeByWorkspace }),
 	setFilesTreeExpanded: (workspaceId, paths, expanded) =>
 		set((s) =>
@@ -4689,6 +4735,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 		set((s) => withRuntime(s, sessionId, (rt) => ({ ...rt, commands }))),
 	setChatDraft: (sessionId, draft) =>
 		set((s) => withRuntime(s, sessionId, (rt) => ({ ...rt, draft }))),
+	consumeComposerEdit: (sessionId, editId) =>
+		set((s) =>
+			withRuntime(s, sessionId, (rt) =>
+				rt.composerEdit?.id === editId ? { ...rt, composerEdit: null } : rt,
+			),
+		),
 	updateChatPromptImages: (sessionId, update) =>
 		set((s) =>
 			withRuntime(s, sessionId, (rt) => {
@@ -4811,6 +4863,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 	closeSurveyWindow: () => set({ surveyWindowOpen: false }),
 	setInAppSurvey: (survey) => set({ inAppSurvey: survey }),
 	setChatMessageOrder: (chatMessageOrder) => set({ chatMessageOrder }),
+	setMarkdownOutlineVisible: (markdownOutlineVisible) => set({ markdownOutlineVisible }),
+	setMarkdownOutlineSide: (markdownOutlineSide) => set({ markdownOutlineSide }),
 	applyConfig: (config) => set(configPatch(config)),
 	requestToolView: (workspaceId, tool) =>
 		set((state) =>

@@ -1547,6 +1547,55 @@ test("closeChatRuntime drops only its own runtime", () => {
 	expect(rt("b").isStreaming).toBe(true);
 });
 
+test("extension editor text waits for the addressed composer and a replacement can clear it", () => {
+	const store = useAppStore.getState();
+	store.openChatSession("ws1", "a", null, "medium");
+	store.openChatSession("ws1", "b", null, "medium");
+	store.setChatDraft("a", "Old draft");
+	store.setChatDraft("b", "Other chat");
+	store.applyExtUi({
+		id: "edit-a",
+		sessionId: "a",
+		kind: "setEditorText",
+		text: "New 中文\ndraft",
+	});
+	expect(rt("a").composerEdit).toEqual({ id: "edit-a", kind: "replace", text: "New 中文\ndraft" });
+	expect(rt("a").draft).toBe("Old draft");
+	expect(rt("b").composerEdit).toBeNull();
+	store.applyExtUi({ id: "clear-a", sessionId: "a", kind: "setEditorText", text: "" });
+	expect(rt("a").composerEdit).toEqual({ id: "clear-a", kind: "replace", text: "" });
+	store.consumeComposerEdit("a", "edit-a");
+	expect(rt("a").composerEdit?.id).toBe("clear-a");
+	store.consumeComposerEdit("a", "clear-a");
+	expect(rt("a").composerEdit).toBeNull();
+});
+
+test("pending extension pastes fold into the edit a composer applies once", () => {
+	const store = useAppStore.getState();
+	store.openChatSession("ws1", "a", null, "medium");
+	store.applyExtUi({ id: "p1", sessionId: "a", kind: "pasteToEditor", text: "one" });
+	store.applyExtUi({ id: "p2", sessionId: "a", kind: "pasteToEditor", text: " two" });
+	expect(rt("a").composerEdit).toEqual({ id: "p2", kind: "paste", text: "one two" });
+	store.applyExtUi({ id: "r", sessionId: "a", kind: "setEditorText", text: "Base" });
+	store.applyExtUi({ id: "p3", sessionId: "a", kind: "pasteToEditor", text: " tail" });
+	expect(rt("a").composerEdit).toEqual({ id: "p3", kind: "replace", text: "Base tail" });
+});
+
+test("extension editor text received before a chat opens is applied in order", () => {
+	const store = useAppStore.getState();
+	store.applyExtUi({ id: "edit-first", sessionId: "later", kind: "setEditorText", text: "First" });
+	store.applyExtUi({ id: "paste-last", sessionId: "later", kind: "pasteToEditor", text: " last" });
+	store.openChatSession("ws1", "other", null, "medium");
+	expect(rt("other").composerEdit).toBeNull();
+	store.openChatSession("ws1", "later", null, "medium");
+	expect(rt("later").composerEdit).toEqual({
+		id: "paste-last",
+		kind: "replace",
+		text: "First last",
+	});
+	expect(useAppStore.getState().extUiOrphans).toEqual([]);
+});
+
 test("image drafts stay with their own runtime and unknown-session updates are ignored", () => {
 	const store = useAppStore.getState();
 	store.openChatSession("ws1", "a", null, "medium");
@@ -2772,6 +2821,19 @@ test("applyProjectUpdated reopens and reorders the same project without duplicat
 	expect(state.recentProjects[0]?.closed).toBeUndefined();
 });
 
+test("open projects follow the host's rank while Recents stay newest opened first", () => {
+	const p1 = project();
+	const p2 = project({ id: "p2", path: "/projects/two", slug: "project-two", lastOpened: 200 });
+	useAppStore.getState().installProjectSnapshot([p1, p2], [p1, p2]);
+	expect(useAppStore.getState().projects.map((candidate) => candidate.id)).toEqual(["p2", "p1"]);
+
+	useAppStore.getState().applyProjectUpdated({ ...p1, rank: 201 });
+
+	const state = useAppStore.getState();
+	expect(state.projects.map((candidate) => candidate.id)).toEqual(["p1", "p2"]);
+	expect(state.recentProjects.map((candidate) => candidate.id)).toEqual(["p2", "p1"]);
+});
+
 test("applyProjectUpdated closes the last project to the no-project state", () => {
 	const p1 = project();
 	useAppStore.setState({
@@ -3567,6 +3629,7 @@ test("applyWorkspaceRemoved drops the removed workspace's cached spec graph", ()
 test("files tree state keeps per-workspace folders and scroll, and drops a removed workspace", () => {
 	useAppStore.setState({
 		filesTreeByWorkspace: {},
+		fileClipboard: { workspaceId: "w1", path: "src/a.ts" },
 		removedWorkspaceIds: nullProto<Record<string, true>>(),
 		workspaces: { p1: [pushedWorkspace()] },
 	});
@@ -3592,6 +3655,7 @@ test("files tree state keeps per-workspace folders and scroll, and drops a remov
 
 	useAppStore.getState().applyWorkspaceRemoved("p1", "w1");
 	expect(useAppStore.getState().filesTreeByWorkspace.w1).toBeUndefined();
+	expect(useAppStore.getState().fileClipboard).toBeNull();
 	useAppStore.getState().setFilesTreeExpanded("w1", ["src"], true);
 	expect(useAppStore.getState().filesTreeByWorkspace.w1).toBeUndefined();
 });

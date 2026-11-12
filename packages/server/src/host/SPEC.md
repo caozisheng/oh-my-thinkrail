@@ -289,7 +289,7 @@ channel fan-out, and the process-boot wrapper both launchers share.
   most params are not shape-validated at runtime; `issues.*` is an explicit exception (below). The registry includes `workspace.rename` as the direct manual door into
   `renameWorkspace(id, name)` (no `branch` option) — the workspaces module changes only the
   display label, persists, and publishes it, so the handler never mutates Git, emits, or patches a client
-  separately; `project.rename` likewise delegates to the projects module's `renameProject`, which owns validation and the push. `client.reportError` hands the untrusted browser report to analytics' `reportClientError` (the
+  separately; `project.rename` and `project.move` likewise delegate to the projects module's `renameProject` / `moveProject`, which own validation and the push; both refuse the Chats container as either end. `client.reportError` hands the untrusted browser report to analytics' `reportClientError` (the
   only sanitizer) and always acks. Error tracking also rides two `server.ts` seams: every failed WS request
   is reported with its registered method (CodedErrors included), and `observeLoggedErrors` routes host
   `log.warn/error(msg, err)` calls as `host_logged` — so host diagnostics that carry an error go through
@@ -629,11 +629,18 @@ channel fan-out, and the process-boot wrapper both launchers share.
     recoverable), yet chat history is purged with the worktree — a deliberate scope choice, not a leak.
 - **Change mutations are serialized per workspace, on their own chain** (`reviewLock.ts`'s
   `createKeyedLock` mints both): `change.revert`/`change.undo` run under **`withChangeLock(workspaceId)`**
-  so two reverts cannot interleave their load→verify→write passes, while reviews and changes —
+  so two reverts cannot interleave their load→verify→write passes — and the Files tree's `fs.copy` (on the
+  destination workspace) and `fs.delete` take the same chain, so a paste or delete never interleaves with
+  a revert of the same worktree. `fs.delete` refuses a registered workspace root or any ancestor
+  containing one with `WORKSPACE_HAS_NESTED_WORKSPACES`, comparing canonical paths with separator-aware
+  containment; lifecycle protection stays composed here rather than inside `fs`. Reviews and changes —
   independent resources — never queue behind each other. The agent is deliberately **not** paused: the
-  `changes` module's compare-and-swap makes the race safe, and the fs watcher's `fsChanged` tick re-reads
+  `changes` module's compare-and-swap and `fs`'s per-step identity checks (`ENTRY_CHANGED`) make the
+  race safe, and the fs watcher's `fsChanged` tick re-reads
   the open tabs after a write exactly as it does after an agent edit (so both handlers `ensureWatch`
-  first). The named failures travel as `WsResponse.errorCode`
+  first). `fs.copy`/`fs.delete` also publish their own invalidation on success through
+  `watch.notifyWorkspacePathsChanged` (every path the copy wrote; a deleted folder as an unlisted subtree),
+  because the watcher never reports `node_modules` or an unwatched gitignored folder. The named failures travel as `WsResponse.errorCode`
   (`STALE_VIEW`/`SCOPE_IMMUTABLE`/`RANGE_INVALID`/`RECEIPT_UNKNOWN`/`UNSUPPORTED_CHANGE`) through the same `CodedError`
   mapping `UNKNOWN_COMMIT` uses — the dispatch names no codes of its own, so a code added in `contracts`
   and thrown by a feature reaches the client with no host-side allowlist to update.

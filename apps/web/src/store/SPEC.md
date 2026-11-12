@@ -29,8 +29,8 @@ pages in lives on the same projection as `older`, one contiguous run per kind ri
 chain (else drops it, rather than show a list with a silent hole), a new connection generation drops it (a
 restart may surface interrupted runs inside it), and `appendChatResourceHistory` keeps a page only if the
 chain still ends where the page was asked from. `selectChatResourceGroups(snapshot, includeMcp, older)`
-hands back every held finished record per kind (window then run, newest first), the window alone as
-`recentFinished` (the only records that can be new), and what the host holds beyond them (`remaining`);
+hands back every held finished record per kind (window then run, newest first) and what the host holds
+beyond them (`remaining`);
 `selectChatResourceOldest` names the next page's anchor. Components do not derive these independently.
 `chatResources.ts` is the store's private implementation file for resource projection/state/scope/read
 types and the `staleChatResources` state transform. A parent settling does not clear its still-running
@@ -93,8 +93,10 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   edge in one Zustand write; route validation and capability reads never observe a partial welcome.
   `installSpeechStatus` replaces `speech` whole on each `speech.changed` push.
   `installProjectSnapshot` remains the project-only primitive for focused
-  callers. **`projects`** is the open rail, while **`recentProjects`** is the last-opened-ordered set of every
-  known open + closed project; the server omits closed records whose folder no longer exists.
+  callers. **`projects`** is the open rail in the host's order (`compareProjectRank` over `Project.rank`, so
+  every repository listing and fallback follows the user's arrangement), while **`recentProjects`** is the
+  last-opened-ordered set of every known open + closed project; the server omits closed records whose
+  folder no longer exists.
   **`applyProjectUpdated(project)`** is the one full-snapshot updater for
   `project.updated` pushes and authoritative project-mutation responses: it upserts/sorts Recents and either
   upserts/sorts the rail or removes the row when `closed === true`. Both actions reconcile stale navigation
@@ -314,7 +316,7 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   `silenceNotice(notice)` clears every chat once "Don't warn again" lands, and also drops
   buffered orphan `notice` frames, so a chat opened later does not replay one. `openChatSession` creates a runtime; `closeChatRuntime` /
   `clearWorkspaceState` drop it; per-session mutators (`appendUserMessage` / **`appendErrorTurn`** / `setStats` / `setCommands` /
-  `setCurrentModel` / `setThinkingLevel` / `setChatDraft` / `setChatReadingAnchor` / `clearPendingExtUi`)
+  `setCurrentModel` / `setThinkingLevel` / `setChatDraft` / `consumeComposerEdit` / `setChatReadingAnchor` / `clearPendingExtUi`)
   take a `sessionId`.
   **`appendErrorTurn(sessionId, text)`** appends an `error` turn for a **rejected** turn-driving wire call
   (`session.prompt`/`steer`/`followUp`/`create`) — e.g. `prompt()` throwing "no API key" / a bad model —
@@ -471,7 +473,15 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   banner a session error gets — an extension crash must not read as chatter); every other level stays a
   `system` turn. Level is the *only* input, so the host's own error notifies ride the same road: the
   `Review send failed: …` that `host/handlers` publishes after a rolled-back send renders as that banner
-  too. That is deliberate — a send that silently rolled back is exactly what a user must not scroll past. A **fire-and-forget** ext-UI frame (`notify`/`setStatus`/`setWidget`/`setTitle`/`notice`)
+  too. That is deliberate — a send that silently rolled back is exactly what a user must not scroll past.
+  `setEditorText` / `pasteToEditor` never write `draft` themselves: they leave the addressed runtime one
+  pending **`composerEdit`** (`{ id, kind: "replace" | "paste", text }`) for that chat's composer to apply
+  through its own edit path, so a replacement also ends the composer's template-slot session and a paste
+  lands at its caret. Pending edits fold: a replacement supersedes everything before it and a paste
+  appends to the pending text, which is what applying them one by one would produce.
+  `consumeComposerEdit(sessionId, id)` clears the edit only while it is still that one. A runtime whose
+  chat is not shown keeps the edit until its composer mounts. A **fire-and-forget** ext-UI frame
+  (`notify`/`setStatus`/`setWidget`/`setTitle`/`setEditorText`/`pasteToEditor`/`notice`)
   that has **no runtime to land in** is held in **`extUiOrphans`** (bounded, newest 64) instead of being
   dropped, and **both** runtime-installing actions — `openChatSession` *and* `hydrateSession` — drain that
   session's frames through the shared `replayExtUiOrphans` the moment its runtime exists. The admission
@@ -616,7 +626,11 @@ selector to hide its Projects rail and pane, so onboarding has the whole window.
   the chat preference seam from host-qualified browser localStorage or the native shell's injected
   backend-profile/window-scoped adapter. It defaults oldest-first. `setChatMessageOrder` changes it
   without a server round trip, and `applyConfig` can never overwrite it. `ChatView` projects each
-  runtime from order without rewriting canonical turns. **`hiddenModels: ModelRef[]`** (`{ provider, id }` pairs) is a client-local model visibility
+  runtime from order without rewriting canonical turns. **`markdownOutlineVisible: boolean | null`**
+  (`null` until the reader shows or hides the Markdown outline) and **`markdownOutlineSide: "left" |
+  "right"`** (default right) are client-local the same way: `shell/markdownOutlinePreference` hydrates and
+  persists them, `setMarkdownOutlineVisible` / `setMarkdownOutlineSide` change them, and `applyConfig` never
+  touches them. **`hiddenModels: ModelRef[]`** (`{ provider, id }` pairs) is a client-local model visibility
   preference with pure **`hydrateHiddenModels(list)`** / **`setModelVisibility(model, visible)`** /
   **`toggleModelVisibility(model)`** actions; the store touches no storage — `chat/modelVisibility`
   hydrates and persists it, and `applyConfig` can never overwrite it. **`selectPickerModels(models,
@@ -803,7 +817,9 @@ the scope and compare target it belongs to, so another scope or target branch st
 every ancestor of a path and records it as seen in one write, so the auto-reveal can tell on return whether
 the active file changed meanwhile; every write is idempotent (an unchanged view keeps its identity) and a
 removed workspace's view is dropped in `applyWorkspaceRemoved`. Persistence lives outside the store, in
-`panels/filesTreeState`. **`selectActiveFilePath`** is the path of the active file or diff tab, else `null`.
+`panels/filesTreeState`. **`fileClipboard`** (`setFileClipboard`) is the Files tree's in-app Copy: one
+`{ workspaceId, path }`, session-only, dropped in `applyWorkspaceRemoved` with its workspace.
+**`selectActiveFilePath`** is the path of the active file or diff tab, else `null`.
 **`diffScopeByWorkspace`** + **`setDiffScope(workspaceId, scope)`** hold *what* each workspace's Changes
 panel is diffing (read through **`selectDiffScope`**, which defaults to the shared, referentially stable
 `BRANCH_SCOPE`); keyed **per workspace**, not app-wide like `changesView`, because a scope belongs to that
