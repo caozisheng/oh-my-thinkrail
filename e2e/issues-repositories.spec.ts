@@ -89,7 +89,9 @@ test("linked repositories hydrate before opening the control and rehydrate on re
 			element.parentElement?.contains(document.querySelector('[data-testid="issue-lock"]')),
 		),
 	).toBe(true);
-	await lock.focus();
+	await title.focus();
+	await page.keyboard.press("Tab");
+	await expect(lock).toBeFocused();
 	await expect(page.getByRole("tooltip")).toBeVisible();
 	blocked = false;
 	await page.getByRole("button", { name: "Refresh issues", exact: true }).click();

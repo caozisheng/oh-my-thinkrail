@@ -367,7 +367,7 @@ export function IssuesPanel({
 															variant="ghost"
 															label={t("issues.error.launchBlocked")}
 															data-testid="issue-lock"
-															className="ml-4 inline-flex align-middle"
+															className="ml-4 align-middle"
 														/>
 													</TooltipProvider>
 												)}
