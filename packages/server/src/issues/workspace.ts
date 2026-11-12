@@ -51,6 +51,13 @@ export interface IssueWorkspaceMember {
 	/** Durable removal intent for an unchanged member; settling it finishes or reverts the removal. */
 	removing?: true;
 }
+export interface IssueImplementationHistory {
+	workspaceId: string;
+	worktreePath: string;
+	branch: string;
+	sessionId?: string;
+	archivedAt: number;
+}
 export interface IssueWorkspaceRecord {
 	projectId: string;
 	reference: IssueReference;
@@ -61,6 +68,8 @@ export interface IssueWorkspaceRecord {
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
 	implementation?: PendingWorkspace | CompletedWorkspace;
+	/** Prior completed implementation generations; transcript ownership remains with pi. */
+	implementationHistory?: IssueImplementationHistory[];
 }
 
 type Awaitable<T> = T | Promise<T>;
