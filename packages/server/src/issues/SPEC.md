@@ -345,8 +345,8 @@ sessions in either idle or busy state. Returning an existing session for navigat
 stop, or restart it; actually starting its initial prompt remains idle-only under the host session-start
 contract. A missing session is replaced only under a durable pending marker. A pending create is recoverable only when both Git registration and a managed workspace match
 its reserved branch/path; it never adopts an unrelated checkout, overwrites a destination, chooses a
-suffix, deletes a checkout, or prompts a busy session. A pending create that left no directory, no Git
-worktree entry and no workspace registration created nothing, so it is re-reserved with a fresh branch
+suffix, deletes a checkout, or starts a prompt in a busy session. A pending create that left no
+directory, no Git worktree entry and no workspace registration created nothing, so it is re-reserved with a fresh branch
 rather than blocking. Session creation also requires a durable pending marker before the side effect.
 
 That marker is reconciled only from evidence the host already recorded: the session it bound for the

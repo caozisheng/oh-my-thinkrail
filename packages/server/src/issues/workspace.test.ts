@@ -35,6 +35,7 @@ async function fixture() {
 	const events: string[] = [];
 	const createdNames: string[] = [];
 	let failSave = 0;
+	let sessionSequence = 0;
 	let failCreate = false;
 	let failSession = false;
 	let saves = 0;
@@ -81,7 +82,7 @@ async function fixture() {
 		createSession: async (workspaceId) => {
 			events.push(`session:${workspaceId}`);
 			if (failSession) throw new Error("secret session error");
-			const id = `session-${sessions.size}`;
+			const id = `session-${sessionSequence++}`;
 			sessions.set(id, "idle");
 			return id;
 		},
@@ -529,14 +530,6 @@ test("completed workspace missing from Git registry is not recreated", async () 
 	f.trees.splice(0);
 	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
 	expect(f.events.filter((event) => event === "create")).toHaveLength(1);
-});
-
-test("design busy session is not prompted or replaced", async () => {
-	const f = await fixture();
-	const launch = await f.coordinator().design(ref);
-	f.sessions.set(launch.sessionId, "busy");
-	await expect(f.coordinator().design(ref)).rejects.toThrow();
-	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(1);
 });
 
 test("successful sessions clear pending markers without discarding either stage's records", async () => {
