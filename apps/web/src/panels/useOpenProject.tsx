@@ -20,6 +20,7 @@ import { OpenProjectPathDialog } from "./OpenProjectPathDialog";
 import { explainOpenFailure } from "./openProjectFailure";
 
 const PICK_TIMEOUT_MS = 30 * 60_000;
+const INIT_TIMEOUT_MS = 13 * 60_000;
 const projectOpenIntents = createLatestOperation();
 /** Every mounted opener renders this node, so a new open gesture must close any open prompt. */
 const associationClosers = new Set<() => void>();
@@ -148,7 +149,11 @@ export function useOpenProject(
 	const initProject = async (path: string) => {
 		const isCurrent = beginIntent();
 		try {
-			const project = await getTransport().request("project.init", { path });
+			const project = await getTransport().request(
+				"project.init",
+				{ path },
+				{ timeoutMs: INIT_TIMEOUT_MS },
+			);
 			if (!isCurrent()) return;
 			await adopt(project, isCurrent, { setup: false }, "init");
 			if (!isCurrent()) return;

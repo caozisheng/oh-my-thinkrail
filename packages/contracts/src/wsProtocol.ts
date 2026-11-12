@@ -903,6 +903,8 @@ export interface CustomEndpointModel {
 	vision: boolean | null;
 	/** Whether the server says the model takes tool calls; never saved, so a listed endpoint reports null. */
 	tools: boolean | null;
+	/** The chat template turns thinking on and off through `enable_thinking` (llama.cpp reports it). */
+	chatTemplateThinking: boolean | null;
 }
 
 /** An OpenAI-compatible `custom-*` provider in pi's `models.json`. The key itself never crosses the wire. */
@@ -1604,11 +1606,14 @@ export interface WsResume {
 
 export type WsClientMessage = WsRequest | WsAck | WsResume;
 
+export const WS_MAX_FRAME_BYTES = 16 * 1024 * 1024;
+
 export type WsErrorCode =
 	| "UNKNOWN_COMMIT"
 	| "PUSH_AUTH_FAILED"
 	| "NOT_GIT"
 	| "ALREADY_OPEN"
+	| "PROJECT_BOOTSTRAPPING"
 	| "PROJECT_CLONE_INVALID"
 	| "PROJECT_CLONE_FAILED"
 	| "PROJECT_CLONE_CLEANUP_FAILED"
@@ -1661,6 +1666,7 @@ export type WsErrorCode =
 	| "CONTINUATION_IN_FLIGHT"
 	| "TEXT_SEARCH_TIMEOUT"
 	| "TEXT_SEARCH_FAILED"
+	| "FRAME_TOO_LARGE"
 	| SpeechErrorCode;
 
 export interface WsResponse {
