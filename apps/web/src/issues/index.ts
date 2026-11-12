@@ -1,4 +1,3 @@
-export { issueDisclosureKey, readIssueDisclosure, writeIssueDisclosure } from "./disclosure";
 export type { IssueAssociationDialogProps } from "./IssueAssociationDialog";
 export { IssueAssociationDialog } from "./IssueAssociationDialog";
 export type { IssuesPanelProps } from "./IssuesPanel";
