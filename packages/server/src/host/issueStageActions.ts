@@ -47,7 +47,6 @@ function revision(issue: IssueRecord): string {
 		description: issue.description,
 		state: issue.state,
 		labels: issue.labels,
-		updatedAt: issue.updatedAt,
 	});
 }
 function workflowLabel(

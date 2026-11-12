@@ -114,6 +114,9 @@ function fixture() {
 			answered = true;
 		},
 		changeIssue: () => {
+			issue = { ...issue, title: "Changed title", updatedAt: "2" };
+		},
+		bumpIssueTimestamp: () => {
 			issue = { ...issue, updatedAt: "2" };
 		},
 		changeSha: () => {
@@ -165,6 +168,15 @@ test("design requires a real answer before publishing exact report and preservin
 	expect(result).toMatchObject({ stage: "design", noteId: 1 });
 	expect(f.notes[0]?.body).toContain("Full design");
 	expect(f.writes[1]).toEqual({ labels: ["team", "workflow::in-progress"] });
+});
+
+test("comment-only Issue timestamp changes do not invalidate a confirmed stage card", async () => {
+	const f = fixture();
+	await f.actions.prepare("session", { operationId: "design", report: "Full design" });
+	f.approve();
+	f.bumpIssueTimestamp();
+	expect(await f.actions.execute("session", "design", "answer")).toMatchObject({ stage: "design" });
+	expect(f.writes).toHaveLength(2);
 });
 
 test("changed Issue snapshot invalidates the card before writes", async () => {
