@@ -1,4 +1,4 @@
-name: Release Windows desktop
+name: Release (Windows desktop + Linux CLI)
 
 on:
   workflow_dispatch:
@@ -11,8 +11,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Resolve shared release identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      metadata: ${{ steps.identity.outputs.metadata }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Test release helpers
+        run: bun test ./.github/scripts/linux-cli-release.test.ts ./.github/scripts/windows-release.test.ts
+      - name: Check release source formatting
+        run: bunx biome check .github/scripts/linux-cli-release.ts .github/scripts/linux-cli-release.test.ts .github/scripts/windows-release.ts .github/scripts/windows-release.test.ts
+      - id: identity
+        name: Resolve upstream once; refuse an existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          bun .github/scripts/windows-release.ts prepare "$RELEASE_REPOSITORY"
+          echo "metadata=$(jq -c . .windows-release.json)" >> "$GITHUB_OUTPUT"
+          jq . .windows-release.json
+
   build:
     name: Build and smoke unsigned Windows x64 desktop
+    needs: prepare
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -30,11 +62,14 @@ jobs:
         run: bun test ./.github/scripts/windows-release.test.ts packages/shared/src/windowsIdentity.test.ts packages/artifact-tests/src/windowsIdentity.test.ts apps/desktop/src/buildConfig.test.ts
       - name: Check release source formatting
         run: bunx biome check .github/scripts/windows-release.ts .github/scripts/windows-release.test.ts packages/shared/src/windowsIdentity.ts packages/shared/src/windowsIdentity.test.ts apps/desktop/electrobun.config.ts apps/desktop/src/buildConfig.test.ts packages/artifact-tests/src/windowsIdentity.ts packages/artifact-tests/src/windowsIdentity.test.ts
-      - name: Resolve upstream once and stamp release identity
+      - name: Stamp release identity at the exact checkout
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_REPOSITORY: ${{ github.repository }}
-        run: bun .github/scripts/windows-release.ts prepare "$env:RELEASE_REPOSITORY"
+          METADATA: ${{ needs.prepare.outputs.metadata }}
+        run: |
+          set -eu
+          printf '%s\n' "$METADATA" > .windows-release.json
+          bun .github/scripts/windows-release.ts stamp
       - name: Prepare desktop toolchain
         shell: bash
         run: bash .github/scripts/prepare-electrobun.sh
@@ -67,9 +102,65 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  linux:
+    name: Build and smoke Linux ${{ matrix.arch }} CLI
+    needs: prepare
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Stamp release identity at the exact checkout
+        env:
+          METADATA: ${{ needs.prepare.outputs.metadata }}
+        run: |
+          set -eu
+          printf '%s\n' "$METADATA" > .windows-release.json
+          bun .github/scripts/windows-release.ts stamp
+      - name: Build web UI
+        run: bun run build:web
+      - name: Compile single-file CLI binary
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: bun apps/cli/scripts/build-binary.ts --target="bun-linux-$ARCH"
+      - name: Smoke CLI binary
+        env:
+          METADATA: ${{ needs.prepare.outputs.metadata }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -eu
+          binary="apps/cli/dist/thinkrail-linux-$ARCH"
+          expected=$(printf '%s\n' "$METADATA" | jq -r .version)
+          actual=$("$binary" --version)
+          echo "$actual"
+          case "$actual" in *"$expected"*) ;; *) echo "::error::expected version $expected"; exit 1 ;; esac
+          "$binary" --help
+          bun run smoke:binary "$binary"
+      - name: Collect binary and its checksum record
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: bun .github/scripts/linux-cli-release.ts collect "$ARCH"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-cli-release-${{ github.run_id }}-${{ matrix.arch }}
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
-    name: Publish verified Windows desktop release
-    needs: build
+    name: Publish verified combined release
+    needs: [prepare, build, linux]
     if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 10
@@ -87,6 +178,11 @@ jobs:
         with:
           name: windows-desktop-release-${{ github.run_id }}
           path: release-assets
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: linux-cli-release-${{ github.run_id }}-*
+          path: release-assets
+          merge-multiple: true
       - name: Refuse existing tag/release and publish at exact checkout SHA
         env:
           GH_TOKEN: ${{ github.token }}

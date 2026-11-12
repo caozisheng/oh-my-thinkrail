@@ -8,6 +8,7 @@ import {
 	cliMetadata,
 	collectAsset,
 	finalizeAssets,
+	metadataFromWindowsIdentity,
 	parseArches,
 	releaseArgs,
 	verifyMetadata,
@@ -36,6 +37,16 @@ describe("Linux CLI release identity", () => {
 		expect(parseArches("both")).toEqual(["x64", "arm64"]);
 		expect(parseArches("arm64")).toEqual(["arm64"]);
 		for (const bad of ["", "x86", "all", "x64,arm64"]) expect(() => parseArches(bad)).toThrow();
+	});
+
+	test("derives CLI metadata from the shared Windows release identity", () => {
+		const windows = releaseMetadata(latest, sha, upstreamSha);
+		expect(metadataFromWindowsIdentity(windows, ["x64"], sha)).toEqual(
+			cliMetadata(windows, ["x64"]),
+		);
+		expect(() => metadataFromWindowsIdentity(windows, ["x64"], upstreamSha)).toThrow(
+			"Checkout mismatch",
+		);
 	});
 
 	test("re-verifies forwarded metadata against the checkout", () => {
