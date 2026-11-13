@@ -137,19 +137,22 @@ export function IssuesTool({
 				remoteProjectId: snapshot.connection.remoteProjectId,
 			})
 		: null;
-	const [disclosure, setDisclosure] = useState(expandedIssueDisclosure);
-	const loadedDisclosureKey = useRef<string | null>(null);
+	const [disclosureState, setDisclosureState] = useState<{
+		key: string | null;
+		value: ReturnType<typeof expandedIssueDisclosure>;
+	}>(() => ({ key: null, value: expandedIssueDisclosure() }));
 	useEffect(() => {
-		loadedDisclosureKey.current = disclosureIdentity;
 		if (!disclosureIdentity) {
-			setDisclosure(expandedIssueDisclosure());
+			setDisclosureState({ key: null, value: expandedIssueDisclosure() });
 			return;
 		}
+		let value: ReturnType<typeof expandedIssueDisclosure>;
 		try {
-			setDisclosure(readIssueDisclosure(window.localStorage, disclosureIdentity));
+			value = readIssueDisclosure(window.localStorage, disclosureIdentity);
 		} catch {
-			setDisclosure(expandedIssueDisclosure());
+			value = expandedIssueDisclosure();
 		}
+		setDisclosureState({ key: disclosureIdentity, value });
 	}, [disclosureIdentity]);
 	const requestSequence = useRef(0);
 	const previewSequence = useRef(0);
@@ -480,14 +483,14 @@ export function IssuesTool({
 				previewSupported={previewSupported}
 				preview={activePreview}
 				initialDisclosure={
-					loadedDisclosureKey.current === disclosureIdentity
-						? disclosure
+					disclosureState.key === disclosureIdentity
+						? disclosureState.value
 						: expandedIssueDisclosure()
 				}
 				onDisclosureChange={(value) => {
-					setDisclosure(value);
-					if (disclosureIdentity && loadedDisclosureKey.current === disclosureIdentity)
-						writeIssueDisclosure(window.localStorage, disclosureIdentity, value);
+					if (!disclosureIdentity || disclosureState.key !== disclosureIdentity) return;
+					setDisclosureState({ key: disclosureIdentity, value });
+					writeIssueDisclosure(window.localStorage, disclosureIdentity, value);
 				}}
 				onTogglePreview={(issue) => {
 					void togglePreview(issue);

@@ -78,6 +78,17 @@ for (const provider of ["github", "gitlab"] as const) {
 		}
 		await expect(page.getByTestId("issue-body")).toHaveCount(0);
 		expect(reads).toBe(0);
+		const backlog = page.getByRole("region", { name: "Backlog", exact: true });
+		const backlogDisclosure = backlog.getByRole("button", { name: "Collapse Backlog issues" });
+		const closed = page.getByRole("region", { name: "Closed", exact: true });
+		const closedDisclosure = closed.getByRole("button", { name: "Collapse Closed issues" });
+		await backlogDisclosure.click();
+		await expect(backlogDisclosure).toHaveAttribute("aria-expanded", "false");
+		await expect(backlog.getByRole("article")).toHaveCount(0);
+		await expect(backlog.getByRole("button", { name: "Expand Backlog issues" })).toContainText("1");
+		await expect(closedDisclosure).toHaveAttribute("aria-expanded", "true");
+		await backlog.getByRole("button", { name: "Expand Backlog issues" }).click();
+		await expect(backlog.getByRole("article")).toHaveCount(1);
 		await toggles.nth(0).click();
 		await expect(toggles.nth(0)).toHaveAttribute("aria-expanded", "true");
 		await expect(page.getByTestId("issue-body").getByRole("status")).toBeVisible();
