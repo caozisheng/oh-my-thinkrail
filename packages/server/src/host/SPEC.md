@@ -89,9 +89,13 @@ channel fan-out, and the process-boot wrapper both launchers share.
   send `X-Content-Type-Options: nosniff`; active same-origin types (`text/html`,
   `application/xhtml+xml`, `image/svg+xml`) additionally receive
   `Content-Security-Policy: sandbox; default-src 'none'`, so direct navigation cannot execute repository
-  script, the **`/fonts/<file>`** route (`fontRoutes.ts`, ahead of the static fallback) over the
-  [[submodule-server-fonts]] folder — the host's one HTTP write route and the only route that checks its
-  method: `GET` serves a font by its extension's type (`font/ttf|otf|woff|woff2`) with
+  script, the **`GET /images/<sessionId>/<sha>`** route, delegated to [[submodule-server-images]]'s `serveImage`.
+  It serves chat images as references, by allow-listed raster type only, with `no-store`, and answers
+  any method but `GET`/`HEAD` with 405; the host injects its
+  source (agent's live lookup plus the tombstone check), calls `forgetImageSession` on every `session.deleted`,
+  and calls `resetImages` on stop. Then the **`/fonts/<file>`** route (`fontRoutes.ts`, ahead of the static fallback) over the
+  [[submodule-server-fonts]] folder — the host's one HTTP write route, and besides `/images` (GET/HEAD only)
+  the only route that checks its method: `GET` serves a font by its extension's type (`font/ttf|otf|woff|woff2`) with
   `Cache-Control: no-cache` (list URLs carry a content version) and 404s any name `fontFileKind` refuses,
   a collection, or a missing file; `PUT` (behind the upload guard below) answers 400 for a refused name,
   else stores the body through `saveUserFont` and answers that file's entry as JSON: 200, 413 `too-large`
@@ -730,7 +734,7 @@ channel fan-out, and the process-boot wrapper both launchers share.
   the initiating open flow selects Project Home, while a close fallback remains per-client view state.
 - **Workspace lifecycle fan-out:** `createServer` installs the `workspaces` module's publisher
   (`setWorkspacePublisher`), mapping each domain event `kind` → its `WS_CHANNELS.workspace*` channel
-  (`created`/`updated` → the full record; `removed` → `{ projectId, id }`) and `server.publish`ing it. This
+  (`created`/`updated` → the full record; `removed` → `{ projectId, id }`) and publishing it. This
   is the **single** place workspace membership changes reach the wire — create/rename/archive all flow
   through it, so every client (including the initiator) converges by reacting, never by per-client optimism.
   The two new channels are `ws.subscribe`d in the WS `open` handler alongside `workspace.updated`.
@@ -749,7 +753,16 @@ channel fan-out, and the process-boot wrapper both launchers share.
   this is a catalog invalidation, never an output broadcast. Resource ownership and teardown stay in agent.
 - **Session-state composition:** before serving, the host supplies every workspace `{id,cwd}`, initializes
   lifecycle/receipt metadata, and installs the workspace→project resolver. `session.stateList` returns the
-  complete all-workspace snapshot; `session.state` broadcasts full records (each carries the chat's `title`,
+  complete all-workspace snapshot.
+  - **Coalescing.** Concurrent requests share scans through `trailingSingleFlight`
+    (`sessionStateList.ts`): a request never joins a scan that began before it arrived. Such a scan
+    could miss a state change the page applied just before asking, and then overwrite it with an older
+    record. Every request that arrives during a running scan shares the next one, so a reconnect storm
+    costs at most the running scan plus one, never one full transcript scan per request.
+  - **Old sockets.** The shared scan covers every workspace, and a socket that cannot see chats gets
+    its records filtered by `isChatWorkspaceId`.
+
+  `session.state` broadcasts full records (each carries the chat's `title`,
   so a rename while a client was away reaches it through the next snapshot); completion acknowledgement and
   nudge handlers validate workspace/session identity through the same registry. The WS open handler
   subscribes every client after welcome. `session.activityList` remains an inert `[]` compatibility method
@@ -844,7 +857,7 @@ channel fan-out, and the process-boot wrapper both launchers share.
   just unlabelled. Every id-carrying push
   (`project.updated`, `workspace.*`, `session.*`, `terminal.tabs`, `workspace.fsChanged`,
   `turn.changed`, `mcp.status`, `session.resourcesChanged`, `pi.event`) goes through one
-  `publishScoped` sender that iterates the sockets for a chat or container id and broadcasts otherwise —
+  `publishScoped` sender that leaves out the sockets that cannot see a chat or container id —
   `pi.event` is scoped by the workspace the agent publishes beside each event, so a detached session's
   disk-only rename is scoped like a live one's; `pi.extensionUi` for a chat session — live, or still starting
   (an extension's `session_start` notice, an MCP startup notice; `getSessionAttribution`) — goes only to
@@ -986,7 +999,7 @@ enabled/confirmed choice before entering analytics attribution.
   (published from auth's Central/runtime invalidation seam and on a successful provider login) + **`host.updateAvailable`** (published for each
   retained CLI-update lifecycle replacement) use push channels. Every
   **broadcast** push channel a client should hear must be `ws.subscribe`d in the WS
-  `open` handler — a publish on an unsubscribed topic reaches nobody, silently. Six channels are deliberately
+  `open` handler — the push sender skips a socket that is not subscribed, silently. Six channels are deliberately
   **not** subscribed and not broadcast: `feedback.interview`, `feedback.githubStar`, `terminal.data`, `terminal.exit`,
   `terminal.detached` and `search.textResults` are sent with `ws.send` to one addressed client. Adding an addressed channel means
   wiring a publisher, not a subscription.
@@ -1005,8 +1018,78 @@ enabled/confirmed choice before entering analytics attribution.
   `WS_MAX_FRAME_BYTES` (16 MiB, [[module-contracts]]); the 12 MiB `REQUEST_IMAGE_BASE64_BUDGET` leaves
   room under it for the prompt text, and `WsTransport.request` refuses a larger frame before it is sent
   ([[submodule-web-transport]]). Raising the cap instead was tried and rejected: pi echoes a prompt's
-  images back through `pi.event` several times, and past Bun's outbound backpressure limit those frames
-  are dropped (#1179, #1180); providers also reject a whole request near 20 MB.
+  images back through `pi.event` several times, multiplying the outbound volume against the buffer limit
+  below (#1179, #1180); providers also reject a whole request near 20 MB.
+- **The outbound buffer limit is 256 MiB (`WS_OUTBOUND_BUFFER_LIMIT_BYTES`), well above any reconnect
+  resync.**
+  - **The default and the failure.** uWS checks the buffered amount *before* each send. Under Bun's
+    16 MiB default, a reply over 16 MiB (a screenshot-heavy `session.getMessages`, 39 MB) was accepted,
+    and the next send returned `0`, meaning dropped. The reply path reads `0` as a dead socket and
+    closes. The page then re-read every mounted transcript on reconnect (`useTranscriptSync`), and the
+    same big reply closed the socket again. That loop ran for hours, with every welcome stacking
+    another full `session.stateList` scan until each one was abandoned.
+  - **Past the limit, the socket is quarantined, then closed.** Every reply and push goes through
+    `sendOrQuarantine` (`socketSend.ts`).
+    - **On a drop.** A frame refused with `0` on an open socket warns once, with the method or channel and
+      the buffered bytes. The warning carries a `SlowConsumerError` (`WS_SLOW_CONSUMER`), so Error
+      Tracking counts how often it happens. From then on nothing more is sent to that socket: replies,
+      pushes and terminal output are all held back. `-1` means buffered, and is never resent or closed.
+    - **Closing.** `settleSlowConsumer` closes the socket gracefully once its buffer is empty, from
+      Bun's `drain` or the 1 s reconciler. If it has not drained 30 s after the drop
+      (`SLOW_CONSUMER_DRAIN_DEADLINE_MS`), it `terminate`s the socket instead. The page then replays
+      its unresolved ids and re-hydrates (Decision 8). A transcript that was streaming repairs at its
+      settlement, as after any reconnect.
+    - **Why not close at once.** Closing at once was tried and rejected in review. Bun runs the
+      `close` handler, and so starts the 60 s replay reap, the moment `close()` is called. A drain
+      that keeps making progress resets uWS's own close timeout, and `terminate()` after `close()` is
+      a no-op. A probe reader taking 64 KiB every 250 ms kept a closed socket open for 33 s. So a tab
+      draining for over 60 s reconnected after its replay results were gone, and a running
+      folder-picker request ran twice.
+    - **Test-only seam.** `outboundBufferLimitBytes` on `createServer` lowers the limit for the wire
+      test only.
+  - **`closeOnBackpressureLimit` is rejected.** It closes with 1006 and discards the buffered frame:
+    a probe client received 0 frames.
+  - **Why finite, why this value.** Memory grows only while a client reads slower than the host writes,
+    up to the limit per socket. A limit of `0` (unlimited) would let one slow client exhaust the host.
+    A resync larger than 256 MiB brings the loop back. Since #1180 image bytes leave the socket
+    (`WireImage` references), so a transcript's size is its text. The limit still covers the
+    composer-restore replies that hand images back inline.
+  - **Pushes are sent per socket, never by `server.publish` (#1179).** A native topic publish cannot
+    name the socket that dropped a frame, and for a frame under 16 KiB it reports the status from
+    before uWS drains its queue. So a burst of small pushes could cross the limit, lose its tail
+    (`agent_settled` included) and leave the tab streaming forever while it kept talking to the host.
+    `publishScoped` and
+    `pi.extensionUi`'s audience filter share one `fanOut` loop: subscription, then the socket filter,
+    then `sendOrQuarantine`. A test rejects any `.publish(` call in the server source. Addressed sends
+    (search results, MCP login, feedback asks) use the same rule. The terminal publisher keeps its
+    own latch and treats a quarantined socket as unavailable.
+- **A backpressured socket gets stream snapshots conflated, not dropped (#1179).**
+  - **Why.** Streaming is O(n²) on the wire: each `message_update` and `tool_execution_update` repeats
+    the whole response or output so far. Without conflation, a slow tab piles that up until
+    quarantine.
+  - **What is held.** `HeldSnapshots` (`heldSnapshots.ts`) lives on the socket's `SocketData`. It
+    applies after subscription and audience admission. While `getBufferedAmount() > 0`, it keeps the
+    newest serialized frame per session's assistant message or tool call, instead of sending it. The
+    frame is serialized once per publication. Host observers still see every event.
+  - **Barrier.** Before a later frame of the same session (a non-snapshot Pi event, `session.state`,
+    or `pi.extensionUi`), it sends that session's held frames synchronously. It keeps going through
+    `-1` (accepted) and stops only if the socket is quarantined. A held frame is therefore exactly a
+    delayed send.
+  - **Flushing in a pause.** Bun's `drain` fires on writable progress, not on an empty buffer: a
+    probe saw it fire repeatedly with tens of MiB still buffered. So `drain` and the 1 s reconciler
+    flush held frames only at `getBufferedAmount() === 0`. A flush that hits backpressure stops
+    there. A drain that leaves held frames waiting or backpressured does not lift the terminal latch
+    either, so continuous terminal output cannot keep the buffer from ever emptying
+    (`terminalsMayResume`).
+  - **Clearing.** Held frames clear on close or replacement, on `session.deleted`, and on quarantine:
+    a quarantined socket takes no new snapshot, and the reconciler clears what it held. They never
+    carry over to a reconnect.
+  - **Rejected.** Assistant `message_end` does not discard a held partial. A mid-stream client that
+    missed `message_start` needs that partial to create the turn; `message_end` alone renders nothing.
+    Stateless skipping was rejected too, because a tool that goes quiet would show stale output until
+    it ends. Dropping held frames at the next session boundary was rejected for the same reason.
+  - **Bound.** One frame per pending stream key; there is no byte budget. Quarantine stays the safety
+    net for everything else.
 - The host is the single place features are wired together — features never reach back into it.
 - **A font upload must carry `X-ThinkRail-Request: font-upload`** (`USER_FONT_UPLOAD_HEADER`), else 403.
   The host has no auth, no Origin check and no CORS ([[architecture]] Decision 7). A cross-origin upload

@@ -163,7 +163,7 @@ blocks in order into rows; `ChatTurnView` dispatches on row kind:
   remount, so a code block re-renders from the highlight cache (highlighted at once on a hit), a Mermaid diagram redraws, and focus
   or a selection inside them is lost; kept blocks hold substrings of older stream texts, about 1 MB for a
   110k-char message, until the row unmounts.
-- **Configurable transcript measure** — the host-synchronized `chatLineWidth` (40–240, default 120)
+- **Configurable transcript measure** — the host-synchronized `chatLineWidth` (40–240, default 80)
   is an approximate CSS `ch` text measure because chat retains its proportional reading font. `ChatView`,
   the store-aware integration boundary, applies it to one centered outer column shared by every transcript
   row, the stream indicator, and sticky activity breadcrumbs; ordinary row gutters sit outside the measure,
@@ -175,6 +175,22 @@ blocks in order into rows; `ChatTurnView` dispatches on row kind:
   visible viewport and clips on the left; only assistant/tool content uses the full measure. Code blocks
   and tables retain their own inner scrolling. This changes presentation only:
   canonical turns and the props-driven row renderers never acquire settings state.
+- **Content-width blocks** — with Fit to pane on, a block whose content is wider than the column grows past
+  it: the frame of a renderer registered `width: "content"` (`visualize`, `bash`, `read`, `edit`, `write`;
+  the `ToolCard` root, the routine step body or the bare row) and the tables and fenced code of assistant
+  text (`BlockMarkdown`'s `wideBlocks`; user bubbles and other Markdown hosts stay column-bound). One CSS
+  utility (`contentWidth.ts`) sizes them: `max-content`, at least the parent's width, at most the parent's
+  width plus the transcript's free space (`100cqw − --chat-transcript-width`), centered on the parent. A
+  row's direct child thus spans at most the pane minus both gutters, centered on the column; an indented
+  parent (an activity step) keeps its inset out of the cap, so no block crosses a pane gutter. Wider
+  content scrolls inside the block. The bounded scroller is the inline-size container, so `cqw` excludes
+  its scrollbar; `--chat-transcript-width` is a registered `<length-percentage>` (`tokens.css`), so its
+  `ch` resolves once at `ChatView` and a block in a code font reads the rows' width. A content-width card's
+  header is inline-size-contained, so a long summary never sizes the card. Fit to pane off keeps every
+  block at column width. Content without intrinsic width (Monaco, iframe and diff file previews) stays
+  column width; growing it would take JS measurement. *Rejected:* #732's ResizeObserver-driven gutter
+  (duplicated the CSS, drifted at its breakpoint), a full-pane-width row with an inner text measure
+  (touches every row type and the virtualized list's measurement), per-tool-name width lists.
 - **Message copy** — plain user bubbles and the **round's concluding assistant answer** carry a
   hover-revealed (`group`/`opacity-0 group-hover:opacity-100`) **`CopyButton`** (`chat/CopyButton.tsx`,
   `data-testid="chat-copy"`) that copies the full message **source** — `userText(message.content)` for a
@@ -209,10 +225,31 @@ blocks in order into rows; `ChatTurnView` dispatches on row kind:
   fallback, routine or primary, card or bare — passes through one common result-content layer. Once a result
   completes, each valid canonical image block appends a bounded in-card preview with an explicit full-screen
   dialog action; multiple images retain block order. This is content-type behavior, not a `read` special case,
-  and it does not promote or auto-expand the tool. The result bytes are already in the transcript, so preview
-  needs no host fetch and works for paths outside the workspace. Previewable blocks require non-empty data
-  and one of `contracts`' shared raster media types (PNG/JPEG/GIF/WebP); malformed shapes and unsupported
-  media types are ignored, while canonical content arrays are never serialized into base64 JSON.
+  and it does not promote or auto-expand the tool.
+  - **Bytes load over HTTP.** A result image arrives as a `WireImage` reference (#1180,
+    [[submodule-server-images]]), and the preview fetches it from the host, so it works for paths outside the
+    workspace and for MCP images. Previewable blocks need a host reference or non-empty inline data, and one
+    of `contracts`' shared raster media types (PNG/JPEG/GIF/WebP). Malformed shapes and unsupported media
+    types are ignored.
+  - **`ChatImage` renders every chat image** (tool thumbnails, full screen, and the attachment dialog) and
+    stays presentational. A small `ChatMediaContext` supplies `resolveUrl` (the transport's `hostUrl`) and a
+    `retryEpoch`. `ChatView` provides it, and its epoch advances when that chat's reconnect transcript resync
+    lands. `SubagentTranscriptDialog` provides it too, and its epoch advances per poll.
+  - **The box is reserved.** The `<img>` carries the host-sniffed `width`/`height`. `ChatImage` owns its
+    sizing through a `fit` (`thumbnail` caps at 240px, `screen` caps at 78vh). The height attribute stays
+    definite while `w-auto` follows the aspect ratio, so the box exists before the bytes arrive and when
+    they fail. Callers never pass size classes, because `w-auto` or `h-auto` on a sized image would
+    collapse that box.
+  - **The tile.** "Image unavailable" overlays that same box, with a minimum size when the box is unknown
+    or small. It shows the label and an explicitly tabbable Retry (macOS WebKit skips buttons without a
+    tab stop).
+  - **Retry.** Retry makes a cache-busting reload. The tile retries by itself when the epoch advances,
+    and stays up until the new load succeeds, so there is no flicker. It never retries on the raw
+    reconnect, because after a host restart the image is servable again only once the transcript re-read
+    has re-registered it.
+  - **Keys are occurrences.** An image's React key is its slot (owner identity plus ordinal), never its
+    content, so repeated images do not collide. An attachment dialog opened on the optimistic echo also
+    stays open when the host's message replaces the echo.
 - `activity` — one contiguous run of routine work stays one **collapsed outer disclosure** whose header
   summarizes every atomic step (thinking blocks + routine tool calls). Expanding it preserves tools before
   the first thought as direct rows, then renders each non-empty thinking block as a nested disclosure. When
@@ -424,6 +461,8 @@ remain app-local. A registration is:
 - a **`summary`** — a pure one-liner for collapsed headers and activity-step rows,
 - a **`chrome`** — `"card"` (default, the `ToolCard` frame) or `"bare"` (owns its frame; for
   interactive/primary tools like `ask_user_question`),
+- a **`width`** — `"column"` (default) or `"content"` (the frame may grow past the transcript column; see
+  *Content-width blocks*), read through `getToolWidth`,
 - **`interactive`** (fill `ToolRenderProps.interaction`, below) and **`dock`** (with `interactive`: a call
   the host awaits renders in the interaction dock, the transcript row as its stub — read through
   `isDockedTool`),
@@ -435,7 +474,7 @@ remain app-local. A registration is:
   primary card renders expanded once complete, e.g. `visualize`). Read through the single
   **`resolveProminence`** seam — where a per-user override map (settings) can plug in later.
 
-Every registry read (renderer, summary, chrome, prominence) goes through one resolver: the exact tool
+Every registry read (renderer, summary, chrome, width, prominence) goes through one resolver: the exact tool
 name, else the longest app-local prefix registration (`registerToolRendererPrefix` — today only `mcp__`,
 because pi names MCP tools per server), else the default. Exact names always win, an empty prefix never
 matches, and extension descriptors stay exact-name only.
@@ -762,7 +801,18 @@ both message orders. *Rejected:* keeping the modal for non-MCP extensions — ev
   toward latest, and its scroll-end ended the momentum before it reached the edge. The hook shadows the
   scroller's own `scrollBy`/`scrollTo` for its lifetime and restores them on cleanup; this relies on
   Virtuoso moving its scroller only through those two methods (verified for react-virtuoso 4.18.7, re-verify
-  on upgrade), and only displacement those calls apply synchronously is attributed. A return gesture rearms
+  on upgrade), and only displacement those calls apply synchronously is attributed.
+  `patches/react-virtuoso@4.18.19.patch` (root `patchedDependencies`, ESM build only — every consumer
+  imports it) makes Virtuoso's upward scrolling compensation consume each `lastJumpDueToItemResize` once.
+  Unpatched, that value changes only with `scrollHeight`, so a clamp jump already paired with its own shrink
+  at the bottom is added again to the next unrelated measurement: an item shrinking by 297 px just before the
+  first wheel notch up turned a 1 px correction into `scrollBy(298)`, the browser clamped it to the latest
+  edge, and the notch was lost. The 80-column default (#732) produced that geometry. Resetting the jump on
+  every height-preserving scroll state was rejected: one usually lands between a jump and its shrink, and
+  the correct `-211 + 212` pairing became `scrollBy(-211)`. Upstream: petyosi/react-virtuoso#1571 (the
+  same code is on its `master`). Bun skips a patch for a mismatched version silently, so "scrolling up
+  through variable-height history never jumps visible content" in `e2e/chat-scroll.spec.ts` is the guard.
+  Removal gate: a Virtuoso release that consumes the jump once. A return gesture rearms
   once only when it reaches the physical latest edge within the shared 1px geometry tolerance; directions
   invert with order, and touch/trackpad intent survives through momentum. No 50px near-edge threshold and no
   geometry change alone may rearm. Expanding or collapsing an Activity, Thinking, tool, or message
@@ -1283,7 +1333,8 @@ both message orders. *Rejected:* keeping the modal for non-MCP extensions — ev
   as compact "attached file" chips above the text (no inline preview; click opens the image in a dialog,
   the diagram-fullscreen pattern). The chip label is the picked file's name, carried on the echo turn as
   `attachmentNames` (UI-side only — pi's `ImageContent` has no filename), index-aligned with the image
-  blocks; a hydrated turn has no names and falls back to mime-type labels) —
+  blocks; a hydrated turn has no names and falls back to mime-type labels; the echo's blocks are inline,
+  the host's are `WireImage` references, and both render through `ChatImage`) —
   it shows exactly what was typed (the raw command) until a re-fetch replaces it with pi's real persisted
   record. **The `/` menu merge**
   (`ChatView`): pi's `commands` snapshot (`session.getCommands`, frozen at session-create time) minus its

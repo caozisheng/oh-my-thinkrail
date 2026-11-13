@@ -170,7 +170,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 132;
+export const PROTOCOL_VERSION = 133;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127;
@@ -198,6 +198,8 @@ export const CUSTOM_MODEL_CONTEXT_PROTOCOL_VERSION = 129;
 export const PROJECT_ORDER_PROTOCOL_VERSION = 130;
 export const FS_MUTATIONS_PROTOCOL_VERSION = 131;
 export const WORKSPACE_PATH_RESOLVE_PROTOCOL_VERSION = 132;
+export const IMAGE_REFS_PROTOCOL_VERSION = 133;
+export const IMAGES_ROUTE = "/images/";
 export const GITHUB_STAR_PROTOCOL_VERSION = 103;
 export const ISSUES_IMPLEMENTATION_PROTOCOL_VERSION = 108;
 export const ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION = 107;

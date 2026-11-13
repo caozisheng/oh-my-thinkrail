@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import type { AgentMessage } from "@thinkrail/contracts";
 import {
 	assistantToolCallsAreExecutable,
 	isToolResponsePending,
@@ -72,7 +71,7 @@ function isConfirmationResult(value: unknown, expectedQuestion: string): boolean
 
 /** Validate the host's exact, trusted questionnaire receipt before consuming an Issue action. */
 export function isTrustedQuestionnaireReceipt(
-	transcript: readonly AgentMessage[],
+	transcript: readonly MessageView[],
 	toolCallId: string,
 	expectedArgs: unknown,
 ): boolean {
@@ -81,7 +80,7 @@ export function isTrustedQuestionnaireReceipt(
 		.question;
 	if (typeof expectedQuestion !== "string") return false;
 
-	const messages = transcript as readonly MessageView[];
+	const messages = transcript;
 	const allCalls = messages.flatMap(toolCalls);
 	if (
 		allCalls.some(

@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import type { AgentMessage } from "@thinkrail/contracts";
 import { isTrustedQuestionnaireReceipt } from "./issueConfirmation";
 
 const args = {
@@ -28,15 +27,14 @@ const receipt = (isError = false) => ({
 	isError,
 	details: result,
 });
-const valid = (...messages: unknown[]) =>
-	isTrustedQuestionnaireReceipt(
-		messages as AgentMessage[],
-		"call_abc123|fc_0123456789abcdef",
-		args,
-	);
+const valid = (...messages: Record<string, unknown>[]) =>
+	isTrustedQuestionnaireReceipt(messages, "call_abc123|fc_0123456789abcdef", args);
 
 test("accepts an exact executable questionnaire and successful answer receipt", () => {
 	expect(valid(call(), receipt())).toBe(true);
+	expect(
+		valid({ role: "user", content: [{ type: "image", ref: "img_123" }] }, call(), receipt()),
+	).toBe(true);
 	expect(
 		valid(call(), {
 			role: "custom",
@@ -134,7 +132,7 @@ test("rejects changed arguments and non-option answer additions", () => {
 				[
 					{ ...call(), content: [{ ...call().content[0], arguments: expected }] },
 					receipt(),
-				] as unknown as AgentMessage[],
+				] as Parameters<typeof isTrustedQuestionnaireReceipt>[0],
 				"call_abc123|fc_0123456789abcdef",
 				expected,
 			),

@@ -40,7 +40,11 @@ batches high-frequency Pi events without allowing later wire messages to overtak
   exit/detach + session-creation/deletion + `provider.changed` invalidation + addressed `feedback.interview`, `feedback.githubStar`
   and `search.textResults` channels, plus scoped `session.resourcesChanged` invalidations and per-session `mcp.status` snapshots, are never cached or replayed to late
   subscribers. Resource metadata hydration belongs to the mounted chat integration, not replayed
-  invalidation payloads. Reconnect/backoff;
+  invalidation payloads. **Reconnect backoff** (`reconnectDelay`) starts at 0.5 s, doubles to a 10 s cap,
+  and resets only after a connection that stayed open for 5 s. Resetting on every successful open let a
+  socket that the host closed seconds after each welcome reconnect at 0.5 s for hours: that was the >16 MiB
+  reply loop the host SPEC's outbound-limit bullet records. Any future loop of that shape now degrades to one
+  attempt per 10 s, while a stable connection that drops still retries at once;
   `inferUrl` defaults to
   same-origin; **`httpBase()`** derives the host's HTTP origin
   from the WS `url` — for building host HTTP URLs like the `/files/<workspaceId>/<path>` worktree-file
@@ -192,7 +196,8 @@ The browser never scrubs or holds a vendor client: the host is the only sanitize
   custom-font snapshot (`fonts.list`, refreshed on every welcome and `fonts.changed`), and `uploadUserFont`
   is the one binary upload — a `PUT` of the raw file to the host's `/fonts/` route with the upload guard
   header, answered by that file's `UserFontFile` entry — while `hostUrl` resolves a host-relative path
-  (custom face URLs) against the endpoint; `supportsExtensionSettings` (v112) lets `ExtensionsSettings`
+  (custom face URLs and chat image references through `chat`'s `ChatMediaContext`) against the endpoint;
+  `supportsExtensionSettings` (v112) lets `ExtensionsSettings`
   offer per-extension setting switches only to a host that stores `extensionSettings`. `openSpeechSocket()`
   opens the dictation side socket (`/speech?protocol=`) on the same endpoint for [[submodule-web-speech]].
   It carries binary audio and never a request. `server.welcome`'s `speech` seed and every `speech.changed`

@@ -17,9 +17,17 @@ The host retains registration, lifecycle and ordering; `define*` helpers preserv
 ## Boundary
 
 - `./web` exposes `ToolStatus`, `ToolRenderProps`, `ToolRenderer`, `ToolSummary`, `ToolChrome`,
-  `ToolProminence`, `ToolRegistrationOptions`, `ToolInteraction`, `ToolInteractionState`,
+  `ToolProminence`, `ToolWidth`, `ToolRegistrationOptions`, `ToolInteraction`, `ToolInteractionState`,
   `ToolPlacement`, `WebExtension`, `defineWebExtension`, and the pure argument/result readers from
   `toolHelpers` and `toolResultContent`.
+- **Images are references.** `parseToolResultContent(result).images` returns `contracts`' `WireImage`s,
+  in block order.
+  - A host reference (`ref` plus optional `width`/`height`) is accepted when its `ref` lies under
+    `IMAGES_ROUTE`.
+  - An inline block is accepted when its `data` is non-empty.
+  - Either kind must have one of `ACCEPTED_IMAGE_TYPES`.
+  - Extension renderers never load image bytes themselves: the chat's common result layer renders every
+    image (#1180).
 - **Interactive tools.** A tool whose `execute` waits for the person's response is *interactive*. The
   contract is tool-agnostic on both sides and keyed by `toolCallId`; the host learns a tool's name only
   from the two declarations below:
@@ -38,6 +46,10 @@ The host retains registration, lifecycle and ordering; `define*` helpers preserv
     response is still pending": the host writes it on restart repair, and a tool returns it (with
     `terminate: true`) when `awaitToolResponse` resolves `deferred`. It is the one shape both sides read
     (`contracts`: `isToolResponsePending`); a tool must not use it for a real result.
+- `ToolRegistrationOptions.width` (`ToolWidth`) is `"column"` by default; `"content"` lets the chat grow
+  the renderer's frame past its text column to the content's width, up to the pane, while the user fits
+  chat to the pane. It is opt-in because only the extension knows its content reads better wide; the
+  geometry is the chat's ([[submodule-web-chat]]).
 - `ToolRenderProps.interaction` is optional. The host fills it for every renderer registered
   `interactive`. It carries:
   - `state`: a `response` (`unknown` — the response delivered outside the tool result after a host
