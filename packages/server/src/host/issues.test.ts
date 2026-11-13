@@ -211,6 +211,16 @@ test("a fresh host prepares confirmations from durable session bindings without 
 		digest: expect.any(String),
 		questions: { questions: [{ header: "Issue body" }] },
 	});
+	const closeConfirmation = await prepareConfirmation("bound-session", {
+		operationId: "close-issue",
+		action: "close-issue",
+		reason: "Accepted",
+		acceptance: "All listed criteria verified",
+	});
+	expect(closeConfirmation).toMatchObject({
+		digest: expect.any(String),
+		questions: { questions: [{ header: "Close Issue" }] },
+	});
 	await expect(
 		prepareConfirmation("bound-session", { ...confirmation, inspect: true }),
 	).resolves.toMatchObject({

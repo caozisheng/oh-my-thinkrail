@@ -46,6 +46,24 @@ async function sanitized(operation: () => Promise<unknown>) {
 }
 
 describe("GitHub Issue reads", () => {
+	test("closes an Issue once and reads back its closed timestamp", async () => {
+		const { remote, calls } = client(() =>
+			Response.json({
+				...issuePayload,
+				state: "closed",
+				closed_at: "2026-11-13T08:00:00Z",
+			}),
+		);
+		await expect(remote.closeIssue(7)).resolves.toMatchObject({
+			state: "closed",
+			closedAt: "2026-11-13T08:00:00Z",
+		});
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.init).toMatchObject({
+			method: "PATCH",
+			body: JSON.stringify({ state: "closed" }),
+		});
+	});
 	test("associating reads the repository and keeps its clone facts", async () => {
 		const { remote, calls } = client(() => Response.json(repository));
 		expect(await remote.project()).toEqual({
@@ -89,6 +107,7 @@ describe("GitHub Issue reads", () => {
 				state: "opened",
 				labels: ["workflow::in-progress", "type::bug"],
 				updatedAt: "2026-01-01T00:00:00Z",
+				closedAt: null,
 			},
 			{
 				iid: 8,
@@ -97,6 +116,7 @@ describe("GitHub Issue reads", () => {
 				state: "closed",
 				labels: ["workflow::in-progress", "type::bug"],
 				updatedAt: "2026-01-01T00:00:00Z",
+				closedAt: null,
 			},
 		]);
 	});

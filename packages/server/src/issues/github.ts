@@ -110,6 +110,7 @@ function issue(value: unknown): IssueRecord | null {
 		state: v.state === "open" ? "opened" : "closed",
 		labels: labels(v.labels),
 		updatedAt: timestamp(v.updated_at),
+		closedAt: v.closed_at == null ? null : timestamp(v.closed_at),
 	};
 }
 function note(value: unknown): IssueNote {
@@ -387,6 +388,18 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 	return {
 		provider: "github",
 		project,
+		closeIssue: async (iid) => {
+			positive(iid);
+			return delivery(async () => {
+				const response = await request(`${base}/issues/${iid}`, Date.now() + timeoutMs, {
+					method: "PATCH",
+					body: { state: "closed" },
+				});
+				const result = issue(response.value);
+				if (!result || result.iid !== iid || result.state !== "closed") invalid();
+				return result;
+			});
+		},
 		updateIssue: async (iid, input) => {
 			positive(iid);
 			record(input);

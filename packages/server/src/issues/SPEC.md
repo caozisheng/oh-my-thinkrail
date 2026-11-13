@@ -120,11 +120,12 @@ permission to merge. Provider input/read types are exported through the barrel.
 
 ## Provider write and MR contract
 
-`IssueDeliveryRemote extends IssueRemote` adds partial issue updates, exact-source-branch MR/PR
-listing and MR/PR creation using the shared `IssueMergeRequest` model. `IssueWorkflowRemote`
-extends that delivery port with GitLab-only evidence, merge and closure operations. `GitHubClient`
+`IssueDeliveryRemote extends IssueRemote` adds partial issue updates, single-attempt Issue close, exact-source-branch
+MR/PR listing and MR/PR creation using the shared `IssueMergeRequest` model. `IssueWorkflowRemote`
+extends that delivery port with GitLab-only approval evidence and merge operations. `GitHubClient`
 exposes the delivery port; `remoteFor` deliberately remains the read/comment port. These types grant
-no workflow authorization. GitHub has no merge or closure primitive.
+no workflow authorization. Provider closure responses expose nullable `closedAt`; the confirmed host
+operation requires a non-null read-back before returning a close receipt.
 
 GitHub updates use PATCH with only supplied fields (`description` maps to `body`), so label-only
 writes never replace the description. PR operations first read verified repository identity/path;

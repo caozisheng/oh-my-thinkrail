@@ -82,6 +82,11 @@ async function fixture() {
 			sshUrlToRepo: null,
 		}),
 		issue: async () => structuredClone(issue),
+		closeIssue: async () => ({
+			...issue,
+			state: "closed" as const,
+			closedAt: "2026-11-13T00:00:00Z",
+		}),
 		issues: async () => [],
 		notes: async () => [],
 		addNote: async () => {

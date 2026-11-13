@@ -28,7 +28,9 @@ export interface IssueAgentSessionHostOptions {
 			title?: string;
 			body?: string;
 			targetBranch?: string;
-			action?: "update-body";
+			action?: "update-body" | "close-issue";
+			reason?: string;
+			acceptance?: string;
 		},
 	): Promise<unknown>;
 	executeConfirmation?(

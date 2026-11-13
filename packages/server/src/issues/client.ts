@@ -64,6 +64,9 @@ function timestamp(value: unknown): string {
 	if (!Number.isFinite(Date.parse(result))) invalid();
 	return result;
 }
+function nullableTimestamp(value: unknown): string | null {
+	return value == null ? null : timestamp(value);
+}
 function issue(value: unknown): GitLabIssue {
 	const v = record(value);
 	if (!Array.isArray(v.labels) || (v.state !== "opened" && v.state !== "closed")) invalid();
@@ -74,6 +77,7 @@ function issue(value: unknown): GitLabIssue {
 		state: v.state,
 		labels: v.labels.map(text),
 		updatedAt: timestamp(v.updated_at),
+		closedAt: nullableTimestamp(v.closed_at),
 	};
 }
 function identifier(value: unknown): string {

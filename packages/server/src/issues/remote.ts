@@ -15,6 +15,7 @@ export interface IssueRecord {
 	state: "opened" | "closed";
 	labels: string[];
 	updatedAt: string;
+	closedAt?: string | null;
 }
 export interface IssueNote {
 	id: number;
@@ -76,6 +77,7 @@ export interface IssueRemote {
 /** Provider-neutral delivery primitives; obtaining this port does not authorize a workflow. */
 export interface IssueDeliveryRemote extends IssueRemote {
 	updateIssue(iid: number, input: IssueUpdate): Promise<IssueRecord>;
+	closeIssue(iid: number): Promise<IssueRecord>;
 	mergeRequests(sourceBranch: string): Promise<IssueMergeRequest[]>;
 	createMergeRequest(input: IssueMergeRequestInput): Promise<IssueMergeRequest>;
 }
@@ -87,5 +89,4 @@ export interface IssueWorkflowRemote extends IssueDeliveryRemote {
 	member(userId: number): Promise<IssueMember>;
 	mergeRequest(iid: number): Promise<IssueMergeRequest>;
 	mergeMergeRequest(iid: number, sha: string): Promise<IssueMergeRequest>;
-	closeIssue(iid: number): Promise<IssueRecord>;
 }

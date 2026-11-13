@@ -1571,6 +1571,15 @@ before reserving intent, writes only description, then reads it back. A changed 
 operation; unrelated labels are never supplied in the update. Uncertain results are observed under the
 original operation and adopted only through the existing explicit recovery card, never resent.
 
+### Confirmed Issue closure
+
+The bound confirmation route accepts `action: "close-issue"` with a reason and acceptance summary.
+It freezes the exact Issue reference and open Issue snapshot, presents acceptance/unverified status,
+and uses an independent questionnaire receipt. Execution rechecks the open state and full snapshot
+before calling the provider close primitive, then requires a fresh closed-state and non-null closedAt
+read-back before returning a receipt. A missing/delayed response remains uncertain and is reconciled by
+observing the original operation; closure is never inferred from another action.
+
 ### Bound Issue agent composition
 
 `issueAgentSessions.ts` exports injected `createIssueAgentSessionHost` and host/options types;

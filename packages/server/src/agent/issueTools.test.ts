@@ -169,6 +169,14 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	expect(
 		Check(tool.parameters, { operationId: "body", action: "update-body", body: "Replacement" }),
 	).toBe(true);
+	expect(
+		Check(tool.parameters, {
+			operationId: "close",
+			action: "close-issue",
+			reason: "Accepted",
+			acceptance: "All verified",
+		}),
+	).toBe(true);
 	expect(Check(tool.parameters, { operationId: "body", action: "close" })).toBe(false);
 	const result = await tool.execute("call", params, undefined, undefined, ctx);
 	expect(inspected).toBe(true);

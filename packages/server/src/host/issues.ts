@@ -43,6 +43,11 @@ import {
 	issueBodyQuestions,
 } from "./issueBodyActions";
 import {
+	createIssueCloseActions,
+	type IssueClosePayload,
+	issueCloseQuestions,
+} from "./issueCloseActions";
+import {
 	createIssueConfirmationStore,
 	type IssueConfirmationInspection,
 } from "./issueConfirmations";
@@ -408,6 +413,35 @@ export function createIssuesHost(
 			},
 		});
 	}
+	function closes() {
+		return createIssueCloseActions({
+			binding: confirmationBinding,
+			journal: journal(),
+			access: async (binding) => {
+				await restore(binding.projectId, true);
+				const issues = await service();
+				const remote = issues.deliveryFor(binding.projectId, binding.reference);
+				return {
+					remote,
+					guard: () => {
+						project(binding.projectId, true);
+						if (issues.deliveryFor(binding.projectId, binding.reference) !== remote) invalid();
+					},
+				};
+			},
+			verifyAnswer: async (sessionId, payload, toolCallId) => {
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueCloseQuestions(payload)))
+					invalid();
+			},
+		});
+	}
 	function deliveries() {
 		return createIssueDeliveryActions({
 			binding: confirmationBinding,
@@ -490,15 +524,17 @@ export function createIssuesHost(
 			},
 		});
 	}
-	type ConfirmationPayload = DeliveryPayload | StagePayload | IssueBodyPayload;
+	type ConfirmationPayload = DeliveryPayload | StagePayload | IssueBodyPayload | IssueClosePayload;
 	function questionsFor(payload: ConfirmationPayload) {
 		if (payload.stage === "delivery") return deliveryQuestions(payload);
 		if (payload.stage === "update-body") return issueBodyQuestions(payload);
+		if (payload.stage === "close-issue") return issueCloseQuestions(payload);
 		return stageQuestions(payload);
 	}
 	function observeOperation(sessionId: string, payload: ConfirmationPayload) {
 		if (payload.stage === "delivery") return deliveries().observe(sessionId, payload);
 		if (payload.stage === "update-body") return bodies().observe(sessionId, payload);
+		if (payload.stage === "close-issue") return closes().observe(sessionId, payload);
 		return stages().observe(sessionId, payload);
 	}
 	function recoveryQuestions(operationId: string, candidateDigest: string, candidate: unknown) {
@@ -606,7 +642,8 @@ export function createIssuesHost(
 								payload?.stage === "delivery" ||
 								payload?.stage === "design" ||
 								payload?.stage === "implementation" ||
-								payload?.stage === "update-body"
+								payload?.stage === "update-body" ||
+								payload?.stage === "close-issue"
 							)
 								questions = questionsFor(payload);
 						} catch {
@@ -626,6 +663,24 @@ export function createIssuesHost(
 										? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
 										: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
 						};
+					}
+					if (input.action === "close-issue") {
+						if (
+							!input.reason ||
+							!input.acceptance ||
+							input.body !== undefined ||
+							input.projectId ||
+							input.title ||
+							input.report ||
+							input.targetBranch ||
+							input.continueDespiteChecks
+						)
+							invalid();
+						return closes().prepare(sessionId, {
+							operationId: input.operationId,
+							reason: input.reason,
+							acceptance: input.acceptance,
+						});
 					}
 					if (input.action === "update-body") {
 						if (
@@ -748,7 +803,9 @@ export function createIssuesHost(
 					? deliveries().execute(sessionId, operationId, toolCallId)
 					: stage === "update-body"
 						? bodies().execute(sessionId, operationId, toolCallId)
-						: stages().execute(sessionId, operationId, toolCallId);
+						: stage === "close-issue"
+							? closes().execute(sessionId, operationId, toolCallId)
+							: stages().execute(sessionId, operationId, toolCallId);
 			});
 		},
 		store: issueSessionStore,

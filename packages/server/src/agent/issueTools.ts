@@ -67,7 +67,9 @@ export interface IssueToolHost {
 			title?: string;
 			body?: string;
 			targetBranch?: string;
-			action?: "update-body";
+			action?: "update-body" | "close-issue";
+			reason?: string;
+			acceptance?: string;
 		},
 	): Promise<unknown>;
 	executeConfirmation?(
@@ -264,7 +266,9 @@ const PrepareConfirmationSchema = Type.Object(
 			maxLength: 128,
 			pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
 		}),
-		action: Type.Optional(Type.Literal("update-body")),
+		action: Type.Optional(Type.Union([Type.Literal("update-body"), Type.Literal("close-issue")])),
+		reason: Type.Optional(Type.String({ minLength: 1, maxLength: 8000 })),
+		acceptance: Type.Optional(Type.String({ minLength: 1, maxLength: 8000 })),
 		inspect: Type.Optional(Type.Boolean()),
 		continueDespiteChecks: Type.Optional(Type.Boolean()),
 		recovery: Type.Optional(Type.Literal("reconcile")),
@@ -293,7 +297,7 @@ export function createIssuePrepareConfirmationTool(): ToolDefinition<
 		label: "Prepare Issue Confirmation",
 		parameters: PrepareConfirmationSchema,
 		description:
-			"Prepare a complete Issue body replacement (action:'update-body', body), a fixed Issue stage report (report) or per-repository delivery (projectId, title, body, optional targetBranch). Returns exact questions to pass unchanged to ask_user_question. Use inspect:true with only operationId to read frozen questions, completion or uncertain status without mutation. Use recovery:'reconcile' with only the original operationId to prepare a card adopting an observed remote result; the real answer must confirm the original request/process ended. Recovery does not resend. Use continueDespiteChecks:true to request an explicit warned one-shot exception card for failed policy checks; the flag is not authorization. Preparation authorizes no writes. Never change the preview. Skip/Discuss/Other does not authorize execution. If unavailable, stop; never bypass through shell.",
+			"Prepare an Issue close (action:'close-issue', reason, acceptance), a complete Issue body replacement (action:'update-body', body), a fixed Issue stage report (report) or per-repository delivery (projectId, title, body, optional targetBranch). Returns exact questions to pass unchanged to ask_user_question. Use inspect:true with only operationId to read frozen questions, completion or uncertain status without mutation. Use recovery:'reconcile' with only the original operationId to prepare a card adopting an observed remote result; the real answer must confirm the original request/process ended. Recovery does not resend. Use continueDespiteChecks:true to request an explicit warned one-shot exception card for failed policy checks; the flag is not authorization. Preparation authorizes no writes. Never change the preview. Skip/Discuss/Other does not authorize execution. If unavailable, stop; never bypass through shell.",
 		async execute(_id, params, _signal, _update, ctx) {
 			if (!host.prepareConfirmation) throw unavailable();
 			const result = await host.prepareConfirmation(ctx.sessionManager.getSessionId(), params);
