@@ -28,6 +28,7 @@ export interface IssueAgentSessionHostOptions {
 			title?: string;
 			body?: string;
 			targetBranch?: string;
+			action?: "update-body";
 		},
 	): Promise<unknown>;
 	executeConfirmation?(

@@ -38,6 +38,11 @@ import {
 	type IssueAgentSessionHostOptions,
 } from "./issueAgentSessions";
 import {
+	createIssueBodyActions,
+	type IssueBodyPayload,
+	issueBodyQuestions,
+} from "./issueBodyActions";
+import {
 	createIssueConfirmationStore,
 	type IssueConfirmationInspection,
 } from "./issueConfirmations";
@@ -374,6 +379,35 @@ export function createIssuesHost(
 			},
 		});
 	}
+	function bodies() {
+		return createIssueBodyActions({
+			binding: confirmationBinding,
+			journal: journal(),
+			access: async (binding) => {
+				await restore(binding.projectId, true);
+				const issues = await service();
+				const remote = issues.deliveryFor(binding.projectId, binding.reference);
+				return {
+					remote,
+					guard: () => {
+						project(binding.projectId, true);
+						if (issues.deliveryFor(binding.projectId, binding.reference) !== remote) invalid();
+					},
+				};
+			},
+			verifyAnswer: async (sessionId, payload, toolCallId) => {
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueBodyQuestions(payload)))
+					invalid();
+			},
+		});
+	}
 	function deliveries() {
 		return createIssueDeliveryActions({
 			binding: confirmationBinding,
@@ -456,6 +490,17 @@ export function createIssuesHost(
 			},
 		});
 	}
+	type ConfirmationPayload = DeliveryPayload | StagePayload | IssueBodyPayload;
+	function questionsFor(payload: ConfirmationPayload) {
+		if (payload.stage === "delivery") return deliveryQuestions(payload);
+		if (payload.stage === "update-body") return issueBodyQuestions(payload);
+		return stageQuestions(payload);
+	}
+	function observeOperation(sessionId: string, payload: ConfirmationPayload) {
+		if (payload.stage === "delivery") return deliveries().observe(sessionId, payload);
+		if (payload.stage === "update-body") return bodies().observe(sessionId, payload);
+		return stages().observe(sessionId, payload);
+	}
 	function recoveryQuestions(operationId: string, candidateDigest: string, candidate: unknown) {
 		return {
 			questions: [
@@ -504,7 +549,7 @@ export function createIssuesHost(
 							: {}),
 					};
 					if (input.recovery === "reconcile") {
-						if (input.continueDespiteChecks) invalid();
+						if (input.continueDespiteChecks || input.action) invalid();
 						if (
 							input.inspect ||
 							input.report ||
@@ -519,11 +564,8 @@ export function createIssuesHost(
 						const store = journal();
 						const state = await store.inspect(sessionId, input.operationId);
 						if (state.status !== "uncertain") return state;
-						const payload = state.payload as DeliveryPayload | StagePayload;
-						const observed =
-							payload.stage === "delivery"
-								? await deliveries().observe(sessionId, payload)
-								: await stages().observe(sessionId, payload);
+						const payload = state.payload as ConfirmationPayload;
+						const observed = await observeOperation(sessionId, payload);
 						const frozen = await store.prepareRecovery(sessionId, input.operationId, observed);
 						return {
 							status: "recovery-prepared",
@@ -532,6 +574,7 @@ export function createIssuesHost(
 						};
 					}
 					if (input.inspect) {
+						if (input.action) invalid();
 						if (
 							input.report ||
 							input.projectId ||
@@ -558,10 +601,14 @@ export function createIssuesHost(
 						if (state.status === "missing") return state;
 						let questions: ReturnType<typeof stageQuestions> | undefined;
 						try {
-							const payload = state.payload as StagePayload | DeliveryPayload;
-							if (payload?.stage === "delivery") questions = deliveryQuestions(payload);
-							else if (payload?.stage === "design" || payload?.stage === "implementation")
-								questions = stageQuestions(payload);
+							const payload = state.payload as ConfirmationPayload;
+							if (
+								payload?.stage === "delivery" ||
+								payload?.stage === "design" ||
+								payload?.stage === "implementation" ||
+								payload?.stage === "update-body"
+							)
+								questions = questionsFor(payload);
 						} catch {
 							questions = undefined;
 						}
@@ -579,6 +626,21 @@ export function createIssuesHost(
 										? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
 										: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
 						};
+					}
+					if (input.action === "update-body") {
+						if (
+							input.body === undefined ||
+							input.projectId ||
+							input.title ||
+							input.report ||
+							input.targetBranch ||
+							input.continueDespiteChecks
+						)
+							invalid();
+						return bodies().prepare(sessionId, {
+							operationId: input.operationId,
+							body: input.body,
+						});
 					}
 					if (input.projectId) {
 						if (!input.title || input.body === undefined || input.report) invalid();
@@ -638,7 +700,7 @@ export function createIssuesHost(
 					if (originalReceipt.status === "completed") {
 						const original = await store.get(sessionId, operationId);
 						if (!original) invalid();
-						const payload = original.payload as DeliveryPayload | StagePayload;
+						const payload = original.payload as ConfirmationPayload;
 						const binding = await confirmationBinding(sessionId);
 						const ws = getWorkspace(binding.workspaceId);
 						const { messages } = await getSessionMessages(
@@ -646,8 +708,7 @@ export function createIssuesHost(
 							binding.workspaceId,
 							ws.worktreePath,
 						);
-						const originalQuestions =
-							payload.stage === "delivery" ? deliveryQuestions(payload) : stageQuestions(payload);
+						const originalQuestions = questionsFor(payload);
 						if (isTrustedQuestionnaireReceipt(messages, toolCallId, originalQuestions))
 							return originalReceipt.result;
 					}
@@ -674,20 +735,20 @@ export function createIssuesHost(
 						recovery.candidateDigest,
 						toolCallId,
 						async () => {
-							const payload = original.payload as DeliveryPayload | StagePayload;
-							const actual =
-								payload.stage === "delivery"
-									? await deliveries().observe(sessionId, payload)
-									: await stages().observe(sessionId, payload);
+							const payload = original.payload as ConfirmationPayload;
+							const actual = await observeOperation(sessionId, payload);
 							if (!isDeepStrictEqual(actual, recovery.candidate)) invalid();
 						},
 					);
 				}
 				const stored = await store.get(sessionId, operationId);
 				if (!stored) invalid();
-				return (stored.payload as { stage: string }).stage === "delivery"
+				const stage = (stored.payload as { stage: string }).stage;
+				return stage === "delivery"
 					? deliveries().execute(sessionId, operationId, toolCallId)
-					: stages().execute(sessionId, operationId, toolCallId);
+					: stage === "update-body"
+						? bodies().execute(sessionId, operationId, toolCallId)
+						: stages().execute(sessionId, operationId, toolCallId);
 			});
 		},
 		store: issueSessionStore,

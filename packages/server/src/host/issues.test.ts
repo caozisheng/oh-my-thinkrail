@@ -202,6 +202,15 @@ test("a fresh host prepares confirmations from durable session bindings without 
 		status: "prepared",
 		questions: { questions: expect.any(Array) },
 	});
+	const bodyConfirmation = await prepareConfirmation("bound-session", {
+		operationId: "body-update",
+		action: "update-body",
+		body: "Complete replacement",
+	});
+	expect(bodyConfirmation).toMatchObject({
+		digest: expect.any(String),
+		questions: { questions: [{ header: "Issue body" }] },
+	});
 	await expect(
 		prepareConfirmation("bound-session", { ...confirmation, inspect: true }),
 	).resolves.toMatchObject({

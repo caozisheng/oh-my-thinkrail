@@ -1562,6 +1562,15 @@ semantics and durable root provisioning belong to the caller. This section intro
 agent behavior or UI surface.
 
 
+### Confirmed Issue body replacement
+
+The bound confirmation route accepts `action: "update-body"` with a complete `body`. It freezes
+Issue identity and the complete before/after bodies in the existing confirmation journal, displays
+both, and verifies the actual questionnaire receipt. Execution rechecks identity and the body snapshot
+before reserving intent, writes only description, then reads it back. A changed body invalidates the
+operation; unrelated labels are never supplied in the update. Uncertain results are observed under the
+original operation and adopted only through the existing explicit recovery card, never resent.
+
 ### Bound Issue agent composition
 
 `issueAgentSessions.ts` exports injected `createIssueAgentSessionHost` and host/options types;
