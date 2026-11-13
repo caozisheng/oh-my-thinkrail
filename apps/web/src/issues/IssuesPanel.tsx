@@ -92,6 +92,8 @@ export interface IssuesPanelProps {
 		| ((issue: IssueSummary, projectId: string) => Promise<IssueRepositoriesNotice | null>)
 		| undefined;
 	onCleanupRepositories?: ((issue: IssueSummary) => Promise<IssueRepositoriesNotice>) | undefined;
+	onOpenHistory?: ((issue: IssueSummary) => void) | undefined;
+	historySupported?: boolean | undefined;
 }
 
 interface IssueActionRowProps {
@@ -187,6 +189,8 @@ export function IssuesPanel({
 	onToggleRepository,
 	onJoinRepository,
 	onCleanupRepositories,
+	onOpenHistory,
+	historySupported,
 	previewSupported,
 	preview,
 	initialDisclosure,
@@ -465,6 +469,11 @@ export function IssuesPanel({
 															/>
 														</TooltipProvider>
 													)}
+												{historySupported && onOpenHistory && (
+													<Button size="s" variant="ghost" onClick={() => onOpenHistory(issue)}>
+														{t("issues.history.open")}
+													</Button>
+												)}
 												{onRunAction && (
 													<IssueActionRow
 														issue={issue}

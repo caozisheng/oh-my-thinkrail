@@ -39,6 +39,34 @@ const failure = {
 	message: "Issue workspace requires reconciliation.",
 };
 
+test("archived implementation generations survive restart and reject malformed history", async () => {
+	const f = setup();
+	const archived = {
+		workspaceId: "old-workspace",
+		worktreePath: join(f.dir, ".worktrees", "issue-3"),
+		branch: "issue-3-reserved",
+		sessionId: "old-session",
+		archivedAt: 1_800_000_000_000,
+	};
+	const row: IssueWorkspaceRecord = { ...record, implementationHistory: [archived] };
+	await f.store.withLaunch("local", ref, (p) => p.save(key(), row));
+	expect(
+		await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(row);
+	for (const implementationHistory of [
+		[{ ...archived, archivedAt: -1 }],
+		[{ ...archived, sessionId: "" }],
+		[{ ...archived, unexpected: true }],
+	]) {
+		const other = setup();
+		await expect(
+			other.store.withLaunch("local", ref, (p) =>
+				p.save(key(), { ...record, implementationHistory } as IssueWorkspaceRecord),
+			),
+		).rejects.toMatchObject(failure);
+	}
+});
+
 test("repository selections survive restart and reject duplicate, primary and foreign fields", async () => {
 	const { dir, store } = setup();
 	const selected = { ...record, repositoryProjectIds: ["api", "web"] };

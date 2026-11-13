@@ -27,6 +27,7 @@ import {
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
+	ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	isControlMessage,
 	isSpeechModel,
 	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
@@ -38,6 +39,7 @@ import {
 	acknowledgeCompletion,
 	admissionContextFor,
 	applyPiResourceTrust,
+	archiveIssueWorkspaceSessions,
 	cancelMcpProbe,
 	clampThinkingForModel,
 	clearQueueSession,
@@ -315,17 +317,20 @@ import {
 	issuesDetail,
 	issuesDisconnect,
 	issuesHost,
+	issuesImplementationRecovery,
 	issuesLaunchDesign,
 	issuesLaunchImplementation,
 	issuesList,
 	issuesPublishDesign,
 	issuesPublishImplementation,
+	issuesRecoverImplementation,
 	issuesRepositories,
 	issuesRepositoryAddress,
 	issuesSetRepositories,
 	issuesStartImplementation,
 	issuesValidateDesign,
 	issuesValidateImplementation,
+	setIssueArchiveBarrier,
 	setIssueWorkspaceArchiver,
 } from "./issues";
 import { dropLogin, recordLoginStart } from "./loginAnalytics";
@@ -555,12 +560,18 @@ function withIssuesActionsProtocol<P, R>(handler: (params: P) => R) {
  * Forget the workspace and drop its host state synchronously; the returned promise settles when the
  * session/artifact/worktree teardown finishes (Issue cleanup awaits it, `workspace.remove` does not).
  */
+const workspaceArchives = new Map<string, Promise<void>>();
+setIssueArchiveBarrier(async (path) => {
+	await workspaceArchives.get(path);
+});
+
 function archiveWorkspace(id: string): Promise<void> {
 	if (nestedWorkspaces(id).length > 0)
 		throw new CodedError(
 			"WORKSPACE_HAS_NESTED_WORKSPACES",
 			"Archive the workspaces nested inside this one first.",
 		);
+	const preserveHistory = issuesHost.workspaceIssueBindings().has(id);
 	const ws = forgetWorkspace(id);
 	if (!ws) return Promise.resolve();
 	evictSpecIndex(ws.id);
@@ -570,17 +581,28 @@ function archiveWorkspace(id: string): Promise<void> {
 	forgetWorkspaceTurns(ws.id);
 	stopWatch(ws.id);
 	closeWorkspaceTerminals(ws.id);
-	return archiveTeardown(ws);
+	const task = archiveTeardown(ws, preserveHistory);
+	workspaceArchives.set(ws.worktreePath, task);
+	void task.then(
+		() => {
+			if (workspaceArchives.get(ws.worktreePath) === task)
+				workspaceArchives.delete(ws.worktreePath);
+		},
+		() => {},
+	);
+	return task;
 }
 setIssueWorkspaceArchiver(archiveWorkspace);
 
-async function archiveTeardown(ws: Workspace): Promise<void> {
+async function archiveTeardown(ws: Workspace, preserveHistory: boolean): Promise<void> {
 	try {
-		await removeWorkspaceSessions(ws.id, ws.worktreePath);
+		if (preserveHistory) await archiveIssueWorkspaceSessions(ws.id, ws.worktreePath);
+		else await removeWorkspaceSessions(ws.id, ws.worktreePath);
 		await settleChangeArtifacts(ws.id);
 		await reclaimWorktree(ws);
-	} catch {
-		log.warn(`workspace archive teardown failed for ${ws.id}`);
+	} catch (error) {
+		log.warn(`workspace archive teardown failed for ${ws.id}`, error);
+		throw error;
 	}
 }
 
@@ -1070,7 +1092,7 @@ const handlers: WsHandlers = {
 		records: await markWorkspaceRead(sessionStateWorkspace(getWorkspace(params.id))),
 	}),
 	"workspace.remove": (params) => {
-		void archiveWorkspace(params.id);
+		void archiveWorkspace(params.id).catch(() => {});
 		return { ok: true } as const;
 	},
 	"workspace.diffStats": (params) => workspaceDiffStats(params.id),
@@ -1426,6 +1448,21 @@ const handlers: WsHandlers = {
 	"issues.cleanupRepositories": withIssuesRepositoryJoinProtocol((p) =>
 		issuesCleanupRepositories(p),
 	),
+	"issues.implementationHistory": (p, ctx) => {
+		if ((ctx.protocolVersion ?? 0) < ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION)
+			throw new CodedError("RESOURCE_UNAVAILABLE", "Issue history needs a newer host.");
+		return issuesHost.implementationHistory(p);
+	},
+	"issues.implementationRecovery": (p, ctx) => {
+		if ((ctx.protocolVersion ?? 0) < ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION)
+			throw new CodedError("RESOURCE_UNAVAILABLE", "Issue recovery needs a newer host.");
+		return issuesImplementationRecovery(p);
+	},
+	"issues.recoverImplementation": (p, ctx) => {
+		if ((ctx.protocolVersion ?? 0) < ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION)
+			throw new CodedError("RESOURCE_UNAVAILABLE", "Issue recovery needs a newer host.");
+		return issuesRecoverImplementation(p);
+	},
 	"issues.startImplementation": withIssuesImplementationProtocol((p) =>
 		issuesStartImplementation(p),
 	),

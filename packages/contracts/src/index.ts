@@ -95,6 +95,8 @@ export {
 	isIssueConnectionInput,
 	isIssueDesignApproval,
 	isIssueDesignPublicationInput,
+	isIssueImplementationRecovery,
+	isIssueImplementationRecoveryInput,
 	isIssueImplementationTarget,
 	isIssuePublication,
 	isIssueReference,

@@ -2,6 +2,8 @@ import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
 	type IssueDesignPublicationInput,
+	type IssueImplementationRecovery,
+	type IssueImplementationRecoveryInput,
 	type IssueImplementationTarget,
 	type IssueReference,
 	type IssueRepositories,
@@ -12,6 +14,7 @@ import {
 	type IssueSessionStartupTarget,
 	type IssueTarget,
 	isIssueDesignPublicationInput,
+	isIssueImplementationRecoveryInput,
 	isIssueImplementationTarget,
 	isIssueRepositoriesInput,
 	isIssueRepositoryJoinInput,
@@ -62,6 +65,8 @@ type Action =
 	| "cleanupRepositories"
 	| "designContexts"
 	| "implementationContexts"
+	| "implementationRecovery"
+	| "recoverImplementation"
 	| "repositories"
 	| "setRepositories"
 	| "beginDesign"
@@ -86,6 +91,7 @@ function invalid(): never {
 }
 type ParsedAction =
 	| { action: "setRepositories"; args: IssueRepositoriesInput }
+	| { action: "recoverImplementation"; args: IssueImplementationRecoveryInput }
 	| { action: "addRepository"; args: IssueRepositoryJoinInput }
 	| { action: "beginDesign" | "beginImplementation"; args: IssueSessionStartupTarget }
 	| {
@@ -106,13 +112,17 @@ type ParsedAction =
 			action: "launchImplementation" | "publishImplementation";
 			args: IssueImplementationTarget;
 	  }
-	| { action: "publishDesign"; args: IssueDesignPublicationInput };
+	| { action: "publishDesign"; args: IssueDesignPublicationInput }
+	| { action: "implementationRecovery"; args: IssueTarget };
 
 function snapshot<T extends IssueTarget>(value: T): T {
 	return { ...value, reference: { ...value.reference } };
 }
 function parse(value: unknown, action: Action): ParsedAction {
 	switch (action) {
+		case "recoverImplementation":
+			if (!isIssueImplementationRecoveryInput(value)) invalid();
+			return { action, args: structuredClone(value) };
 		case "setRepositories":
 			if (!isIssueRepositoriesInput(value)) invalid();
 			return { action, args: { ...snapshot(value), projectIds: [...value.projectIds] } };
@@ -242,6 +252,10 @@ export async function worktreeUnchanged(path: string, base: string): Promise<boo
 }
 
 let archiveWorkspace: (workspaceId: string) => Promise<void> = removeWorkspace;
+let waitForArchive: (path: string) => Promise<void> = async () => {};
+export function setIssueArchiveBarrier(next: ((path: string) => Promise<void>) | null) {
+	waitForArchive = next ?? (async () => {});
+}
 /** The host's full workspace-archive teardown (sessions, terminals, watchers) used by cleanup. */
 export function setIssueWorkspaceArchiver(next: ((workspaceId: string) => Promise<void>) | null) {
 	archiveWorkspace = next ?? removeWorkspace;
@@ -266,6 +280,11 @@ export function createIssuesActions(
 		input: unknown,
 	): Promise<IssueRepositories>;
 	function run(action: "cleanupRepositories", input: unknown): Promise<IssueRepositoriesCleanup>;
+	function run(
+		action: "implementationRecovery",
+		input: unknown,
+	): Promise<IssueImplementationRecovery>;
+	function run(action: "recoverImplementation", input: unknown): Promise<IssueSessionLaunch>;
 	function run(
 		action:
 			| "beginDesign"
@@ -299,7 +318,9 @@ export function createIssuesActions(
 		let pinned: WorkspaceHandle | undefined;
 		let startupPrompt: string | undefined;
 		const startup =
-			request.action === "beginDesign" || request.action === "beginImplementation"
+			request.action === "beginDesign" ||
+			request.action === "beginImplementation" ||
+			request.action === "recoverImplementation"
 				? request.args
 				: undefined;
 		const stage =
@@ -440,6 +461,7 @@ export function createIssuesActions(
 				let sessionTitle: string | undefined;
 				const coordinator = createIssueWorkspaceCoordinator({
 					projectId,
+					waitForArchive: (path) => checked(() => waitForArchive(path)),
 					projectPath: (id) => checked(() => memberProject(id).path),
 					load: (key) => checked(() => ports.load(key)),
 					save: (key, row) => checked(() => ports.save(key, row)),
@@ -459,6 +481,17 @@ export function createIssuesActions(
 					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
 					baseRef: (id) => checked(() => freshBaseRef(memberProject(id).path)),
 					headCommit: (path) => checked(() => resolveCommitOid(path, "HEAD")),
+					recoveryBase: (id, branch) =>
+						checked(async () => {
+							const path = memberProject(id).path;
+							const previousCommit = resolveCommitOid(path, `refs/heads/${branch}`);
+							if (previousCommit)
+								return { commit: previousCommit, source: "previous-branch" as const };
+							const base = await freshBaseRef(path);
+							const commit = resolveCommitOid(path, base ?? "HEAD");
+							if (!commit) stop();
+							return { commit, source: "restart" as const };
+						}),
 					references: () =>
 						checked(() =>
 							groupReferenceCandidates(projectId).flatMap((id) => {
@@ -568,7 +601,9 @@ export function createIssuesActions(
 					const result = await checked(() =>
 						kind === "design"
 							? coordinator.design(reference)
-							: coordinator.implementation(reference),
+							: request.action === "recoverImplementation"
+								? coordinator.recoverImplementation(reference, request.args)
+								: coordinator.implementation(reference),
 					);
 					if (kind === "implementation") {
 						// The associated rows already reached clients through `workspace.created`, before
@@ -613,6 +648,10 @@ export function createIssuesActions(
 									republishWorkspace(member.workspaceId);
 						return result;
 					}
+					case "implementationRecovery":
+						return coordinator.implementationRecovery(reference);
+					case "recoverImplementation":
+						return launch("implementation");
 					case "cleanupRepositories":
 						return coordinator.cleanupRepositories(reference);
 					case "repositories":
@@ -654,6 +693,8 @@ export function createIssuesActions(
 			guard,
 			[
 				"addRepository",
+				"implementationRecovery",
+				"recoverImplementation",
 				"repositories",
 				"setRepositories",
 				"beginDesign",
@@ -674,6 +715,8 @@ export function createIssuesActions(
 		setRepositories: (input: unknown) => run("setRepositories", input),
 		addRepository: (input: unknown) => run("addRepository", input),
 		cleanupRepositories: (input: unknown) => run("cleanupRepositories", input),
+		implementationRecovery: (input: unknown) => run("implementationRecovery", input),
+		recoverImplementation: (input: unknown) => run("recoverImplementation", input),
 		beginDesign: (input: unknown) => run("beginDesign", input),
 		beginImplementation: (input: unknown) => run("beginImplementation", input),
 		approveDesign: (input: unknown) => run("approveDesign", input),

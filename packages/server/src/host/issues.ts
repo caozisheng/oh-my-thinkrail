@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import type { TranscriptMessage } from "@thinkrail/contracts";
 import {
 	canonicalIssueInstanceUrl,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
@@ -16,6 +17,7 @@ import { CodedError } from "@thinkrail/shared/codedError";
 import {
 	getSessionMessages,
 	isTrustedQuestionnaireReceipt,
+	readArchivedSessionTranscript,
 	sessionReuseStatus,
 	startInitialSessionPrompt,
 } from "../agent";
@@ -819,6 +821,59 @@ export function createIssuesHost(
 		workspaceIssueBindings,
 		groupIssueRecords,
 		...actions,
+		async implementationHistory(params: unknown) {
+			if (!isIssueTarget(params)) invalid();
+			const target = structuredClone(params);
+			project(target.projectId, true);
+			await restore(target.projectId, false);
+			const issues = await service();
+			const remote = issues.remoteFor(target.projectId, target.reference);
+			const row = createIssueWorkspacePersistence(join(root, "issue-workspaces"))
+				.list()
+				.find(
+					(row) =>
+						row.projectId === target.projectId &&
+						isDeepStrictEqual(row.reference, target.reference),
+				);
+			const history = [...(row?.implementationHistory ?? [])];
+			if (row?.implementation?.state === "completed") {
+				const current = row.implementation;
+				let exists = true;
+				try {
+					getWorkspace(current.workspaceId);
+				} catch {
+					exists = false;
+				}
+				if (!exists)
+					history.push({
+						workspaceId: current.workspaceId,
+						worktreePath: current.worktreePath,
+						branch: current.branch,
+						...(current.session ? { sessionId: current.session.id } : {}),
+						archivedAt: 0,
+					});
+			}
+			const entries = await Promise.all(
+				history.map(async (entry) => {
+					let messages: TranscriptMessage[] | null = null;
+					if (entry.sessionId) {
+						try {
+							messages = await readArchivedSessionTranscript(entry.sessionId, entry.worktreePath);
+						} catch {}
+					}
+					return {
+						workspaceId: entry.workspaceId,
+						branch: entry.branch,
+						archivedAt: entry.archivedAt || null,
+						sessionId: entry.sessionId ?? null,
+						messages,
+					};
+				}),
+			);
+			project(target.projectId, true);
+			if (issues.remoteFor(target.projectId, target.reference) !== remote) invalid();
+			return { entries };
+		},
 		async connection(params: unknown) {
 			const { projectId } = request(params);
 			project(projectId, false);
@@ -919,7 +974,9 @@ export const issuesRepositories = issuesHost.repositories;
 export const issuesSetRepositories = issuesHost.setRepositories;
 export const issuesAddRepository = issuesHost.addRepository;
 export const issuesCleanupRepositories = issuesHost.cleanupRepositories;
-export { setIssueWorkspaceArchiver } from "./issuesActions";
+export const issuesImplementationRecovery = issuesHost.implementationRecovery;
+export const issuesRecoverImplementation = issuesHost.recoverImplementation;
+export { setIssueArchiveBarrier, setIssueWorkspaceArchiver } from "./issuesActions";
 export const issuesStartImplementation = issuesHost.startImplementation;
 export const issuesValidateDesign = issuesHost.validateDesign;
 export const issuesValidateImplementation = issuesHost.validateImplementation;

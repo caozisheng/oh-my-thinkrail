@@ -1455,6 +1455,8 @@ worktree adoption, push, MR, merge or CI capability is introduced.
 
 #### Implementation start (v108)
 
+`issues.implementationRecovery` and `issues.recoverImplementation` (v134) expose a read-only, credential-free recovery diagnosis and an explicit snapshot-bound implementation restart. Eligibility requires every selected member's checkout, Git registration, and workspace registration to be absent with no pending side effect. The execution repeats the diagnosis inside the existing launch fence and preserves the old branch/session ownership before preparing new checkouts. `issues.implementationHistory` reads only recorded session ids from archived Issue transcript files and never attaches them. Ordinary `workspace.remove` keeps its existing transcript purge policy; Issue-bound removal uses the agent's transcript-preserving archive port and a path lifecycle barrier.
+
 `issues.startImplementation({ projectId, reference })` → `IssueSessionLaunch` is the one action behind the
 confirmed implementation button. It is registered at the v108 implementation floor:
 `withIssuesImplementationProtocol` rejects versions below
