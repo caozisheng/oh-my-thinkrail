@@ -19,7 +19,7 @@ the palette ranks with — kept here so host-side search can rank with the same 
 
 ## Issue integration
 
-Protocol v133 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.
+Protocol v134 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.
 
 `issues.content(IssueTarget)` → `IssueContent` (`{ description, url }`) is a v113 read-only
 capability (`ISSUES_CONTENT_PROTOCOL_VERSION`). It returns only the issue body and a verified provider
@@ -1738,4 +1738,4 @@ upstream numbers.
 
 ## Latest upstream capability floors
 
-The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, and image references v133. Upstream original v115–v120 numbers must not gate these features on fork hosts.
+The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, and Issue workspace recovery v134. Upstream original v115–v120 numbers must not gate these features on fork hosts.

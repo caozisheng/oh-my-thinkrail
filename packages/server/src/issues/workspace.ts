@@ -646,7 +646,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		const ownership = primary;
 		const { workspaceId, session } = ownership;
 		const status = await sessionStatus(workspaceId, session?.id);
-		if (session && status === "idle") return { workspaceId, sessionId: session.id };
+		if (session && status) return { workspaceId, sessionId: session.id };
 		await options.save(key, {
 			...record,
 			implementation: ownership,

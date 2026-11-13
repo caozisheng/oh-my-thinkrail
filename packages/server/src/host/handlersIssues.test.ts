@@ -20,7 +20,7 @@ function authFloored(method: string): boolean {
 	return method === "issues.connect" || method === "issues.repositoryAddress";
 }
 
-test("Issue recovery RPCs are floored at v133 before invoking host actions", async () => {
+test("Issue recovery RPCs are floored at v134 before invoking host actions", async () => {
 	const target = {
 		projectId: "local-project",
 		reference: {
