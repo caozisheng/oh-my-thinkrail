@@ -126,7 +126,7 @@ describe("pi-thinkrail-workflow extension", () => {
 				new URL(`./skills/tomato-issue-workflow/${file}`, import.meta.url),
 				"utf8",
 			);
-			expect(skill).toContain(`| ${file} |`);
+			expect(skill).toContain(`\`${file}\``);
 			expect(document).toContain("## Handoff");
 		}
 		expect(skill).toContain("Stage records are not delivery gates");
