@@ -67,12 +67,28 @@ function timestamp(value: unknown): string {
 function issue(value: unknown): GitLabIssue {
 	const v = record(value);
 	if (!Array.isArray(v.labels) || (v.state !== "opened" && v.state !== "closed")) invalid();
+	const labelColors: NonNullable<GitLabIssue["labelColors"]> = [];
+	const labels = v.labels.map((label) => {
+		if (typeof label === "string") return label;
+		const item = record(label);
+		const name = text(item.name);
+		if (typeof item.color === "string" && /^#?[a-fA-F0-9]{6}$/.test(item.color)) {
+			const color = `#${item.color.replace(/^#/, "").toUpperCase()}`;
+			const textColor =
+				typeof item.text_color === "string" && /^#?[a-fA-F0-9]{6}$/.test(item.text_color)
+					? `#${item.text_color.replace(/^#/, "").toUpperCase()}`
+					: undefined;
+			labelColors.push({ name, color, ...(textColor ? { textColor } : {}) });
+		}
+		return name;
+	});
 	return {
 		iid: id(v.iid),
 		title: text(v.title),
 		description: v.description === null ? "" : text(v.description),
 		state: v.state,
-		labels: v.labels.map(text),
+		labels,
+		...(labelColors.length ? { labelColors } : {}),
 		updatedAt: timestamp(v.updated_at),
 	};
 }
@@ -462,7 +478,7 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 			decoded("/user", (value) => ({ id: id(record(value).id) }), undefined, apiRoot),
 		issue: async (iid) =>
 			issue((await request(`/issues/${positive(iid)}`, Date.now() + timeoutMs)).value),
-		issues: () => list("/issues", issue),
+		issues: () => list("/issues?with_labels_details=true", issue),
 		notes: (iid) => list(`/issues/${positive(iid)}/notes`, note),
 		labelEvents: (iid) => list(`/issues/${positive(iid)}/resource_label_events`, labelEvent),
 		member: async (userId) => {

@@ -104,6 +104,10 @@ export class WsTransport {
 		return u.origin;
 	}
 
+	endpointIdentity(): string {
+		return this.url;
+	}
+
 	connect(): void {
 		this.onStatus?.("connecting");
 		const ws = new WebSocket(withClientId(this.url));

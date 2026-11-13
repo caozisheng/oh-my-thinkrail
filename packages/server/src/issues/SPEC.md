@@ -107,7 +107,10 @@ permission to merge. Provider input/read types are exported through the barrel.
   adapter; this module does not import Bun.secrets or promise cross-store atomicity.
 - `list` requires a live client, discards reads across a connection change, and maps fresh reads to
   public summaries with provider-qualified references and links built from the verified project path.
-  It omits descriptions and does not cache or expose approval/action state. Listing never guesses
+  It preserves ordered label names for stage derivation and projects optional provider label colors
+  separately; GitLab requests detailed labels in the existing list call, while GitHub uses its returned
+  label objects. Invalid color metadata is omitted without invalidating an otherwise valid issue. It
+  omits descriptions and does not cache or expose approval/action state. Listing never guesses
   beyond a default: closed is `closed`, exactly one recognised label maps its stage, and everything
   else (no label, an unknown `workflow::*` label, or several of them) reads as `backlog` with the
   labels shown verbatim. Stage actions remain strict - `checkIssue` still refuses unknown or

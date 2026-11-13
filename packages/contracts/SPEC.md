@@ -1624,8 +1624,11 @@ clients ignore the field; a newer client hides the import entry below v125.
 `ISSUES_PROTOCOL_VERSION = 103` introduces `issues.connection({ projectId })` →
 `IssueConnection | null`, `issues.connect({ projectId, input: IssueConnectionInput })` →
 `IssueConnection`, `issues.disconnect({ projectId })` → `{ ok: true }`, and
-`issues.list({ projectId })` → `IssueList`. `wsProtocol` imports these types directly from its own
-`./issues` module. The local project id is distinct from the remote id in connection input. Token
+`issues.list({ projectId })` → `IssueList`. `IssueSummary.labels` remains the ordered provider label-name
+list used by stage derivation; optional `labelColors` carries provider presentation metadata keyed by the
+exact label name and may be omitted by older hosts. It carries only normalized RGB background and
+optional text colors, never credentials or workflow state. `wsProtocol` imports these types directly from
+its own `./issues` module. The local project id is distinct from the remote id in connection input. Token
 input is write-only: connection/list responses contain no credential. These read/connection methods retain
 their v103 minimum independently of actions. The v105 auth floor registers `issues.connect` and the
 credential-free `issues.repositoryAddress` hint together; the hint reads the project's local `origin`

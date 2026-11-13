@@ -167,10 +167,20 @@ live association and reports only the list failure, because a later read cannot 
 follows. Local request sequencing and effect cleanup reject late replies after project, connection or
 request changes; `loadIssueSnapshot` also stops between its own awaits once it is stale.
 
-Summaries group all four stages — backlog, in-progress, in-review and closed. Group headings carry the
-stage, count and accessible name; cards do not repeat a system-stage row or reserve space for it.
-Cards show labels verbatim
-(including blocked labels), and open http(s)-only external title links with noopener/noreferrer. The read DTO carries no separate blocked
+Summaries group all four stages — backlog, in-progress, in-review and closed. Each stage header is an
+independent accessible disclosure button; its localized name, count and expanded state remain visible
+when folded, including for empty groups. All groups start expanded. Fold state is stored locally by
+transport endpoint, provider instance, local project id and remote repository id; it survives refreshes,
+remounts and app restarts without including transient connection generation. Unavailable or malformed
+storage falls back to expanded state for the current mount. Folding hides rows only and does not cancel
+actions or previews.
+
+Cards show labels verbatim (including blocked labels) as wrapping capsules. Optional `labelColors`
+metadata is matched by exact label name and never participates in stage decisions. Only normalized RGB
+hex colors are applied through the capsule's private CSS custom properties; supplied text colors must
+meet 4.5:1 contrast, otherwise the renderer chooses black or white. Missing or malformed colors use
+semantic neutral styling. Older hosts that omit metadata remain supported. Cards open http(s)-only
+external title links with noopener/noreferrer. The read DTO carries no separate blocked
 reason, so none is invented.
 
 An optional generic `onOpenIssue(reference)` callback delegates navigation/session/workspace creation
@@ -295,7 +305,8 @@ stale action error when a fresh error-free snapshot lands. It also pins safe lin
 errors, reconnect coordinates rendered read-only, read-only summaries, the non-local HTTP risk
 checkbox in both required and acknowledged states, and the supplied `onOpenIssue` launch control.
 
-`issues.test.ts` pins the stage Actions surface too: the v104 launch, v108 implementation and v109 localized startup floors
+`issues.test.ts` pins label color validation/contrast, disclosure counts and ARIA relationships, empty
+sections, local preference identity/storage failures, and the stage Actions surface too: the v104 launch, v108 implementation and v109 localized startup floors
 (`supportsIssueActions`/`supportsIssueImplementation`), the pure `issueActions` matrix across every stage,
 closed issues and each host floor separately (an old host keeps design and disables only implementation),
 catalog text for every action and reason, the rendered row of controls on an in-progress issue with no

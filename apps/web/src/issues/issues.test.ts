@@ -10,9 +10,11 @@ import { EN, type MessageKey, resolveLocale } from "@thinkrail/locales";
 import { Dialog } from "@thinkrail/ui/dialog";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { issueDisclosureKey, readIssueDisclosure, writeIssueDisclosure } from "./disclosure";
 import { IssueAssociationBody } from "./IssueAssociationDialog";
 import { IssueAssociationForm } from "./IssueAssociationForm";
 import { IssuesPanel, type IssuesPanelProps } from "./IssuesPanel";
+import { issueLabelColors, labelTextColor } from "./labelColors";
 import {
 	associationDismissal,
 	associationFormState,
@@ -86,6 +88,7 @@ function renderIssues(
 	props: {
 		connection?: IssueConnection | null;
 		issues?: readonly IssueSummary[];
+		initialDisclosure?: IssuesPanelProps["initialDisclosure"];
 		pending?: boolean;
 		authSupported?: boolean;
 		githubSupported?: boolean;
@@ -111,6 +114,8 @@ function renderIssues(
 		onDisconnect: async () => {},
 		onRefresh: () => {},
 		onOpenIssue: props.onOpenIssue,
+		initialDisclosure: props.initialDisclosure,
+		onDisclosureChange: () => {},
 		onRunAction: props.onRunAction,
 		actionPending: props.actionPending,
 		actionProgress: props.actionProgress,
@@ -708,6 +713,81 @@ test("a stored association offers reconnect with read-only coordinates", () => {
 	expect(html).not.toContain('data-testid="issues-address"');
 });
 
+test("provider label colors are strict and select a readable foreground", () => {
+	expect(
+		issueLabelColors([{ name: "bug", color: "#FFFFFF", textColor: "#000000" }], ["bug"]),
+	).toEqual({
+		bug: { background: "#FFFFFF", foreground: "#000000" },
+	});
+	expect(issueLabelColors([{ name: "bug", color: "rgb(1, 2, 3)" }], ["bug"])).toEqual({});
+	expect(issueLabelColors([{ name: "other", color: "#000000" }], ["bug"])).toEqual({});
+	expect(labelTextColor("#777777", "#777777")).toBe("#000000");
+	expect(labelTextColor("#000000", "#FFFFFF")).toBe("#FFFFFF");
+});
+
+test("issue disclosure preferences isolate identities and reject invalid records", () => {
+	const identity = {
+		endpoint: "http://localhost:24242",
+		instanceUrl: "https://gitlab.example/group",
+		projectId: "local-project",
+		remoteProjectId: "73",
+	};
+	const key = issueDisclosureKey(identity);
+	const values = new Map<string, string>();
+	const storage = {
+		getItem: (name: string) => values.get(name) ?? null,
+		setItem: (name: string, value: string) => values.set(name, value),
+	};
+	expect(readIssueDisclosure(storage, key)).toEqual({
+		backlog: true,
+		"in-progress": true,
+		"in-review": true,
+		closed: true,
+	});
+	writeIssueDisclosure(storage, key, {
+		backlog: false,
+		"in-progress": true,
+		"in-review": false,
+		closed: true,
+	});
+	expect(readIssueDisclosure(storage, key)).toEqual({
+		backlog: false,
+		"in-progress": true,
+		"in-review": false,
+		closed: true,
+	});
+	expect(readIssueDisclosure(storage, `${key}:other`)).toEqual({
+		backlog: true,
+		"in-progress": true,
+		"in-review": true,
+		closed: true,
+	});
+	values.set(key, "{}");
+	expect(readIssueDisclosure(storage, key)).toEqual({
+		backlog: true,
+		"in-progress": true,
+		"in-review": true,
+		closed: true,
+	});
+	const throwing = {
+		getItem: () => {
+			throw new Error();
+		},
+		setItem: () => {
+			throw new Error();
+		},
+	};
+	expect(readIssueDisclosure(throwing, key).closed).toBe(true);
+	expect(() =>
+		writeIssueDisclosure(throwing, key, {
+			backlog: false,
+			"in-progress": true,
+			"in-review": true,
+			closed: true,
+		}),
+	).not.toThrow();
+});
+
 test("issue groups show stages while cards preserve labels without a duplicate stage row", () => {
 	const issues: IssueSummary[] = [
 		...(["backlog", "in-progress", "in-review", "closed"] as const).map((stage) => ({
@@ -719,19 +799,27 @@ test("issue groups show stages while cards preserve labels without a duplicate s
 		})),
 		{ ...summary, reference: { ...summary.reference, number: 99 }, title: "No labels", labels: [] },
 	];
-	const html = renderIssues({ issues });
+	const html = renderIssues({
+		issues,
+		initialDisclosure: { backlog: false, "in-progress": true, "in-review": true, closed: true },
+	});
 	for (const stage of ["backlog", "in-progress", "in-review", "closed"] as const) {
 		const label = text(`issues.stage.${stage}`);
 		expect(html).toContain(`aria-label="${label}"`);
-		expect(html).toContain(`>${label} · ${stage === "backlog" ? 2 : 1}</h3>`);
-		expect(html).toContain(`workflow::${stage} · blocked`);
+		expect(html).toContain(`${label} · ${stage === "backlog" ? 2 : 1}</button>`);
+		expect(html).toContain(`workflow::${stage}`);
+		expect(html).toContain(stage === "backlog" ? 'aria-expanded="false"' : 'aria-expanded="true"');
 	}
+	expect(html).toMatch(/aria-expanded="false"[^>]*data-testid="issue-stage-backlog"/);
 	expect(html).toContain("No labels");
 	expect(html).toContain('rel="noopener noreferrer"');
+	expect(html).toContain('aria-expanded="true"');
+	expect(html).toContain("aria-controls=");
+	expect(html).toContain('data-testid="issue-label"');
 	const cards = [...html.matchAll(/<article\b[^>]*>(.*?)<\/article>/g)];
 	expect(cards).toHaveLength(5);
 	for (const [index, card] of cards.entries()) {
-		expect(card[1]?.match(/<p\b/g)?.length ?? 0).toBe(index === 1 ? 0 : 1);
+		expect(card[1]?.match(/data-testid="issue-label"/g)?.length ?? 0).toBe(index === 1 ? 0 : 2);
 	}
 	expect(html).not.toContain("Implement");
 });
@@ -754,6 +842,26 @@ function renderAssociation(
 		),
 	);
 }
+
+test("stage disclosures keep counts visible and empty sections addressable", () => {
+	const empty = renderIssues({ issues: [{ ...summary, stage: "in-review", labels: [] }] });
+	expect(empty).toContain('data-testid="issue-stage-backlog"');
+	expect(empty).toMatch(/aria-label="Collapse Backlog issues"/);
+	expect(empty).toMatch(/aria-expanded="true"/);
+	expect(empty).toMatch(/aria-controls="[^"]+-closed"/);
+	expect(empty).toContain("Closed · 0</button>");
+	expect(empty).toContain('id="_R_0_-closed"');
+});
+
+test("collapsing a group does not alter issue progress or preview state", () => {
+	const html = renderIssues({
+		issues: [inProgress],
+		actionPending: true,
+		actionProgress: { issue: issueKey(inProgress), action: "implement", phase: "starting" },
+	});
+	expect(html).toContain('data-testid="issue-action-progress"');
+	expect(html).toContain('id="_R_0_-in-progress"');
+});
 
 test("dual entry: only gestures that adopt an existing repository offer the association", () => {
 	expect(shouldPromptAssociation("open")).toBe(true);

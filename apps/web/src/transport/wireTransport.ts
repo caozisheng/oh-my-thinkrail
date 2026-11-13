@@ -47,9 +47,13 @@ import { currentLocale } from "@thinkrail/locales/react";
 import { isChatsContainer, isConnectedGeneration, useAppStore } from "../store";
 import { githubStarToast } from "./githubStar";
 import { createPiEventBatcher, shouldFlushPiEventsBefore } from "./piEventBatcher";
-import { WsTransport } from "./transport";
+import { inferUrl, WsTransport } from "./transport";
 
 let transport: WsTransport | null = null;
+
+export function transportEndpointIdentity(): string {
+	return transport?.endpointIdentity() ?? inferUrl();
+}
 
 export function supportsHostUpdateRun(protocolVersion: number | null): boolean {
 	return protocolVersion !== null && protocolVersion >= HOST_UPDATE_RUN_PROTOCOL_VERSION;

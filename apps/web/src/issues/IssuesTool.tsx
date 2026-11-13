@@ -16,7 +16,13 @@ import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
 import { selectIssueRepositoryProjects, useAppStore } from "../store";
-import { getTransport, wsErrorCode } from "../transport";
+import { getTransport, transportEndpointIdentity, wsErrorCode } from "../transport";
+import {
+	expandedIssueDisclosure,
+	issueDisclosureKey,
+	readIssueDisclosure,
+	writeIssueDisclosure,
+} from "./disclosure";
 import type { IssuePreview } from "./IssueBody";
 import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
 import { IssuesPanel } from "./IssuesPanel";
@@ -123,6 +129,31 @@ export function IssuesTool({
 	const actionLock = useRef(false);
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}:${trusted}`;
 	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
+	const disclosureIdentity = snapshot?.connection
+		? issueDisclosureKey({
+				endpoint: transportEndpointIdentity(),
+				instanceUrl: snapshot.connection.instanceUrl,
+				projectId,
+				remoteProjectId: snapshot.connection.remoteProjectId,
+			})
+		: null;
+	const [disclosureState, setDisclosureState] = useState<{
+		key: string | null;
+		value: ReturnType<typeof expandedIssueDisclosure>;
+	}>(() => ({ key: null, value: expandedIssueDisclosure() }));
+	useEffect(() => {
+		if (!disclosureIdentity) {
+			setDisclosureState({ key: null, value: expandedIssueDisclosure() });
+			return;
+		}
+		let value: ReturnType<typeof expandedIssueDisclosure>;
+		try {
+			value = readIssueDisclosure(window.localStorage, disclosureIdentity);
+		} catch {
+			value = expandedIssueDisclosure();
+		}
+		setDisclosureState({ key: disclosureIdentity, value });
+	}, [disclosureIdentity]);
 	const requestSequence = useRef(0);
 	const previewSequence = useRef(0);
 	const [preview, setPreview] = useState<IssuePreview | null>(null);
@@ -451,6 +482,16 @@ export function IssuesTool({
 				key={`${identity}:${active?.connection?.connected === true}`}
 				previewSupported={previewSupported}
 				preview={activePreview}
+				initialDisclosure={
+					disclosureState.key === disclosureIdentity
+						? disclosureState.value
+						: expandedIssueDisclosure()
+				}
+				onDisclosureChange={(value) => {
+					if (!disclosureIdentity || disclosureState.key !== disclosureIdentity) return;
+					setDisclosureState({ key: disclosureIdentity, value });
+					writeIssueDisclosure(window.localStorage, disclosureIdentity, value);
+				}}
 				onTogglePreview={(issue) => {
 					void togglePreview(issue);
 				}}

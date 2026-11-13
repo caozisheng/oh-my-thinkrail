@@ -94,9 +94,18 @@ function repository(project: string | number): { key: string; base: string } {
 				: pathWithNamespace(project);
 	return { key, base: /^\d+$/.test(key) ? `/repositories/${key}` : `/repos/${key}` };
 }
-function labels(value: unknown): string[] {
+function labels(value: unknown): Pick<IssueRecord, "labels" | "labelColors"> {
 	if (!Array.isArray(value)) invalid();
-	return value.map((label) => (typeof label === "string" ? label : text(record(label).name)));
+	const labelColors: NonNullable<IssueRecord["labelColors"]> = [];
+	const names = value.map((label) => {
+		if (typeof label === "string") return label;
+		const item = record(label);
+		const name = text(item.name);
+		if (typeof item.color === "string" && /^[a-fA-F0-9]{6}$/.test(item.color))
+			labelColors.push({ name, color: `#${item.color.toUpperCase()}` });
+		return name;
+	});
+	return { labels: names, ...(labelColors.length ? { labelColors } : {}) };
 }
 /** Pull requests share the issues endpoint; a record carrying `pull_request` is not an Issue. */
 function issue(value: unknown): IssueRecord | null {
@@ -108,7 +117,7 @@ function issue(value: unknown): IssueRecord | null {
 		title: text(v.title),
 		description: v.body === null ? "" : text(v.body),
 		state: v.state === "open" ? "opened" : "closed",
-		labels: labels(v.labels),
+		...labels(v.labels),
 		updatedAt: timestamp(v.updated_at),
 	};
 }
