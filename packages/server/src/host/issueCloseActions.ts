@@ -75,7 +75,8 @@ export interface IssueCloseActionOptions {
 	access(
 		binding: IssueSessionAssociation,
 	): Promise<{ remote: Pick<IssueDeliveryRemote, "issue" | "closeIssue">; guard(): void }>;
-	verifyAnswer(sessionId: string, payload: IssueClosePayload, toolCallId: string): Promise<void>;
+	verifyAnswer?(sessionId: string, payload: IssueClosePayload, toolCallId: string): Promise<void>;
+	authorize?(sessionId: string, payload: IssueClosePayload, authorization: unknown): Promise<void>;
 	journal: IssueConfirmationStore;
 }
 export function createIssueCloseActions(options: IssueCloseActionOptions) {
@@ -108,13 +109,24 @@ export function createIssueCloseActions(options: IssueCloseActionOptions) {
 		const stored = await options.journal.prepare(sessionId, input.operationId, payload);
 		return { digest: stored.digest, questions: issueCloseQuestions(payload) };
 	}
-	async function execute(sessionId: string, operationId: string, toolCallId: string) {
+	async function execute(
+		sessionId: string,
+		operationId: string,
+		toolCallId: string,
+		authorization?: unknown,
+	) {
 		const stored = await options.journal.get(sessionId, operationId);
 		if (!stored || !payloadValid(stored.payload)) blocked("operation-missing-or-invalid");
 		const payload = stored.payload;
 		if (payload.sessionId !== sessionId || payload.operationId !== operationId)
 			blocked("operation-binding-mismatch");
-		await options.verifyAnswer(sessionId, payload, toolCallId);
+		if (authorization !== undefined) {
+			if (!options.authorize) blocked("policy-authorization-unavailable");
+			await options.authorize(sessionId, payload, authorization);
+		} else {
+			if (!options.verifyAnswer) blocked("confirmation-unavailable");
+			await options.verifyAnswer(sessionId, payload, toolCallId);
+		}
 		let checked: Awaited<ReturnType<typeof preflight>> | undefined;
 		let dispatched = false;
 		async function preflight() {
@@ -171,10 +183,15 @@ export function createIssueCloseActions(options: IssueCloseActionOptions) {
 		const { remote, guard } = await options.access(binding);
 		const closed = await remote.issue(payload.reference.number);
 		guard();
-		if (closed.iid !== payload.reference.number || closed.state !== "closed" || !closed.closedAt)
+		if (closed.iid !== payload.reference.number || closed.state !== "closed")
 			blocked("closed-result-not-observed");
+		if (!closed.closedAt) blocked("closed-timestamp-unavailable");
 		return {
-			evidence: { state: closed.state, closedAt: closed.closedAt, updatedAt: closed.updatedAt },
+			evidence: {
+				state: closed.state,
+				closedAt: closed.closedAt,
+				updatedAt: closed.updatedAt,
+			},
 			result: {
 				stage: "close-issue",
 				issue: payload.reference,

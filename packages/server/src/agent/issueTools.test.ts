@@ -183,6 +183,46 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	expect(result.details).toMatchObject({ status: "uncertain", nextAction: "inspect remote" });
 });
 
+test("lifecycle policy preparation and advancement reach the Issue host", async () => {
+	const { host, calls } = fakeHost();
+	host.prepareConfirmation = async (...args) => {
+		calls.push(args);
+		return { questions: { questions: [] } };
+	};
+	setIssueToolHost(host);
+	const tool = createIssuePrepareConfirmationTool();
+	const authorize = {
+		operationId: "policy",
+		action: "authorize-automation",
+		projectId: "repo",
+		title: "Lifecycle update",
+		body: "Details",
+		mode: "auto-merge",
+		closeIssue: false,
+	};
+	const advance = {
+		operationId: "policy",
+		action: "advance-automation",
+		projectId: "repo",
+	} as const;
+	const preflight = {
+		operationId: "pairing",
+		action: "preflight-dependencies",
+		projectId: "downstream",
+	} as const;
+	expect(Check(tool.parameters, authorize)).toBe(true);
+	expect(Check(tool.parameters, advance)).toBe(true);
+	expect(Check(tool.parameters, preflight)).toBe(true);
+	await tool.execute("call", authorize as never, undefined, undefined, ctx);
+	await tool.execute("call", advance, undefined, undefined, ctx);
+	await tool.execute("call", preflight, undefined, undefined, ctx);
+	expect(calls).toEqual([
+		["own-session", authorize],
+		["own-session", advance],
+		["own-session", preflight],
+	]);
+});
+
 test("continuation execution forwards the real receipt and continuation identity", async () => {
 	const { host } = fakeHost();
 	const calls: unknown[][] = [];

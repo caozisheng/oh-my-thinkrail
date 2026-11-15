@@ -52,6 +52,24 @@ export interface IssueMergeRequest {
 	squashCommitSha: string | null;
 	headPipeline: { id: number | null; sha: string | null; status: string } | null;
 }
+export interface IssueMergeEvidence {
+	iid: number;
+	targetBranch: string;
+	mergeCommitSha: string | null;
+	targetSha: string | null;
+	relationship: "ancestor" | "not-ancestor" | "unknown";
+	snapshot: string;
+}
+export interface IssueMergeReadiness {
+	iid: number;
+	expectedSha: string;
+	actualSha: string | null;
+	sourceBranch: string;
+	targetBranch: string;
+	checks: "passed" | "pending" | "failed" | "unknown";
+	approval: "satisfied" | "required" | "unknown";
+	snapshot: string;
+}
 export interface IssueUpdate {
 	description?: string;
 	labels?: string[];
@@ -78,6 +96,12 @@ export interface IssueRemote {
 export interface IssueDeliveryRemote extends IssueRemote {
 	updateIssue(iid: number, input: IssueUpdate): Promise<IssueRecord>;
 	closeIssue(iid: number): Promise<IssueRecord>;
+	mergeRequest(iid: number): Promise<IssueMergeRequest>;
+	mergeReadiness?(iid: number, expectedSha: string): Promise<IssueMergeReadiness>;
+	setMergeRequestReady(iid: number): Promise<IssueMergeRequest>;
+	mergeMergeRequest(iid: number, sha: string): Promise<IssueMergeRequest>;
+	mergeEvidence?(iid: number): Promise<IssueMergeEvidence>;
+	targetBranchSha(branch: string): Promise<string>;
 	mergeRequests(sourceBranch: string): Promise<IssueMergeRequest[]>;
 	createMergeRequest(input: IssueMergeRequestInput): Promise<IssueMergeRequest>;
 }
@@ -88,5 +112,4 @@ export interface IssueWorkflowRemote extends IssueDeliveryRemote {
 	labelEvents(iid: number): Promise<IssueLabelEvent[]>;
 	member(userId: number): Promise<IssueMember>;
 	mergeRequest(iid: number): Promise<IssueMergeRequest>;
-	mergeMergeRequest(iid: number, sha: string): Promise<IssueMergeRequest>;
 }

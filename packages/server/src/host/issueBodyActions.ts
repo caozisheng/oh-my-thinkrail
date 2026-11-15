@@ -147,7 +147,11 @@ export function createIssueBodyActions(options: IssueBodyActionOptions) {
 		const { remote, guard } = await options.access(binding);
 		const current = await remote.issue(payload.reference.number);
 		guard();
-		if (current.iid !== payload.reference.number || current.description !== payload.after)
+		if (
+			current.iid !== payload.reference.number ||
+			current.description !== payload.after ||
+			current.labels.toSorted().join("\0") !== payload.before.labels.toSorted().join("\0")
+		)
 			blocked("recovery-result-not-observed");
 		return {
 			evidence: {

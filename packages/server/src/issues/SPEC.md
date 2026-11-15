@@ -161,8 +161,13 @@ Malformed delivery responses fail with sanitized `RESOURCE_UNAVAILABLE`, without
   GitHub sends the native boolean `draft` flag when supplied and validates the returned flag;
   GitLab uses the CE-compatible `Draft:` title prefix for `draft: true`, preserving existing
   `Draft:`/`WIP:` prefixes. Omission preserves ordinary creation behavior.
-  `mergeMergeRequest(iid, sha)` sends a full SHA as GitLab's merge precondition; it does not schedule
-  auto-merge, authorize the workflow, prove approval/CI, or close the issue itself.
+  `mergeMergeRequest(iid, sha)` sends a full SHA as GitLab's merge precondition; after the single
+  write it performs bounded MR readback. `mergeEvidence(iid)` reads fresh MR detail, the exact named
+  target branch SHA from the verified project/repository, and compares the provider-reported merge
+  commit against that target. It returns the exact observed merge/target SHAs and an explicit
+  `ancestor`, `not-ancestor`, or `unknown` relationship with a snapshot. Merged state or target SHA
+  alone is never ancestry evidence; missing merge SHA or incomplete compare evidence remains
+  unknown. This does not authorize merge, prove approval/CI, or close the issue itself.
 - Writes are single-attempt with bounded response reads and no automatic retries. Non-2xx responses,
   transport failures, deadlines, token echoes, and malformed success bodies (including mismatched
   resource iids) yield static, sanitized `RESOURCE_UNAVAILABLE` errors without causes. An error does

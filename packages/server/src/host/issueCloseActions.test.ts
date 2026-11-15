@@ -68,6 +68,9 @@ function fixture() {
 		changeIssue: () => {
 			issue = { ...issue, labels: ["team", "workflow::in-review"] };
 		},
+		clearCloseTimestamp: () => {
+			issue.closedAt = null;
+		},
 		failReadback: (value: boolean) => {
 			failReadback = value;
 		},
@@ -96,6 +99,33 @@ test("Issue close is separately confirmed and returns observed closedAt", async 
 			state: "closed",
 			closedAt: "2026-11-13T08:00:00Z",
 		});
+		expect(f.writes).toBe(1);
+	} finally {
+		f.dispose();
+	}
+});
+
+test("a closed Issue without timestamp stays uncertain and is never closed twice", async () => {
+	const f = fixture();
+	try {
+		await f.actions.prepare("session", {
+			operationId: "close",
+			reason: "Accepted",
+			acceptance: "All verified",
+		});
+		f.approve();
+		f.failReadback(true);
+		await expect(f.actions.execute("session", "close", "answer")).rejects.toThrow(
+			"uncertain_intent",
+		);
+		f.failReadback(false);
+		const stored = await f.journal.get("session", "close");
+		if (!stored) throw new Error("missing operation");
+		f.clearCloseTimestamp();
+		await expect(f.actions.observe("session", stored.payload as IssueClosePayload)).rejects.toThrow(
+			"closed-timestamp-unavailable",
+		);
+		expect((await f.journal.inspect("session", "close")).status).toBe("uncertain");
 		expect(f.writes).toBe(1);
 	} finally {
 		f.dispose();

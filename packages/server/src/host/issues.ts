@@ -38,6 +38,11 @@ import {
 	type IssueAgentSessionHostOptions,
 } from "./issueAgentSessions";
 import {
+	createIssueAutomationActions,
+	type IssueAutomationPolicy,
+	policyQuestions,
+} from "./issueAutomationActions";
+import {
 	createIssueBodyActions,
 	type IssueBodyPayload,
 	issueBodyQuestions,
@@ -58,6 +63,17 @@ import {
 	type DeliveryPayload,
 	deliveryQuestions,
 } from "./issueDeliveryActions";
+import { createIssueDeliveryStateActions } from "./issueDeliveryStateActions";
+import { createIssueDeliveryStatePersistence } from "./issueDeliveryStatePersistence";
+import {
+	createIssueMergeRequestActions,
+	type MergeRequestPayload,
+	mergeRequestQuestions,
+} from "./issueMergeRequestActions";
+import {
+	createIssueRepositoryDependencies,
+	type IssueDependencyRepository,
+} from "./issueRepositoryDependencies";
 import {
 	createIssueSessionStore,
 	type IssueSessionAssociation,
@@ -70,6 +86,14 @@ import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 function invalid(): never {
 	throw new CodedError("RANGE_INVALID", "Invalid Issue request.");
+}
+function invalidReceipt(): never {
+	const error = new CodedError(
+		"ISSUE_CONFIRMATION_BLOCKED",
+		"Issue confirmation blocked (confirmation_mismatch). Submit the exact Looks right receipt for the displayed card.",
+	);
+	Object.assign(error, { reason: "confirmation_mismatch" });
+	throw error;
 }
 function record(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -336,13 +360,14 @@ export function createIssuesHost(
 		const ws = getWorkspace(repository.workspaceId);
 		if (ws.projectId !== repository.projectId || ws.worktreePath !== repository.path) invalid();
 		project(repository.projectId, true);
-		const [head, branch, status] = await Promise.all([
+		const [head, tree, branch, status] = await Promise.all([
 			gitAsync(repository.path, ["rev-parse", "HEAD"]),
+			gitAsync(repository.path, ["rev-parse", "HEAD^{tree}"]),
 			gitAsync(repository.path, ["symbolic-ref", "--short", "HEAD"]),
 			gitAsync(repository.path, ["status", "--porcelain"]),
 		]);
-		if (!head.ok || !branch.ok || !status.ok) invalid();
-		return { sha: head.out, branch: branch.out, dirty: status.out !== "" };
+		if (!head.ok || !tree.ok || !branch.ok || !status.ok) invalid();
+		return { sha: head.out, tree: tree.out, branch: branch.out, dirty: status.out !== "" };
 	}
 	async function participatingRepositories(binding: IssueSessionAssociation) {
 		const contexts = await actions.implementationContexts({
@@ -380,7 +405,7 @@ export function createIssuesHost(
 					ws.worktreePath,
 				);
 				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, stageQuestions(payload)))
-					invalid();
+					invalidReceipt();
 			},
 		});
 	}
@@ -409,11 +434,17 @@ export function createIssuesHost(
 					ws.worktreePath,
 				);
 				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueBodyQuestions(payload)))
-					invalid();
+					invalidReceipt();
 			},
 		});
 	}
-	function closes() {
+	function closes(
+		authorize?: (
+			sessionId: string,
+			payload: IssueClosePayload,
+			authorization: unknown,
+		) => Promise<void>,
+	) {
 		return createIssueCloseActions({
 			binding: confirmationBinding,
 			journal: journal(),
@@ -429,6 +460,7 @@ export function createIssuesHost(
 					},
 				};
 			},
+			...(authorize ? { authorize } : {}),
 			verifyAnswer: async (sessionId, payload, toolCallId) => {
 				const binding = await confirmationBinding(sessionId);
 				const ws = getWorkspace(binding.workspaceId);
@@ -438,11 +470,86 @@ export function createIssuesHost(
 					ws.worktreePath,
 				);
 				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueCloseQuestions(payload)))
-					invalid();
+					invalidReceipt();
 			},
 		});
 	}
-	function deliveries() {
+	function deliveryStateActions() {
+		const path = join(root, "issue-delivery-state");
+		privateDirectory(root);
+		privateDirectory(path);
+		return createIssueDeliveryStateActions({
+			binding: confirmationBinding,
+			repositories: participatingRepositories,
+			checkout: trustedCheckout,
+			store: createIssueDeliveryStatePersistence(path),
+		});
+	}
+	async function repositoryAccess(binding: IssueSessionAssociation, repositoryProjectId: string) {
+		project(binding.projectId, true);
+		const repositoryProject = project(repositoryProjectId, true);
+		await restore(repositoryProjectId, true);
+		const issues = await service();
+		const connection = issues.connection(repositoryProjectId);
+		if (!connection?.connected) invalid();
+		const provider = issueProviderForInstanceUrl(connection.instanceUrl);
+		if (!provider) invalid();
+		const remote = issues.deliveryFor(repositoryProjectId, {
+			provider,
+			instanceUrl: connection.instanceUrl,
+			projectId: connection.remoteProjectId,
+			number: 1,
+		});
+		return {
+			remote,
+			guard: () => {
+				project(binding.projectId, true);
+				if (project(repositoryProjectId, true).path !== repositoryProject.path) invalid();
+				if (
+					issues.deliveryFor(repositoryProjectId, {
+						provider,
+						instanceUrl: connection.instanceUrl,
+						projectId: connection.remoteProjectId,
+						number: 1,
+					}) !== remote
+				)
+					invalid();
+			},
+		};
+	}
+	function mergeRequests(
+		authorize?: (
+			sessionId: string,
+			payload: MergeRequestPayload,
+			authorization: unknown,
+		) => Promise<void>,
+	) {
+		return createIssueMergeRequestActions({
+			binding: confirmationBinding,
+			journal: journal(),
+			repositories: participatingRepositories,
+			access: repositoryAccess,
+			...(authorize ? { authorize } : {}),
+			verifyAnswer: async (sessionId, payload, toolCallId) => {
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, mergeRequestQuestions(payload)))
+					invalidReceipt();
+			},
+		});
+	}
+	function deliveries(
+		authorize?: (
+			sessionId: string,
+			payload: DeliveryPayload,
+			authorization: unknown,
+		) => Promise<void>,
+	) {
 		return createIssueDeliveryActions({
 			binding: confirmationBinding,
 			journal: journal(),
@@ -511,6 +618,7 @@ export function createIssuesHost(
 				if (!pushed.ok)
 					throw new CodedError("RESOURCE_UNAVAILABLE", "Issue push requires reconciliation.");
 			},
+			...(authorize ? { authorize } : {}),
 			verifyAnswer: async (sessionId, payload, toolCallId) => {
 				const binding = await confirmationBinding(sessionId);
 				const ws = getWorkspace(binding.workspaceId);
@@ -520,22 +628,260 @@ export function createIssuesHost(
 					ws.worktreePath,
 				);
 				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, deliveryQuestions(payload)))
-					invalid();
+					invalidReceipt();
 			},
 		});
 	}
-	type ConfirmationPayload = DeliveryPayload | StagePayload | IssueBodyPayload | IssueClosePayload;
+	async function repositoryDependencyGate(sessionId: string) {
+		const binding = await confirmationBinding(sessionId);
+		const contexts = await participatingRepositories(binding);
+		const state = await deliveryStateActions().read(sessionId);
+		if (contexts.length !== state.repositories.length)
+			throw new CodedError(
+				"ISSUE_DELIVERY_REFUSED",
+				"Repository dependency preflight refused (delivery-state-incomplete).",
+			);
+		const repositories: IssueDependencyRepository[] = await Promise.all(
+			state.repositories.map(async (saved) => {
+				const context = contexts.find((item) => item.projectId === saved.projectId);
+				if (!context) invalid();
+				const access = await repositoryAccess(binding, saved.projectId);
+				const issues = await service();
+				const connection = issues.connection(saved.projectId);
+				if (!connection?.connected) invalid();
+				const provider = issueProviderForInstanceUrl(connection.instanceUrl);
+				const metadata = await access.remote.project();
+				access.guard();
+				if (!provider || provider !== access.remote.provider) invalid();
+				return {
+					projectId: saved.projectId,
+					provider,
+					instanceUrl: connection.instanceUrl,
+					remoteProjectId: metadata.id,
+					targetBranch: saved.targetBranch,
+					...(saved.mergeRequest ? { mergeRequestIid: saved.mergeRequest.iid } : {}),
+					dependsOn: [...saved.dependsOn],
+				};
+			}),
+		);
+		return createIssueRepositoryDependencies({
+			repositories,
+			remoteFor: async (repository) => {
+				const issues = await service();
+				const connection = issues.connection(repository.projectId);
+				if (
+					!connection?.connected ||
+					connection.instanceUrl !== repository.instanceUrl ||
+					issueProviderForInstanceUrl(connection.instanceUrl) !== repository.provider ||
+					String(connection.remoteProjectId) !== String(repository.remoteProjectId)
+				)
+					invalid();
+				const access = await repositoryAccess(binding, repository.projectId);
+				const remote = access.remote;
+				if (remote.provider !== repository.provider) invalid();
+				const metadata = await remote.project();
+				access.guard();
+				if (metadata.id !== repository.remoteProjectId) invalid();
+				return {
+					provider: remote.provider,
+					instanceUrl: repository.instanceUrl,
+					remote: {
+						project: async () => {
+							const value = await remote.project();
+							access.guard();
+							return value;
+						},
+						mergeRequest: async (iid) => {
+							const value = await remote.mergeRequest(iid);
+							access.guard();
+							return value;
+						},
+						targetBranchSha: async (branch) => {
+							const value = await remote.targetBranchSha(branch);
+							access.guard();
+							return value;
+						},
+						...(remote.mergeEvidence
+							? {
+									mergeEvidence: async (iid: number) => {
+										const value = await remote.mergeEvidence?.(iid);
+										access.guard();
+										if (!value) invalid();
+										return value;
+									},
+								}
+							: {}),
+					},
+				};
+			},
+			checkout: async (projectId) => {
+				const context = contexts.find((item) => item.projectId === projectId);
+				if (!context) invalid();
+				const checkout = await trustedCheckout(context);
+				return { sha: checkout.sha, tree: checkout.tree };
+			},
+			compatibility: async () => {
+				throw new CodedError(
+					"ISSUE_DELIVERY_REFUSED",
+					"Repository dependency preflight refused (host-compatibility-evidence-unavailable).",
+				);
+			},
+		});
+	}
+	function automationActions() {
+		let authorize: (sessionId: string, payload: unknown, token: unknown) => Promise<void> =
+			async () => invalid();
+		async function selectedRepository(
+			sessionId: string,
+			policyRepository: IssueAutomationPolicy["repository"],
+		) {
+			const binding = await confirmationBinding(sessionId);
+			const repository = (await participatingRepositories(binding)).find(
+				(item) => item.projectId === policyRepository.projectId,
+			);
+			if (!repository || repository.workspaceId !== policyRepository.workspaceId) invalid();
+			return { binding, repository };
+		}
+		const actions = createIssueAutomationActions({
+			journal: journal(),
+			binding: confirmationBinding,
+			repositories: async ({ sessionId }) => {
+				const binding = await confirmationBinding(sessionId);
+				const contexts = await participatingRepositories(binding);
+				const state = await deliveryStateActions().read(sessionId);
+				return Promise.all(
+					contexts.map(async (repository) => {
+						const saved = state.repositories.find(
+							(entry) => entry.projectId === repository.projectId,
+						);
+						const access = await repositoryAccess(binding, repository.projectId);
+						const metadata = await access.remote.project();
+						access.guard();
+						const checkout = await trustedCheckout(repository);
+						return {
+							projectId: repository.projectId,
+							workspaceId: repository.workspaceId,
+							sourceBranch: checkout.branch,
+							targetBranch: saved?.targetBranch ?? "",
+							repositoryId: String(metadata.id),
+						};
+					}),
+				);
+			},
+			verifyAnswer: async (sessionId, payload, toolCallId) => {
+				const binding = await confirmationBinding(sessionId);
+				const ws = getWorkspace(binding.workspaceId);
+				const { messages } = await getSessionMessages(
+					sessionId,
+					binding.workspaceId,
+					ws.worktreePath,
+				);
+				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, policyQuestions(payload)))
+					invalidReceipt();
+			},
+			checkout: async (sessionId, policyRepository) => {
+				const { repository } = await selectedRepository(sessionId, policyRepository);
+				const checkout = await trustedCheckout(repository);
+				return { sha: checkout.sha, branch: checkout.branch };
+			},
+			isAncestor: async (sessionId, policyRepository, ancestor, descendant) => {
+				const { repository } = await selectedRepository(sessionId, policyRepository);
+				return (
+					await gitAsync(repository.path, ["merge-base", "--is-ancestor", ancestor, descendant])
+				).ok;
+			},
+			delivery: {
+				prepare: (sessionId, input) => deliveries().prepare(sessionId, input),
+				execute: (sessionId, operationId, toolCallId, authorization) =>
+					deliveries(authorize).execute(sessionId, operationId, toolCallId, authorization),
+			},
+			mergeRequest: {
+				prepare: (sessionId, action, input) => mergeRequests().prepare(sessionId, action, input),
+				execute: (sessionId, operationId, toolCallId, authorization) =>
+					mergeRequests(authorize).execute(sessionId, operationId, toolCallId, authorization),
+			},
+			close: {
+				prepare: (sessionId, input) => closes().prepare(sessionId, input),
+				execute: (sessionId, operationId, toolCallId, authorization) =>
+					closes(authorize).execute(sessionId, operationId, toolCallId, authorization),
+			},
+			request: async (sessionId, projectId, iid) => {
+				const binding = await confirmationBinding(sessionId);
+				const access = await repositoryAccess(binding, projectId);
+				const request = await access.remote.mergeRequest(iid);
+				access.guard();
+				return request;
+			},
+			readiness: async (sessionId, projectId, iid, sha) => {
+				const binding = await confirmationBinding(sessionId);
+				const access = await repositoryAccess(binding, projectId);
+				const facts = access.remote.mergeReadiness
+					? await access.remote.mergeReadiness(iid, sha)
+					: null;
+				access.guard();
+				return facts?.expectedSha === sha && facts.actualSha === sha
+					? { checks: facts.checks, approval: facts.approval }
+					: { checks: "unknown", approval: "unknown" };
+			},
+			deliveryState: (sessionId) => deliveryStateActions().read(sessionId),
+			dependencyPreflight: async (sessionId, projectId) =>
+				(await repositoryDependencyGate(sessionId)).preflight(projectId),
+			observeMerged: async (sessionId, policy, iid) => {
+				const { binding } = await selectedRepository(sessionId, policy.repository);
+				const access = await repositoryAccess(binding, policy.repository.projectId);
+				if (!access.remote.mergeEvidence) return false;
+				const [project, request, evidence] = await Promise.all([
+					access.remote.project(),
+					access.remote.mergeRequest(iid),
+					access.remote.mergeEvidence(iid),
+				]);
+				access.guard();
+				const targetSha = await access.remote.targetBranchSha(policy.repository.targetBranch);
+				access.guard();
+				return (
+					request.state === "merged" &&
+					request.sourceBranch === policy.repository.sourceBranch &&
+					request.targetBranch === policy.repository.targetBranch &&
+					request.sourceProjectId === project.id &&
+					request.targetProjectId === project.id &&
+					evidence.iid === iid &&
+					evidence.relationship === "ancestor" &&
+					evidence.targetBranch === policy.repository.targetBranch &&
+					evidence.mergeCommitSha === request.mergeCommitSha &&
+					evidence.targetSha === targetSha
+				);
+			},
+		});
+		authorize = actions.authorizeChild;
+		return actions;
+	}
+	type ConfirmationPayload =
+		| DeliveryPayload
+		| StagePayload
+		| IssueBodyPayload
+		| IssueClosePayload
+		| MergeRequestPayload
+		| IssueAutomationPolicy;
 	function questionsFor(payload: ConfirmationPayload) {
+		if (payload.stage === "issue-automation-policy") return policyQuestions(payload);
+		if (payload.stage === "ready-mr" || payload.stage === "merge-mr")
+			return mergeRequestQuestions(payload);
 		if (payload.stage === "delivery") return deliveryQuestions(payload);
 		if (payload.stage === "update-body") return issueBodyQuestions(payload);
 		if (payload.stage === "close-issue") return issueCloseQuestions(payload);
-		return stageQuestions(payload);
+		if (payload.stage === "design" || payload.stage === "implementation")
+			return stageQuestions(payload);
+		invalid();
 	}
 	function observeOperation(sessionId: string, payload: ConfirmationPayload) {
+		if (payload.stage === "ready-mr" || payload.stage === "merge-mr")
+			return mergeRequests().observe(sessionId, payload);
 		if (payload.stage === "delivery") return deliveries().observe(sessionId, payload);
 		if (payload.stage === "update-body") return bodies().observe(sessionId, payload);
 		if (payload.stage === "close-issue") return closes().observe(sessionId, payload);
-		return stages().observe(sessionId, payload);
+		if (payload.stage === "design" || payload.stage === "implementation")
+			return stages().observe(sessionId, payload);
+		invalid();
 	}
 	function recoveryQuestions(operationId: string, candidateDigest: string, candidate: unknown) {
 		return {
@@ -565,13 +911,78 @@ export function createIssuesHost(
 				binding.workspaceId,
 				ws.worktreePath,
 			);
-			if (!isTrustedQuestionnaireReceipt(messages, toolCallId, questions)) invalid();
+			if (!isTrustedQuestionnaireReceipt(messages, toolCallId, questions)) invalidReceipt();
 		},
 	});
 	const agentSessions = createIssueAgentSessionHost({
 		service,
 		prepareConfirmation: async (sessionId, params) => {
 			const request = structuredClone(params);
+			if (request.action === "read-delivery-state") {
+				if (
+					request.inspect ||
+					request.continueDespiteChecks ||
+					request.recovery ||
+					request.report ||
+					request.projectId ||
+					request.title ||
+					request.body !== undefined ||
+					request.targetBranch ||
+					request.deliveryState !== undefined ||
+					request.expectedRevision !== undefined
+				)
+					invalid();
+				await confirmationBinding(sessionId);
+				return deliveryStateActions().read(sessionId);
+			}
+			if (request.action === "record-delivery-state") {
+				if (
+					request.inspect ||
+					request.continueDespiteChecks ||
+					request.recovery ||
+					request.report ||
+					request.projectId ||
+					request.title ||
+					request.body !== undefined ||
+					request.targetBranch ||
+					!Number.isSafeInteger(request.expectedRevision) ||
+					request.deliveryState === undefined
+				)
+					invalid();
+				await confirmationBinding(sessionId);
+				return deliveryStateActions().record(
+					sessionId,
+					request.expectedRevision as number,
+					request.deliveryState,
+				);
+			}
+			if (request.action === "preflight-dependencies") {
+				if (!exact(request, ["operationId", "action", "projectId"]) || !request.projectId)
+					invalid();
+				await confirmationBinding(sessionId);
+				try {
+					const receipt = await (await repositoryDependencyGate(sessionId)).preflight(
+						request.projectId,
+					);
+					return { status: "passed", operationId: request.operationId, receipt };
+				} catch (error) {
+					if (!(error instanceof CodedError) || error.code !== "ISSUE_DELIVERY_REFUSED")
+						throw error;
+					return {
+						status: "blocked",
+						operationId: request.operationId,
+						reason: error.message,
+						nextAction:
+							"Do not update the downstream pairing. Resolve the named target/SHA mismatch or provide a host-verifiable cross-repository compatibility check, then preflight again.",
+					};
+				}
+			}
+			if (request.action === "advance-automation") {
+				if (!exact(request, ["operationId", "action", "projectId"]) || !request.projectId)
+					invalid();
+				await confirmationBinding(sessionId);
+				return automationActions().advance(sessionId, request.operationId, request.projectId);
+			}
 			return continuations.run(
 				sessionId,
 				request.operationId,
@@ -643,7 +1054,9 @@ export function createIssuesHost(
 								payload?.stage === "design" ||
 								payload?.stage === "implementation" ||
 								payload?.stage === "update-body" ||
-								payload?.stage === "close-issue"
+								payload?.stage === "close-issue" ||
+								payload?.stage === "merge-mr" ||
+								payload?.stage === "issue-automation-policy"
 							)
 								questions = questionsFor(payload);
 						} catch {
@@ -663,6 +1076,60 @@ export function createIssuesHost(
 										? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
 										: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
 						};
+					}
+					if (input.action === "authorize-automation") {
+						const keys = [
+							"operationId",
+							"action",
+							"projectId",
+							"title",
+							"body",
+							"mode",
+							"closeIssue",
+							...(input.closeIssue === true ? ["reason", "acceptance"] : []),
+						];
+						if (
+							!exact(input, keys) ||
+							!input.projectId ||
+							typeof input.title !== "string" ||
+							typeof input.body !== "string" ||
+							!["draft", "auto-merge", "manual"].includes(String(input.mode)) ||
+							typeof input.closeIssue !== "boolean" ||
+							(input.closeIssue && (!input.reason || !input.acceptance))
+						)
+							invalid();
+						return automationActions().prepare(sessionId, {
+							operationId: input.operationId,
+							projectId: input.projectId,
+							title: input.title,
+							body: input.body,
+							mode: input.mode as IssueAutomationPolicy["mode"],
+							closeIssue: input.closeIssue,
+							reason: input.reason ?? "",
+							acceptance: input.acceptance ?? "",
+						});
+					}
+					if (input.action === "ready-mr" || input.action === "merge-mr") {
+						if (
+							input.report ||
+							!input.projectId ||
+							!Number.isSafeInteger(input.mergeRequestId) ||
+							!input.targetBranch ||
+							!input.expectedSha ||
+							input.body !== undefined ||
+							input.title ||
+							input.deliveryState !== undefined ||
+							input.expectedRevision !== undefined ||
+							input.continueDespiteChecks
+						)
+							invalid();
+						return mergeRequests().prepare(sessionId, input.action, {
+							operationId: input.operationId,
+							projectId: input.projectId,
+							iid: input.mergeRequestId as number,
+							targetBranch: input.targetBranch,
+							expectedSha: input.expectedSha,
+						});
 					}
 					if (input.action === "close-issue") {
 						if (
@@ -799,13 +1266,19 @@ export function createIssuesHost(
 				const stored = await store.get(sessionId, operationId);
 				if (!stored) invalid();
 				const stage = (stored.payload as { stage: string }).stage;
-				return stage === "delivery"
-					? deliveries().execute(sessionId, operationId, toolCallId)
-					: stage === "update-body"
-						? bodies().execute(sessionId, operationId, toolCallId)
-						: stage === "close-issue"
-							? closes().execute(sessionId, operationId, toolCallId)
-							: stages().execute(sessionId, operationId, toolCallId);
+				return stage === "issue-automation-policy"
+					? automationActions().execute(sessionId, operationId, toolCallId)
+					: stage === "ready-mr" || stage === "merge-mr"
+						? mergeRequests().execute(sessionId, operationId, toolCallId)
+						: stage === "delivery"
+							? deliveries().execute(sessionId, operationId, toolCallId)
+							: stage === "update-body"
+								? bodies().execute(sessionId, operationId, toolCallId)
+								: stage === "close-issue"
+									? closes().execute(sessionId, operationId, toolCallId)
+									: stage === "design" || stage === "implementation"
+										? stages().execute(sessionId, operationId, toolCallId)
+										: invalid();
 			});
 		},
 		store: issueSessionStore,
