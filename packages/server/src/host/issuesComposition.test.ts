@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { saveProjects, saveWorkspaces } from "../persistence";
 import { createIssueSessionStore } from "./issueSessions";
 import { createIssuesHost } from "./issues";
+import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
 let dir: string;
 let repositoryPath: string;
@@ -31,9 +32,10 @@ let snapshot: { sha: string; tree: string; branch: string };
 
 beforeEach(async () => {
 	dir = mkdtempSync(join(tmpdir(), "issues-composition-"));
-	repositoryPath = join(dir, "repo");
-	mkdirSync(repositoryPath, { recursive: true });
-	const run = (...args: string[]) => Bun.spawnSync(["git", "-C", repositoryPath, ...args]);
+	const primaryPath = join(dir, "repo");
+	repositoryPath = join(primaryPath, ".worktrees", "issue-7");
+	mkdirSync(join(primaryPath, ".worktrees"), { recursive: true });
+	const run = (...args: string[]) => Bun.spawnSync(["git", "-C", primaryPath, ...args]);
 	if (!run("init", "-q").success) throw new Error("git init failed");
 	if (
 		!run(
@@ -48,13 +50,16 @@ beforeEach(async () => {
 		).success
 	)
 		throw new Error("git commit failed");
+	if (!run("worktree", "add", "-b", "issue-7-composition", repositoryPath, "HEAD").success)
+		throw new Error("Issue worktree creation failed");
+	const worktree = (...args: string[]) => Bun.spawnSync(["git", "-C", repositoryPath, ...args]);
 	snapshot = {
-		sha: run("rev-parse", "HEAD").stdout.toString().trim(),
-		tree: run("rev-parse", "HEAD^{tree}").stdout.toString().trim(),
-		branch: run("branch", "--show-current").stdout.toString().trim(),
+		sha: worktree("rev-parse", "HEAD").stdout.toString().trim(),
+		tree: worktree("rev-parse", "HEAD^{tree}").stdout.toString().trim(),
+		branch: worktree("branch", "--show-current").stdout.toString().trim(),
 	};
 	saveProjects([
-		{ id: "repo", name: "repo", slug: "repo", path: repositoryPath, lastOpened: 1, trusted: true },
+		{ id: "repo", name: "repo", slug: "repo", path: primaryPath, lastOpened: 1, trusted: true },
 	]);
 	saveWorkspaces([
 		{
@@ -76,6 +81,21 @@ beforeEach(async () => {
 		stage: "implementation",
 		locale: "en",
 	});
+	const issueWorkspacePath = join(dir, "issue-workspaces");
+	mkdirSync(issueWorkspacePath, { recursive: true });
+	const issueWorkspaceStore = createIssueWorkspacePersistence(issueWorkspacePath);
+	await issueWorkspaceStore.withLaunch("repo", reference, (ports) =>
+		ports.save(JSON.stringify(["repo", "gitlab", reference.instanceUrl, "42", 7]), {
+			projectId: "repo",
+			reference,
+			implementation: {
+				state: "completed",
+				workspaceId: "workspace",
+				worktreePath: repositoryPath,
+				branch: snapshot.branch,
+			},
+		}),
+	);
 	host = createIssuesHost({
 		dir,
 		credentials,
