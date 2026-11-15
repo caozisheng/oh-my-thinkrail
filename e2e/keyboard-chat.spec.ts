@@ -392,6 +392,7 @@ test("a nested step of the newest group is revealed itself when its row comes ba
 		const group = activityRow(page);
 		await expect(group).toBeFocused();
 		await page.keyboard.press("ArrowRight");
+		await waitForScrollStability(chatScroll);
 		await page.keyboard.press("ArrowRight");
 		const first = item(page, "read-1");
 		await expect(first).toBeFocused();
