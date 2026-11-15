@@ -14,6 +14,18 @@ Use before reporting implementation completion or preparing delivery, and after 
 4. Classify every check as passed, failed, skipped, not run, not applicable or environment-limited.
 5. After any commit, merge, conflict resolution or dependency/lockfile change, assess which evidence is invalid and rerun affected checks.
 
+## E2E state isolation
+
+Before running local E2E, use the repository's public harness and verify that its host data directory
+and tool HOME point to its disposable directory under the operating-system temporary directory. The
+standard harness sets `THINKRAIL_DATA_DIR` and tool-home variables from `E2E_DATA_DIR`; repository
+and workspace records such as `projects.json` and `workspaces.json` must stay in that isolated data
+directory, never in the developer's real `~/.oh-my-thinkrail`.
+
+Prefer this isolation over backing up and restoring personal state files. Do not launch a custom host
+or override these paths to a real user directory for E2E. If the harness cannot establish isolation,
+stop before the run and fix the test setup; do not fall back to the personal state directory.
+
 ## Host capabilities
 
 The current workflow may run local checks and read CI/provider facts, but validation is not presumed durable host evidence unless an explicit host record says so. Do not claim a lockfile/frozen install validates a committed tree when uncommitted dependency changes were present.
