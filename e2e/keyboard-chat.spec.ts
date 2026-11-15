@@ -396,6 +396,7 @@ test("a nested step of the newest group is revealed itself when its row comes ba
 		const first = item(page, "read-1");
 		await expect(first).toBeFocused();
 		await waitForScrollStability(chatScroll);
+		await expect(first).toBeInViewport();
 
 		await moveMouseToChatViewport(page, chatScroll);
 		for (let notch = 0; notch < 60 && (await first.count()) > 0; notch += 1) {
