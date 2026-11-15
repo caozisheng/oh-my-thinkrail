@@ -7,6 +7,7 @@ import {
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
+	ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	type WsParams,
 	type WsResult,
 } from "@thinkrail/contracts";
@@ -18,6 +19,66 @@ import * as issues from "./issues";
 function authFloored(method: string): boolean {
 	return method === "issues.connect" || method === "issues.repositoryAddress";
 }
+
+test("Issue recovery RPCs are floored at v134 before invoking host actions", async () => {
+	const target = {
+		projectId: "local-project",
+		reference: {
+			provider: "gitlab" as const,
+			instanceUrl: "https://gitlab.example",
+			projectId: "42",
+			number: 9,
+		},
+	};
+	const recovery = spyOn(issues, "issuesImplementationRecovery").mockResolvedValue({
+		status: "unavailable",
+		reason: "missing-record",
+		baseCommit: null,
+		members: [],
+		generation: 0,
+		snapshot: "a".repeat(64),
+		requiresRestart: false,
+	});
+	const result = spyOn(issues, "issuesRecoverImplementation").mockResolvedValue({
+		workspaceId: "ws",
+		sessionId: "session",
+	});
+	const history = spyOn(issues.issuesHost, "implementationHistory").mockResolvedValue({
+		entries: [],
+	});
+	try {
+		for (const method of [
+			"issues.implementationRecovery",
+			"issues.recoverImplementation",
+			"issues.implementationHistory",
+		] as const)
+			await expect(
+				handleRequest(
+					method,
+					method === "issues.recoverImplementation"
+						? { ...target, locale: "en", snapshot: "a".repeat(64), restart: false }
+						: target,
+					{
+						clientKey: "recovery-floor",
+						protocolVersion: ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION - 1,
+					},
+				),
+			).rejects.toMatchObject({ code: "RESOURCE_UNAVAILABLE" });
+		expect(recovery).not.toHaveBeenCalled();
+		expect(result).not.toHaveBeenCalled();
+		expect(history).not.toHaveBeenCalled();
+		await expect(
+			handleRequest("issues.implementationRecovery", target, {
+				clientKey: "recovery-current",
+				protocolVersion: ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
+			}),
+		).resolves.toMatchObject({ status: "unavailable" });
+	} finally {
+		recovery.mockRestore();
+		result.mockRestore();
+		history.mockRestore();
+	}
+});
 
 test("Issue dispatch rejects old protocols before delegation and permits current and in-process callers", async () => {
 	const connection = {

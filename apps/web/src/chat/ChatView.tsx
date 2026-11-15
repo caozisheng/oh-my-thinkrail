@@ -697,6 +697,7 @@ export default function ChatView({
 		void removeQueued(kind, index).catch(() => {});
 
 	const onAbort = () => {
+		composerRef.current?.refocus();
 		void getTransport()
 			.request("session.abort", { sessionId, restoreQueue: true })
 			.then(({ restoredQueue }) => {
@@ -786,9 +787,15 @@ export default function ChatView({
 	);
 	useEffect(() => {
 		if (!composerFocusRequested) return;
-		useAppStore.getState().clearComposerFocusRequest();
+		const store = useAppStore.getState();
+		const dismissHistory = store.composerFocusRequest?.dismissHistory === true;
+		store.clearComposerFocusRequest();
+		if (dismissHistory) {
+			if (store.historyOpenRequest?.sessionId === sessionId) store.clearHistoryOpen();
+			if (historyOverlayOpen) closeHistory();
+		}
 		composerRef.current?.refocus();
-	}, [composerFocusRequested]);
+	}, [composerFocusRequested, sessionId, historyOverlayOpen, closeHistory]);
 
 	const widgetEntries = Object.entries(extUiWidget);
 	const disableNotice = () => {
@@ -874,6 +881,9 @@ export default function ChatView({
 							<ResourcesInspector
 								open={inspectorOpen}
 								onOpenChange={setInspectorOpen}
+								onEscapeKeyDown={(event) => {
+									if (composerRef.current?.ownsEscape()) event.preventDefault();
+								}}
 								onCloseAutoFocus={returnToResources}
 								{...resources.groups}
 								now={now}
@@ -1011,6 +1021,8 @@ export default function ChatView({
 					onSelectThinking={onSelectThinking}
 					onSubmit={onSubmit}
 					onAbort={onAbort}
+					onEnterTranscript={() => transcriptRef.current?.focusNewest()}
+					onScrollTranscript={(direction) => transcriptRef.current?.scrollPage(direction)}
 					onHistoryOpen={onHistoryOpen}
 					onPickTemplate={onPickTemplate}
 					onManageTemplates={onManageTemplates}

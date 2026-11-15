@@ -167,10 +167,20 @@ live association and reports only the list failure, because a later read cannot 
 follows. Local request sequencing and effect cleanup reject late replies after project, connection or
 request changes; `loadIssueSnapshot` also stops between its own awaits once it is stale.
 
-Summaries group all four stages — backlog, in-progress, in-review and closed. Group headings carry the
-stage, count and accessible name; cards do not repeat a system-stage row or reserve space for it.
-Cards show labels verbatim
-(including blocked labels), and open http(s)-only external title links with noopener/noreferrer. The read DTO carries no separate blocked
+Summaries group all four stages — backlog, in-progress, in-review and closed. Each stage header is an
+independent accessible disclosure button; its localized name, count and expanded state remain visible
+when folded, including for empty groups. All groups start expanded. Fold state is stored locally by
+transport endpoint, provider instance, local project id and remote repository id; it survives refreshes,
+remounts and app restarts without including transient connection generation. Unavailable or malformed
+storage falls back to expanded state for the current mount. Folding hides rows only and does not cancel
+actions or previews.
+
+Cards show labels verbatim (including blocked labels) as wrapping capsules. Optional `labelColors`
+metadata is matched by exact label name and never participates in stage decisions. Only normalized RGB
+hex colors are applied through the capsule's private CSS custom properties; supplied text colors must
+meet 4.5:1 contrast, otherwise the renderer chooses black or white. Missing or malformed colors use
+semantic neutral styling. Older hosts that omit metadata remain supported. Cards open http(s)-only
+external title links with noopener/noreferrer. The read DTO carries no separate blocked
 reason, so none is invented.
 
 An optional generic `onOpenIssue(reference)` callback delegates navigation/session/workspace creation
@@ -187,7 +197,9 @@ offer none at all. Each control carries its own host floor: design needs the v10
 (`supportsIssueImplementation`), and a missing floor leaves that control visible and disabled with
 `needs-newer-host` instead of hiding it. MR creation and merge are not implemented in the
 product and therefore appear nowhere: no control, menu entry, label or disabled placeholder is invented for
-them. The two controls sit **on the issue title row, right-aligned**, as icon-only `IconButton`s (quill = run
+them. For v134 recovery, implementation first performs a read-only diagnosis. An eligible wholly missing generation opens a localized confirmation showing member checkout evidence and exact commit starts; a missing prior branch requires a second explicit restart confirmation. Cancel performs no mutation. Execution submits the frozen snapshot and locale, then navigates to the newly returned session. A separate read-only history dialog requests the recorded generation list and renders transcript availability by session id; unavailable transcripts are explicit and never represented as an empty conversation.
+
+The two controls sit **on the issue title row, right-aligned**, as icon-only `IconButton`s (quill = run
 design, code box = run implementation) inside their own `TooltipProvider`; each keeps its action name as
 `aria-label`, a blocked one names its reason in the same tooltip plus `data-reason`, and a completed one is
 rendered with the shared `soft-primary` button variant and `data-done`. A pending action disables every control. Its own card immediately shows a localized, live status with a reduced-motion-aware spinner: starting design/implementation during the RPC, then opening chat while awaiting shell navigation. No percentage, cancellation or automatic retry is implied. Progress and failures are local to the issue and current project/connection request; refresh, disconnect and identity changes invalidate old continuations, including navigation after workspace loading. Navigation failure is distinct from host launch failure; without a navigation callback, a valid launch simply ends waiting. Dispatch goes through the one
@@ -295,7 +307,8 @@ stale action error when a fresh error-free snapshot lands. It also pins safe lin
 errors, reconnect coordinates rendered read-only, read-only summaries, the non-local HTTP risk
 checkbox in both required and acknowledged states, and the supplied `onOpenIssue` launch control.
 
-`issues.test.ts` pins the stage Actions surface too: the v104 launch, v108 implementation and v109 localized startup floors
+`issues.test.ts` pins label color validation/contrast, disclosure counts and ARIA relationships, empty
+sections, local preference identity/storage failures, and the stage Actions surface too: the v104 launch, v108 implementation and v109 localized startup floors
 (`supportsIssueActions`/`supportsIssueImplementation`), the pure `issueActions` matrix across every stage,
 closed issues and each host floor separately (an old host keeps design and disables only implementation),
 catalog text for every action and reason, the rendered row of controls on an in-progress issue with no

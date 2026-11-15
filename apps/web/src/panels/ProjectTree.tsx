@@ -66,15 +66,18 @@ import { type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useSta
 import { useShallow } from "zustand/react/shallow";
 import { AttentionDot } from "@/components/AttentionDot";
 import { RunningIcon } from "@/components/RunningIcon";
-import { copyText, platformShortcutLabel } from "@/lib";
+import { keybindingKeys, TREE_KEYS } from "@/keybindings";
+import { copyText } from "@/lib";
 import { useNow } from "../components/useNow";
 import {
+	isChatWorkspace,
 	isDefaultWorkspace,
 	isExternalWorkspace,
 	SETTLED_SHELF_MORE,
 	SETTLED_SHELF_PAGE,
 	type SettledReason,
 	selectActiveProjectGroupId,
+	selectActiveWorkspace,
 	selectActiveWorkspaceProjectId,
 	selectAutoSettledCounts,
 	selectProjectIsRunning,
@@ -109,6 +112,13 @@ import {
 	settledShelfNoticed,
 } from "./settledShelfNotice";
 import { startProjectSetupChat } from "./setupPrompt";
+import {
+	Tree,
+	treeRowControlProps,
+	treeRowKey,
+	treeToggleProps,
+	useTreeItem,
+} from "./treeNavigation";
 import { useOpenProject } from "./useOpenProject";
 import { WorkspaceCreationRow } from "./WorkspaceCreation";
 import {
@@ -159,7 +169,7 @@ function groupCreationsByProject(
 	return grouped;
 }
 
-export function ProjectTree() {
+export function ProjectTree({ nativeShortcuts = false }: { nativeShortcuts?: boolean }) {
 	const t = useT();
 	const projects = useAppStore(useShallow(selectRepoProjects));
 	const recentProjects = useAppStore((s) => s.recentProjects);
@@ -188,6 +198,10 @@ export function ProjectTree() {
 	const editors = useEditors();
 
 	const expandedProjectIds = useAppStore((s) => s.expandedProjectIds);
+	const activeIsChat = useAppStore((s) => {
+		const active = selectActiveWorkspace(s);
+		return active !== null && isChatWorkspace(active);
+	});
 	const collapsedRailNodes = useAppStore((s) => s.collapsedRailNodes);
 	const activeGroupId = useAppStore(selectActiveProjectGroupId);
 	const supportsGroupHome = useAppStore(selectSupportsProjectGroupHome);
@@ -353,6 +367,8 @@ export function ProjectTree() {
 		return (
 			<li
 				key={project.id}
+				role="none"
+				data-focus-row={project.id}
 				data-testid="project-group"
 				data-group-path={inGroup?.path}
 				data-dragging={draggingProjectId === project.id || undefined}
@@ -394,6 +410,7 @@ export function ProjectTree() {
 					onRegisterNameButton={(element) => registerProjectNameButton(project.id, element)}
 					onRestoreFocus={() => focusProjectNameOrAdd(project.id)}
 					canMove={canMove}
+					newWorkspaceShortcut={keybindingKeys("workspace.new", { browser: !nativeShortcuts })}
 					onMoveUp={previous ? () => void move(project, previous.id, "before", true) : undefined}
 					onMoveDown={next ? () => void move(project, next.id, "after", true) : undefined}
 				/>
@@ -410,6 +427,7 @@ export function ProjectTree() {
 								<WorkspaceRow
 									key={ws.id}
 									workspace={ws}
+									level={settled ? 3 : 2}
 									settled={settled}
 									now={now}
 									isActive={activeWorkspaceId === ws.id}
@@ -438,7 +456,7 @@ export function ProjectTree() {
 					/>
 				)}
 				{isExpanded && (creationsByProject[project.id]?.length ?? 0) > 0 && (
-					<ul aria-label={t("panels.workspaceCreation.listLabel")}>
+					<ul role="none" data-focus-list={`workspaces:${project.id}`}>
 						{creationsByProject[project.id]?.map((creation) => (
 							<WorkspaceCreationRow
 								key={creation.id}
@@ -518,7 +536,12 @@ export function ProjectTree() {
 				onDragCancel={() => setDraggingProjectId(null)}
 				onDragEnd={dropProject}
 			>
-				<ul className="flex flex-col">
+				<Tree
+					label={t("panels.projectTree.title")}
+					focusList="projects"
+					className="flex flex-col"
+					focusDefault={!activeIsChat}
+				>
 					{projectRailEntries(projects).map((entry) =>
 						entry.kind === "project" ? (
 							renderProject(entry.project)
@@ -552,7 +575,7 @@ export function ProjectTree() {
 							</li>
 						),
 					)}
-				</ul>
+				</Tree>
 				<DragOverlay dropAnimation={null}>
 					{draggingProject ? (
 						<div className="flex max-w-224 items-center gap-4 rounded-sm border border-primary bg-container-elevated-bg px-8 py-4 tr-text-ui text-text-default shadow-lg">
@@ -661,19 +684,36 @@ function SettledPartition({
 	renderRow: (workspace: Workspace, settled: SettledReason | null) => ReactNode;
 }) {
 	const t = useT();
+	const settledCount = partition.settled.length;
+	const shown = partition.settled.slice(0, shelfShown);
+	const remaining = settledCount - shown.length;
+	const shelfLabel = t("panels.projectTree.settledShelf", { total: settledCount });
+	const moreLabel = t("panels.projectTree.showMore", {
+		count: Math.min(SETTLED_SHELF_MORE, remaining),
+	});
+	const shelfItem = useTreeItem(`settled:${projectId}`, {
+		level: 2,
+		label: shelfLabel,
+		expanded: shelfExpanded,
+		toggles: true,
+	});
+	const moreItem = useTreeItem(`settled-more:${projectId}`, { level: 3, label: moreLabel });
 	if (!enabled) {
 		return (
-			<ul className="mt-2 flex flex-col gap-2 motion-safe:animate-reveal">
+			<ul
+				role="none"
+				data-focus-list={`workspaces:${projectId}`}
+				className="mt-2 flex flex-col gap-2 motion-safe:animate-reveal"
+			>
 				{partition.live.map((workspace) => renderRow(workspace, null))}
 			</ul>
 		);
 	}
-	const settledCount = partition.settled.length;
-	const shown = partition.settled.slice(0, shelfShown);
-	const remaining = settledCount - shown.length;
 	return (
 		<div className="mt-2 flex flex-col gap-2 motion-safe:animate-reveal">
-			<ul className="flex flex-col gap-2">{partition.live.map((ws) => renderRow(ws, null))}</ul>
+			<ul role="none" data-focus-list={`workspaces:${projectId}`} className="flex flex-col gap-2">
+				{partition.live.map((ws) => renderRow(ws, null))}
+			</ul>
 			<div
 				data-testid="settled-shelf"
 				data-count={settledCount}
@@ -682,10 +722,11 @@ function SettledPartition({
 			>
 				<button
 					type="button"
+					{...shelfItem}
 					data-testid="settled-shelf-toggle"
-					aria-expanded={shelfExpanded}
+					data-focus-fallback={`settled:${projectId}`}
 					onClick={() => useAppStore.getState().toggleSettledShelf(projectId)}
-					className="flex min-w-0 flex-1 items-center gap-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
+					className="-mx-4 -my-2 flex min-w-0 flex-1 items-center gap-4 rounded-sm px-4 py-2 text-left focus-visible:focus-ring-inset"
 				>
 					{shelfExpanded ? (
 						<ChevronDown className="size-14 shrink-0" />
@@ -693,33 +734,35 @@ function SettledPartition({
 						<ChevronRight className="size-14 shrink-0" />
 					)}
 					<RiCheckboxCircleLine className="size-14 shrink-0" />
-					<span className="truncate">
-						{t("panels.projectTree.settledShelf", { total: settledCount })}
-					</span>
+					<span className="truncate">{shelfLabel}</span>
 				</button>
 			</div>
 			{shelfExpanded ? (
-				<ul className="flex flex-col gap-2" data-testid="settled-shelf-rows">
+				<ul
+					role="none"
+					className="flex flex-col gap-2"
+					data-testid="settled-shelf-rows"
+					data-focus-list={`settled:${projectId}`}
+				>
 					{settledCount === 0 ? (
-						<li className="py-4 pr-4 pl-24 text-text-subtle tr-text-metadata">
+						<li role="none" className="py-4 pr-4 pl-24 text-text-subtle tr-text-metadata">
 							{t("panels.projectTree.nothingSettled")}
 						</li>
 					) : (
 						shown.map((row) => renderRow(row.workspace, row.reason))
 					)}
 					{remaining > 0 ? (
-						<li>
+						<li role="none">
 							<button
 								type="button"
+								{...moreItem}
 								data-testid="settled-shelf-more"
 								onClick={() =>
 									useAppStore.getState().showMoreSettled(projectId, shelfShown + SETTLED_SHELF_MORE)
 								}
-								className="flex h-panel-row w-full items-center rounded-sm pl-24 text-left text-text-subtle tr-text-metadata hover:bg-control-bg-hovered hover:text-text-muted"
+								className="flex h-panel-row w-full items-center rounded-sm pl-24 text-left text-text-subtle tr-text-metadata hover:bg-control-bg-hovered hover:text-text-muted focus-visible:focus-ring-inset"
 							>
-								{t("panels.projectTree.showMore", {
-									count: Math.min(SETTLED_SHELF_MORE, remaining),
-								})}
+								{moreLabel}
 							</button>
 						</li>
 					) : null}
@@ -753,6 +796,7 @@ function ProjectRow({
 	canMove,
 	onMoveUp,
 	onMoveDown,
+	newWorkspaceShortcut,
 }: {
 	inGroup?: boolean;
 	label?: string;
@@ -777,6 +821,7 @@ function ProjectRow({
 	canMove: boolean;
 	onMoveUp: (() => void) | undefined;
 	onMoveDown: (() => void) | undefined;
+	newWorkspaceShortcut: readonly string[];
 }) {
 	const t = useT();
 	const draggable = canMove && (onMoveUp !== undefined || onMoveDown !== undefined);
@@ -785,10 +830,6 @@ function ProjectRow({
 		listeners: dragListeners,
 		setNodeRef: setDragNode,
 	} = useDraggable({ id: project.id, disabled: !draggable });
-	const createWorkspaceLabel = t("panels.projectTree.createWorkspaceShortcut", {
-		shortcut: platformShortcutLabel("N"),
-		altShortcut: platformShortcutLabel("N", { alt: true }),
-	});
 	const Chevron = isExpanded ? ChevronDown : ChevronRight;
 	const Folder = inGroup
 		? isSelected
@@ -810,6 +851,12 @@ function ProjectRow({
 		target: project,
 		canRename,
 		onRename: (_target, name) => onRename(name),
+	});
+	const treeItem = useTreeItem(project.id, {
+		level: 1,
+		label: project.name,
+		expanded: isExpanded,
+		selected: isSelected,
 	});
 	const folderIcon = isRunning ? (
 		<RunningIcon className={`size-14 ${isSelected ? "text-primary" : "text-text-muted"}`} />
@@ -836,6 +883,7 @@ function ProjectRow({
 			<button
 				type="button"
 				data-testid="project-expand"
+				{...treeToggleProps(project.id)}
 				aria-label={
 					isExpanded
 						? t("panels.projectTree.collapseProject")
@@ -871,17 +919,34 @@ function ProjectRow({
 					data-testid="project-name"
 					aria-describedby={draggable ? dragAttributes["aria-describedby"] : undefined}
 					aria-keyshortcuts={canMove ? "Alt+Shift+ArrowUp Alt+Shift+ArrowDown" : undefined}
+					{...treeItem}
+					data-focus-row-primary
 					{...(draggable ? dragListeners : {})}
 					onKeyDown={(event) => {
+						const key = treeRowKey(event);
+						if (key === "menu") {
+							setMenuOpen(true);
+							return;
+						}
+						if (key === "rename" && canRename) {
+							event.preventDefault();
+							startRename();
+							return;
+						}
+						if (key === "delete") {
+							event.preventDefault();
+							setConfirmOpen(true);
+							return;
+						}
 						if (!canMove) return;
-						if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+						if (event.key !== TREE_KEYS.moveUp.key && event.key !== TREE_KEYS.moveDown.key) return;
 						if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
 						event.preventDefault();
-						(event.key === "ArrowUp" ? onMoveUp : onMoveDown)?.();
+						(event.key === TREE_KEYS.moveUp.key ? onMoveUp : onMoveDown)?.();
 					}}
 					onClick={onSelect}
 					title={title}
-					className="flex min-w-0 flex-1 items-center gap-4 text-left"
+					className="-mx-4 -my-2 flex min-w-0 flex-1 items-center gap-4 rounded-sm px-4 py-2 text-left focus-visible:focus-ring-inset"
 				>
 					{folderIcon}
 					<span
@@ -907,11 +972,13 @@ function ProjectRow({
 			)}
 			<IconButton
 				icon={Plus}
-				label={createWorkspaceLabel}
+				label={t("panels.projectTree.createWorkspace")}
+				tooltipShortcut={newWorkspaceShortcut}
 				variant="ghost"
 				size="s"
 				className="shrink-0"
 				data-testid="add-workspace"
+				{...treeRowControlProps}
 				onClick={onAddWorkspace}
 			/>
 		</div>
@@ -1104,6 +1171,7 @@ function GroupHeader({
 
 function WorkspaceRow({
 	workspace,
+	level,
 	settled,
 	now,
 	isActive,
@@ -1124,6 +1192,7 @@ function WorkspaceRow({
 	onMarkUnread,
 }: {
 	workspace: Workspace;
+	level: number;
 	settled: SettledReason | null;
 	now: number;
 	isActive: boolean;
@@ -1144,6 +1213,7 @@ function WorkspaceRow({
 	onMarkUnread: () => void;
 }) {
 	const t = useT();
+	const treeItem = useTreeItem(workspace.id, { level, label: workspace.name, selected: isActive });
 	const isDefault = isDefaultWorkspace(workspace);
 	const isExternal = isExternalWorkspace(workspace);
 	const isSettled = settled !== null;
@@ -1270,6 +1340,7 @@ function WorkspaceRow({
 			<fieldset
 				aria-label={displayName}
 				data-testid="workspace-item"
+				data-focus-row={workspace.id}
 				data-row
 				data-active={isActive}
 				data-kind={workspace.kind ?? "worktree"}
@@ -1301,7 +1372,21 @@ function WorkspaceRow({
 						</span>
 					</div>
 				) : (
-					<button type="button" onClick={onSelect} className={identityClass}>
+					<button
+						type="button"
+						{...treeItem}
+						data-focus-row-primary
+						onClick={onSelect}
+						onKeyDown={(event) => {
+							const key = treeRowKey(event);
+							if (key === "menu") setMenuOpen(true);
+							else if (key === "rename" && canRename) startRename();
+							else if (key === "delete" && !isDefault) setConfirmOpen(true);
+							else return;
+							event.preventDefault();
+						}}
+						className={identityClass}
+					>
 						{identityIcon}
 						<span className="flex min-w-0 flex-1 flex-col">
 							<span className="flex min-w-0 items-center gap-4">
@@ -1345,6 +1430,7 @@ function WorkspaceRow({
 						<DropdownMenuContent
 							align="end"
 							data-testid="workspace-actions"
+							{...treeRowControlProps}
 							onCloseAutoFocus={onMenuCloseAutoFocus}
 						>
 							{editors.length > 0 && (

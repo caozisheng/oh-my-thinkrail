@@ -380,6 +380,7 @@ function PlainUserTurn({
 							ref={toggleRef}
 							type="button"
 							data-testid="user-message-toggle"
+							data-chat-item-toggle
 							aria-expanded={expanded}
 							onClick={toggle}
 							className="mt-4 flex items-center gap-4 tr-text-metadata text-text-subtle hover:text-text-default"
@@ -418,6 +419,7 @@ function SkillInvocationCard({
 				ref={toggleRef}
 				type="button"
 				data-testid="skill-invocation-toggle"
+				data-chat-item-toggle
 				aria-expanded={expanded}
 				aria-label={
 					expanded
@@ -425,7 +427,7 @@ function SkillInvocationCard({
 						: t("chat.turn.showSkillInstructions", { skill: invocation.name })
 				}
 				onClick={toggle}
-				className="flex w-full items-center gap-4 px-12 py-8 text-left outline-none transition-colors hover:bg-control-bg-hovered focus-visible:ring-2 focus-visible:ring-primary"
+				className="flex w-full items-center gap-4 px-12 py-8 text-left transition-colors hover:bg-control-bg-hovered focus-visible:focus-ring-inset"
 			>
 				<BookOpen className="size-14 shrink-0 text-text-muted" aria-hidden="true" />
 				<span className="shrink-0 tr-text-ui text-text-muted">{t("chat.turn.skill")}</span>
@@ -678,6 +680,7 @@ function CompactionTurn({
 			<button
 				ref={toggleRef}
 				type="button"
+				data-chat-item-toggle
 				aria-expanded={open}
 				onClick={toggle}
 				className="flex items-center gap-8 text-text-muted tr-text-metadata hover:text-text-default"

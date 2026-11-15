@@ -59,6 +59,7 @@ import {
 	type PromptImagesOwner,
 	usePromptImages,
 } from "./promptImages";
+import { composerTranscriptStep, isEnterTranscriptKey } from "./transcriptNavigation";
 import type { ChatAttachment } from "./types";
 import type { ModelPreferences } from "./useModelPreferences";
 
@@ -77,7 +78,7 @@ const WIDE_ONLY = "@max-md:hidden";
 const COMPACT_ONLY = "@md:hidden";
 
 const SEGMENT =
-	"flex items-center gap-4 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none";
+	"flex items-center gap-4 transition-colors focus-visible:focus-ring disabled:pointer-events-none";
 
 const SEND_PILL = "flex h-28 shrink-0 items-stretch rounded-full transition-colors";
 const SEND_PILL_ARMED = "bg-control-primary-bg text-control-primary-text";
@@ -195,6 +196,8 @@ interface ComposerProps {
 		behavior: SubmitBehavior,
 	) => ComposerSubmitDisposition;
 	onAbort: () => void;
+	onEnterTranscript?: () => void;
+	onScrollTranscript?: (direction: -1 | 1) => void;
 	onHistoryOpen?: () => void;
 	onPickTemplate?: (name: string) => void;
 	onManageTemplates?: () => void;
@@ -209,6 +212,7 @@ export interface ComposerHandle {
 	restoreAttachments: (attachments: ChatAttachment[]) => void;
 	openHistory: () => void;
 	refocus: () => void;
+	ownsEscape: () => boolean;
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
@@ -235,6 +239,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 		onSelectThinking,
 		onSubmit,
 		onAbort,
+		onEnterTranscript,
+		onScrollTranscript,
 		onHistoryOpen,
 		onPickTemplate,
 		onManageTemplates,
@@ -444,6 +450,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 			if (slot) focusSelection(slot.start, slot.end);
 			else focusSelection(caret);
 		},
+		ownsEscape: () =>
+			ref.current !== null &&
+			ref.current === document.activeElement &&
+			(menuOpen || slots !== null),
 	}));
 
 	const submit = (behavior: SubmitBehavior) => {
@@ -497,6 +507,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 			}
 		}
 		if (slashCompletion.handleKeyDown(e)) return;
+		if (onEnterTranscript && isEnterTranscriptKey(e)) {
+			e.preventDefault();
+			const { selectionStart, selectionEnd } = e.currentTarget;
+			const atStart = selectionStart === 0 && selectionEnd === 0;
+			if (composerTranscriptStep(draftNeedsExpansion, atStart) === "enter") onEnterTranscript();
+			else focusSelection(0);
+			return;
+		}
+		if (
+			onScrollTranscript &&
+			(e.key === "PageUp" || e.key === "PageDown") &&
+			!e.altKey &&
+			!e.ctrlKey &&
+			!e.metaKey &&
+			!e.shiftKey
+		) {
+			e.preventDefault();
+			onScrollTranscript(e.key === "PageUp" ? -1 : 1);
+			return;
+		}
 		const recallAt = recallIdxRef.current;
 		if (e.key === "ArrowUp" && (value === "" || recallAt !== null) && recentPrompts.length > 0) {
 			e.preventDefault();
@@ -567,7 +597,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 							type="button"
 							data-testid="mention-item"
 							onClick={() => pickMention(candidate)}
-							className={`flex w-full items-center gap-8 rounded-sm px-8 py-4 text-left tr-text-ui ${index === mentionActiveIndex ? "bg-control-bg-selected text-text-default" : "text-text-muted"}`}
+							className={`flex w-full items-center gap-8 rounded-sm px-8 py-4 text-left tr-text-ui focus-visible:focus-ring-inset ${index === mentionActiveIndex ? "bg-control-bg-selected text-text-default" : "text-text-muted"}`}
 						>
 							{candidate.kind === "dir" ? (
 								<FolderIcon className="size-14 shrink-0" />
@@ -593,7 +623,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 									replaceDraft("");
 									onManageTemplates();
 								}}
-								className="flex w-full items-center gap-8 rounded-sm border-border-default border-t px-8 py-4 text-left text-text-muted tr-text-metadata hover:bg-control-bg-hovered hover:text-text-default"
+								className="flex w-full items-center gap-8 rounded-sm border-border-default border-t px-8 py-4 text-left text-text-muted tr-text-metadata hover:bg-control-bg-hovered hover:text-text-default focus-visible:focus-ring"
 							>
 								<Sparkles className="size-12 shrink-0" />
 								<span className="truncate">{t("chat.composer.noTemplates")}</span>
@@ -632,7 +662,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 					ref={shellRef}
 					data-testid="chat-composer-shell"
 					className={cn(
-						"relative grid grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] items-end gap-x-4 gap-y-4 overflow-hidden rounded-md border border-control-border-default bg-control-bg bg-clip-padding p-4 transition-colors focus-within:border-control-border-active",
+						"relative grid grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] items-end gap-x-4 gap-y-4 overflow-hidden rounded-md border border-control-border-default bg-control-bg bg-clip-padding p-4 transition-colors focus-within:border-control-border-active has-[textarea:focus-visible]:focus-ring",
 						expanded && growthLimit === "half-chat" && "max-h-[50cqh]",
 					)}
 				>
@@ -689,6 +719,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 							ref={ref}
 							data-testid="chat-input"
 							data-dictation-fallback
+							data-focus-default
 							value={value}
 							onScroll={syncBackdropScroll}
 							onChange={(e) => {
@@ -804,7 +835,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 														setSendMenuOpen(false);
 														submit(mode.behavior);
 													}}
-													className="group flex w-full flex-col gap-2 rounded-sm px-8 py-4 text-left hover:bg-control-bg-hovered disabled:pointer-events-none"
+													className="group flex w-full flex-col gap-2 rounded-sm px-8 py-4 text-left hover:bg-control-bg-hovered focus-visible:focus-ring-inset disabled:pointer-events-none"
 												>
 													<span className="flex w-full items-baseline justify-between gap-8">
 														<span className="text-text-default tr-text-ui group-disabled:text-control-disabled-text">

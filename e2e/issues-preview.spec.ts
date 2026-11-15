@@ -69,13 +69,29 @@ for (const provider of ["github", "gitlab"] as const) {
 		await expect(toggles).toHaveCount(2);
 		for (const [index, stage] of ["Backlog", "Closed"].entries()) {
 			const group = page.getByRole("region", { name: stage, exact: true });
-			await expect(group.getByRole("heading")).toHaveText(`${stage} · 1`);
+			const disclosure = group.getByRole("button", { name: `Collapse ${stage} issues` });
+			await expect(disclosure).toContainText(`${stage} · 1`);
+			await expect(disclosure).toHaveAttribute("aria-expanded", "true");
 			const card = group.getByRole("article");
 			await expect(card.getByRole("link")).toHaveText(`#${index + 1} Preview fixture ${index + 1}`);
 			await expect(card.locator(":scope > p")).toHaveCount(0);
 		}
 		await expect(page.getByTestId("issue-body")).toHaveCount(0);
 		expect(reads).toBe(0);
+		const backlog = page.getByRole("region", { name: "Backlog", exact: true });
+		const backlogDisclosure = backlog.getByTestId("issue-stage-backlog");
+		const closed = page.getByRole("region", { name: "Closed", exact: true });
+		const closedDisclosure = closed.getByTestId("issue-stage-closed");
+		await expect(backlogDisclosure).toHaveAccessibleName("Collapse Backlog issues");
+		await backlogDisclosure.click();
+		await expect(backlogDisclosure).toHaveAttribute("aria-expanded", "false");
+		await expect(backlogDisclosure).toHaveAccessibleName("Expand Backlog issues");
+		await expect(backlog.getByRole("article")).toHaveCount(0);
+		await expect(backlogDisclosure).toContainText("1");
+		await expect(closedDisclosure).toHaveAttribute("aria-expanded", "true");
+		await backlogDisclosure.click();
+		await expect(backlogDisclosure).toHaveAttribute("aria-expanded", "true");
+		await expect(backlog.getByRole("article")).toHaveCount(1);
 		await toggles.nth(0).click();
 		await expect(toggles.nth(0)).toHaveAttribute("aria-expanded", "true");
 		await expect(page.getByTestId("issue-body").getByRole("status")).toBeVisible();

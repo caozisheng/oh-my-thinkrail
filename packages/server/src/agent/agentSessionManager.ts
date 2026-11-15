@@ -67,7 +67,7 @@ import {
 	serverExtensions,
 	workspaceFiles,
 } from "../extensions";
-import { displayTranscriptMessages } from "../history";
+import { displaySessionProjection, displayTranscriptMessages } from "../history";
 import { findImageBlock, type ImageBlock, type ImageSource, projectImages } from "../images";
 import { logger } from "../log";
 import {
@@ -2278,6 +2278,20 @@ export const sessionImageSource: ImageSource = {
 	},
 };
 
+export async function readArchivedSessionTranscript(
+	sessionId: string,
+	cwd: string,
+): Promise<TranscriptMessage[] | null> {
+	const info = (await listSessionInfosStrict(cwd)).find(
+		(row) => row.id === sessionId && row.cwd === cwd,
+	);
+	if (!info) return null;
+	const manager = SessionManager.open(info.path);
+	return displaySessionProjection(manager.getEntries(), manager.getLeafId()).messages.filter(
+		(message) => isTranscriptMessageRole(message.role),
+	) as TranscriptMessage[];
+}
+
 export function getSessionMessages(
 	sessionId: string,
 	workspaceId: string,
@@ -3341,6 +3355,13 @@ export async function closeWorkspaceSessions<T>(
 		if (remainingClosures === 0) closingWorkspaces.delete(workspaceId);
 		else closingWorkspaces.set(workspaceId, remainingClosures);
 	}
+}
+
+export function archiveIssueWorkspaceSessions(workspaceId: string, _cwd: string): Promise<void> {
+	return closeWorkspaceSessions(workspaceId, async () => {
+		removeWorkspaceDelegation(workspaceId);
+		removeWorkspaceResourceHistory(workspaceId);
+	});
 }
 
 export function removeWorkspaceSessions(workspaceId: string, cwd?: string): Promise<void> {

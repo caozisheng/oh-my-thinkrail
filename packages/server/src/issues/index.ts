@@ -50,6 +50,7 @@ export type {
 } from "./workflow";
 export { createIssueWorkflow } from "./workflow";
 export type {
+	IssueImplementationHistory,
 	IssueWorkspaceLayout,
 	IssueWorkspaceOptions,
 	IssueWorkspaceRecord,

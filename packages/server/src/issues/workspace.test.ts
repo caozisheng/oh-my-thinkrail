@@ -39,6 +39,7 @@ async function fixture() {
 	let failCreate = false;
 	let failSession = false;
 	let saves = 0;
+	let workspaceSequence = 0;
 	const options: IssueWorkspaceOptions = {
 		projectId: "local",
 		projectPath: async () => root,
@@ -61,7 +62,7 @@ async function fixture() {
 			if (failCreate) throw new Error("uncertain create");
 			await mkdir(path, { recursive: true });
 			const ws: WorkspaceHandle = {
-				id: `ws-${workspaces.length}`,
+				id: `ws-${workspaceSequence++}`,
 				projectId,
 				worktreePath: path,
 				branch,
@@ -109,6 +110,96 @@ async function fixture() {
 		},
 	};
 }
+
+test("explicit recovery preserves old history and creates a fresh session from the branch commit", async () => {
+	const f = await fixture();
+	const first = await f.coordinator().implementation(ref);
+	const old = required(f.workspaces[0]);
+	await rm(old.worktreePath, { recursive: true });
+	f.workspaces.length = 0;
+	f.trees.length = 0;
+	f.options.recoveryBase = () => ({ commit: "a".repeat(40), source: "previous-branch" });
+	const creates = f.events.filter((event) => event === "create").length;
+	const diagnostic = await f.coordinator().implementationRecovery(ref);
+	expect(diagnostic.status).toBe("available");
+	expect(f.events.filter((event) => event === "create")).toHaveLength(creates);
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	const bases: (string | undefined)[] = [];
+	const create = f.options.createWorkspaceAtPath;
+	f.options.createWorkspaceAtPath = (...args) => {
+		bases.push(args[5]);
+		return create(...args);
+	};
+	const result = await f.coordinator().recoverImplementation(ref, {
+		projectId: "local",
+		reference: ref,
+		locale: "en",
+		snapshot: diagnostic.snapshot,
+		restart: false,
+	});
+	expect(result.sessionId).not.toBe(first.sessionId);
+	expect(bases).toEqual(["a".repeat(40)]);
+	expect(required([...f.records.values()][0]).implementationHistory?.[0]).toMatchObject({
+		workspaceId: old.id,
+		sessionId: first.sessionId,
+		branch: old.branch,
+	});
+});
+
+test("recovery keeps a healthy primary while rebuilding only a missing member", async () => {
+	const f = await fixture();
+	await mkdir(join(f.root, "api"));
+	f.options.projectPath = (id) => (id === "api" ? join(f.root, "api") : f.root);
+	f.options.listGitWorktrees = (id) =>
+		f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	await f.coordinator().setRepositories(ref, ["api"]);
+	const first = await f.coordinator().implementation(ref);
+	const api = f.workspaces.find((ws) => ws.projectId === "api");
+	if (!api) throw new Error("missing member");
+	await rm(api.worktreePath, { recursive: true });
+	f.workspaces.splice(f.workspaces.indexOf(api), 1);
+	f.trees.splice(
+		f.trees.findIndex((tree) => tree.path === api.worktreePath),
+		1,
+	);
+	f.options.recoveryBase = () => ({ commit: "a".repeat(40), source: "previous-branch" });
+	const diagnosis = await f.coordinator().implementationRecovery(ref);
+	expect(diagnosis.members.map((row) => row.projectId)).toEqual(["api"]);
+	const result = await f.coordinator().recoverImplementation(ref, {
+		projectId: "local",
+		reference: ref,
+		locale: "en",
+		snapshot: diagnosis.snapshot,
+		restart: false,
+	});
+	expect(result).toEqual(first);
+	expect(f.workspaces.map((ws) => ws.projectId)).toEqual(["local", "api"]);
+	expect(required([...f.records.values()][0]).members?.[0]?.base).toBe("a".repeat(40));
+});
+
+test("recovery refuses changed branch facts without changing ownership", async () => {
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	await rm(required(f.workspaces[0]).worktreePath, { recursive: true });
+	f.workspaces.length = 0;
+	f.trees.length = 0;
+	f.options.recoveryBase = () => ({ commit: "a".repeat(40), source: "previous-branch" });
+	const diagnosis = await f.coordinator().implementationRecovery(ref);
+	const before = structuredClone([...f.records.values()]);
+	f.options.recoveryBase = () => ({ commit: "b".repeat(40), source: "previous-branch" });
+	await expect(
+		f.coordinator().recoverImplementation(ref, {
+			projectId: "local",
+			reference: ref,
+			locale: "en",
+			snapshot: diagnosis.snapshot,
+			restart: false,
+		}),
+	).rejects.toThrow();
+	expect([...f.records.values()]).toEqual(before);
+});
 
 test("repository selection defaults empty, persists by full identity and locks at preparation", async () => {
 	const f = await fixture();

@@ -6,7 +6,8 @@
  * nests `sm` (4px) children and needs the extra step to read correctly — chosen by design, not a
  * runtime `child + 2px`. `lg` (8px) is reserved for large, visually independent elevated surfaces
  * (dialogs, user-message bubbles, the AskUserQuestion outer card); it is the exception, never the
- * default for a card. Nothing above 8px. `rounded-full` (a pill/circle) is not on this scale.
+ * default for a card. Nothing above 8px. `issue-pill` is a dedicated capsule token for provider
+ * labels only; generic pill/circle geometry remains outside the scale.
  */
 @theme static {
 	--radius-*: initial;
@@ -14,6 +15,7 @@
 	--radius-sm: 4px;
 	--radius-md: 6px;
 	--radius-lg: 8px;
+	--radius-issue-pill: 999px;
 }
 
 :root {

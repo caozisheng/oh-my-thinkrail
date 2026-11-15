@@ -546,6 +546,7 @@ export async function createIssuesService({
 						issueWebUrl(connected.provider, binding.instanceUrl, connected.path, issue.iid) ??
 						invalid(),
 					labels: issue.labels,
+					...(issue.labelColors ? { labelColors: issue.labelColors } : {}),
 					stage: stageOf(issue),
 					updatedAt: issue.updatedAt,
 				})),

@@ -19,6 +19,8 @@ the palette ranks with — kept here so host-side search can rank with the same 
 
 ## Issue integration
 
+Protocol v134 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.
+
 `issues.content(IssueTarget)` → `IssueContent` (`{ description, url }`) is a v113 read-only
 capability (`ISSUES_CONTENT_PROTOCOL_VERSION`). It returns only the issue body and a verified provider
 web URL, never comments or approval state; list summaries remain lightweight. Host adapters validate
@@ -149,8 +151,8 @@ these structural guards do not grant trust or enable an RPC by themselves.
   (`NativeUpdateState` / `NativeUpdateBridge`, `ForkUpdateState` / `ForkUpdateBridge`,
   `NativeWindowState` / `NativeWindowControlsBridge`,
   `NativeQuitHint` / `NativeCommand` / `NativeShortcutsBridge`, and
-  `NativeNotificationInput` / `NativeNotificationBridge`, and `NativeMenuBridge` (translated native menu
-  labels), the optional shell-local desktop capabilities);
+  `NativeNotificationInput` / `NativeNotificationBridge`, `NativePageZoomAction` / `NativePageZoomBridge`,
+  and `NativeMenuBridge` (translated native menu labels), the optional shell-local desktop capabilities);
   `QUIT_CONFIRMATION` + **`createQuitConfirmation`** + `QuitConfirmationDependencies` from `quitConfirmation`;
   **`matchFields`** + `parseMatchTerms` + `foldMatchText` + `MATCH_TIER` and the `Match*` types from
   `match` (the one search matcher: fixed tiers exact > prefix > word start/camel hump/acronym > substring >
@@ -240,7 +242,9 @@ these structural guards do not grant trust or enable an RPC by themselves.
   native menu commands, and offer `quit()` for a client that confirms the quit gesture itself;
   `NativeNotificationInput` and `NativeNotificationBridge` carry `show({ title, subtitle?, body,
   silent? })` (fire-and-forget OS notification, no callback or id) and an optional `isWindowFocused()`
-  that reports OS-level window focus (true even when DevTools has renderer focus). The
+  that reports OS-level window focus (true even when DevTools has renderer focus);
+  `NativePageZoomAction` and `NativePageZoomBridge` carry `request("in" | "out" | "reset")`, a
+  fire-and-forget step of the native page zoom. The
   same web bundle discovers these capabilities without importing a native SDK. An optional
   `HostUpdateNotice` carries a closed CLI-host update lifecycle; protocol-gated `host.update` is an empty
   request that can start only the launcher's pre-bound updater. The browser never supplies a command, path,
@@ -514,7 +518,22 @@ these structural guards do not grant trust or enable an RPC by themselves.
   name, refused with `COPY_TOO_LARGE` for a folder past the host's entry bound, stopped with
   `ENTRY_CHANGED` when an entry changes under it) and `fs.delete` (`{ workspaceId, path }` → ack, a move to
   the OS trash, `ENTRY_CHANGED` when the entry changed while it was claimed); a client hides both from
-  older hosts,
+  older hosts, and from **`ARTIFACTS_PROTOCOL_VERSION`** (v135) two more: `fs.rename` (`{ workspaceId, path,
+  name }` → `{ path }`, in place, refused with `ENTRY_EXISTS` when another entry holds the name) and
+  `fs.move` (`fs.copy`'s params → `{ path }`, the Cut-and-Paste move, same or another workspace, refused
+  with `ENTRY_EXISTS` instead of renaming, for a folder into itself, and with `MOVE_ACROSS_DEVICES` when
+  source and destination are on different file systems),
+  the **Artifacts** tool's wire from the same version: `artifacts.list` (`{ workspaceId }` →
+  **`WorkspaceArtifactsSnapshot`**: `dir` (the artifacts folder, `.thinkrail/context`), `artifacts`
+  (**`WorkspaceArtifact`**: worktree-relative `path`, `state: "live" | "deleted"` — deleted means gone from
+  disk but restorable from the host's kept copy — `size`, `changedAt` (for a deleted row, when the host saw
+  it gone, so a new deletion of the same path carries a new value), `firstSeenAt`, the writing chat's
+  optional `sessionId`) and `outputs` (**`WorkspaceIgnoredOutput`** rows — an ignored file or folder an
+  agent run produced, with its live `files` count and `filesTruncated` — or `null` where there is no git),
+  `artifacts.restore` / `artifacts.discard` (`{ workspaceId, path }` → ack; a deleted row only, otherwise
+  `ARTIFACT_UNKNOWN`; restore refuses a path that exists again with `ENTRY_EXISTS`; discard sends the kept
+  copy to the OS trash), and the pathless **`workspace.artifactsChanged`** nudge
+  (**`WorkspaceArtifactsChangedPayload`**: `{ workspaceId }`) — clients re-list,
   **`ResourceMeta`** (what a resource's bytes *are*, host-decided and pinned by
   `RESOURCE_META_PROTOCOL_VERSION` = v75: sha-256 `hash` + `byteLength`, both `null` when the resource is
   absent; `text` = valid UTF-8, BOM-aware, and not claimed by a recognized binary magic number (an ASCII
@@ -805,7 +824,7 @@ these structural guards do not grant trust or enable an RPC by themselves.
   **layout preset DTO** — portable **`LayoutPreset`**, the bounded resource-free frame grammar synchronized
   in `AppConfig.customLayoutPresets`: center topology, left/right/bottom group geometry, visibility/folds,
   bottom alignment, and singleton tools (`plan`, the TODO List, is accepted from
-  `LAYOUT_PLAN_PRESET_PROTOCOL_VERSION` = v94), but no workspace, file, diff, chat, document, terminal, preview,
+  `LAYOUT_PLAN_PRESET_PROTOCOL_VERSION` = v94, `artifacts` from `ARTIFACTS_PROTOCOL_VERSION` = v135), but no workspace, file, diff, chat, document, terminal, preview,
   attention, or current/default-selection identity. Every current-layout type—including the projected
   `WorkspaceLayoutDocument`, `WorkbenchFrame`, and `WorkspaceViewState`—is web-local and deliberately absent
   from contracts. There is no current-layout method or push channel.
@@ -823,7 +842,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
   no callback or id) and an optional `isWindowFocused()` that reports OS-level window focus — true even
   when DevTools has renderer focus, unlike `document.hasFocus()`. The deep-link bridge pushes
   `NativeOpenFileRequest` (`file`, `line`, optional `column`) from an OS `thinkrail://` URL; it is a
-  desktop-only subscription seam, not host-wire state. A browser
+  desktop-only subscription seam, not host-wire state. The page-zoom bridge's one action
+  `request(action)` asks the native side to step (`in` / `out`) or reset its page zoom; it returns nothing
+  and the web keeps no zoom state. `NativePageZoomAction` is the one definition of the actions; the
+  desktop's zoom chords send the same ones. A browser
   connection has none of these bridges and renders none of their affordances.
 - **quitConfirmation.ts** — the single home of the quit-confirmation gesture shared by the desktop main
   process (macOS Cmd+Q, key state polled through CoreGraphics) and the web shell (Linux Ctrl+Q, key state
@@ -1624,8 +1646,11 @@ clients ignore the field; a newer client hides the import entry below v125.
 `ISSUES_PROTOCOL_VERSION = 103` introduces `issues.connection({ projectId })` →
 `IssueConnection | null`, `issues.connect({ projectId, input: IssueConnectionInput })` →
 `IssueConnection`, `issues.disconnect({ projectId })` → `{ ok: true }`, and
-`issues.list({ projectId })` → `IssueList`. `wsProtocol` imports these types directly from its own
-`./issues` module. The local project id is distinct from the remote id in connection input. Token
+`issues.list({ projectId })` → `IssueList`. `IssueSummary.labels` remains the ordered provider label-name
+list used by stage derivation; optional `labelColors` carries provider presentation metadata keyed by the
+exact label name and may be omitted by older hosts. It carries only normalized RGB background and
+optional text colors, never credentials or workflow state. `wsProtocol` imports these types directly from
+its own `./issues` module. The local project id is distinct from the remote id in connection input. Token
 input is write-only: connection/list responses contain no credential. These read/connection methods retain
 their v103 minimum independently of actions. The v105 auth floor registers `issues.connect` and the
 credential-free `issues.repositoryAddress` hint together; the hint reads the project's local `origin`
@@ -1724,7 +1749,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v133. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v135. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1733,4 +1758,4 @@ upstream numbers.
 
 ## Latest upstream capability floors
 
-The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, and image references v133. Upstream original v115–v120 numbers must not gate these features on fork hosts.
+The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, and Artifacts v135. Upstream original v115–v121 numbers must not gate these features on fork hosts.

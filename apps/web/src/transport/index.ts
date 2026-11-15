@@ -35,4 +35,5 @@ export {
 	supportsToolResponses,
 	supportsTurnChanges,
 	supportsUserThemes,
+	transportEndpointIdentity,
 } from "./wireTransport";

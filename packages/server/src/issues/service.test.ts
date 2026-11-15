@@ -80,7 +80,10 @@ describe("github Issues through the same service", () => {
 		title: "Wire the rail",
 		body: "Details",
 		state: "open",
-		labels: [{ name: "workflow::in-review" }, { name: "type::bug" }],
+		labels: [
+			{ name: "workflow::in-review", color: "7057ff" },
+			{ name: "type::bug", color: "0075ca" },
+		],
 		updated_at: "2026-01-01T00:00:00Z",
 		html_url: "https://github.com/octo/app/issues/7",
 	};
@@ -121,6 +124,10 @@ describe("github Issues through the same service", () => {
 				title: "Wire the rail",
 				url: "https://github.com/octo/app/issues/7",
 				labels: ["workflow::in-review", "type::bug"],
+				labelColors: [
+					{ name: "workflow::in-review", color: "#7057FF" },
+					{ name: "type::bug", color: "#0075CA" },
+				],
 				stage: "in-review",
 				updatedAt: "2026-01-01T00:00:00Z",
 			},

@@ -78,7 +78,15 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		!shape(
 			value,
 			["projectId", "reference"],
-			["design", "implementation", "sessionPending", "repositoryProjectIds", "members", "layout"],
+			[
+				"design",
+				"implementation",
+				"implementationHistory",
+				"sessionPending",
+				"repositoryProjectIds",
+				"members",
+				"layout",
+			],
 		) ||
 		!id(value.projectId) ||
 		keyFor(value.projectId, reference(value.reference)) !== expected
@@ -177,7 +185,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 			!shape(
 				i,
 				["state", "worktreePath", "branch", ...(i.state === "completed" ? ["workspaceId"] : [])],
-				i.state === "completed" ? ["session"] : [],
+				i.state === "completed" ? ["session", "recoveryCommit"] : ["recoveryCommit"],
 			)
 		)
 			stop();
@@ -196,10 +204,39 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 			!i.branch.startsWith(`issue-${reference(value.reference).number}-`)
 		)
 			stop();
+		if (
+			Object.hasOwn(i, "recoveryCommit") &&
+			(typeof i.recoveryCommit !== "string" ||
+				!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(i.recoveryCommit))
+		)
+			stop();
 		if (i.state === "completed" && !id(i.workspaceId)) stop();
 		if (Object.hasOwn(i, "session")) {
 			const s = i.session;
 			if (!object(s) || !shape(s, ["id"]) || !id(s.id)) stop();
+		}
+	}
+	if (Object.hasOwn(value, "implementationHistory")) {
+		const history = value.implementationHistory;
+		if (!Array.isArray(history) || history.length > 100) stop();
+		for (const entry of history) {
+			if (
+				!object(entry) ||
+				!shape(entry, ["workspaceId", "worktreePath", "branch", "archivedAt"], ["sessionId"]) ||
+				!id(entry.workspaceId) ||
+				(Object.hasOwn(entry, "sessionId") && !id(entry.sessionId)) ||
+				typeof entry.worktreePath !== "string" ||
+				entry.worktreePath.length > 4096 ||
+				!isAbsolute(entry.worktreePath) ||
+				resolve(entry.worktreePath) !== entry.worktreePath ||
+				typeof entry.branch !== "string" ||
+				entry.branch.length > 255 ||
+				!/^(?:issue-[1-9][0-9]*-[A-Za-z0-9-]+|issue-[1-9][0-9]*)$/.test(entry.branch) ||
+				!entry.branch.startsWith(`issue-${reference(value.reference).number}`) ||
+				!Number.isSafeInteger(entry.archivedAt) ||
+				(entry.archivedAt as number) < 0
+			)
+				stop();
 		}
 	}
 	if (Object.hasOwn(value, "sessionPending")) {

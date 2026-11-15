@@ -930,6 +930,22 @@ channel fan-out, and the process-boot wrapper both launchers share.
   calls `invalidateRoot(worktreePath)` so a watched workspace's file list and spec snapshot refresh on the
   next keystroke. `fs.readFile` forwards `maxBytes` to `fs`.
 
+**Artifacts wiring** ([[submodule-server-artifacts]]): the `workspace.fsChanged` publisher hands every
+batch to `noteArtifactPathsChanged` (it reconciles when the batch is truncated or touches
+`.thinkrail/context`, and recounts a recorded ignored output the batch reaches);
+the session-event tee maps `agent_start`, `agent_settled`, `tool_execution_start` (tool call id, name and
+args) and `tool_execution_end` (call id and name) into `observeArtifactSessionEvent`, and an `agent_start` also
+`ensureWatch`es the workspace in watch's bounded **prewarm** tier, so a working agent nobody looks at is
+watched without promoting its watcher for the host's lifetime (on Linux each watched worktree costs one
+inotify watch per folder; background runs in big repositories would otherwise exhaust
+`max_user_watches` for the workspace the user is looking at). The reconciles at every run start, tool end
+and settle do not depend on it. `setArtifactsPublisher` fans
+the index's change out as the pathless `workspace.artifactsChanged` nudge to v135+ sockets of that
+workspace. `fs.delete`, `fs.rename` and `fs.move` run their mutation inside `withUserRemoval` (a move locks
+both workspaces in id order), `fs.copy` and `fs.move` first call `prepareArtifactsDestination` for their
+destination folder, and `workspace.remove` / `chat.delete` call `removeWorkspaceArtifacts` once the
+workspace or chat record is gone.
+
 `RunningServer.startAttributionClaim()` is the explicit launcher-readiness signal and rechecks the saved
 enabled/confirmed choice before entering analytics attribution.
 
@@ -1464,6 +1480,8 @@ a stale receipt cannot authorize a changed checkout HEAD. No recursive `withLaun
 worktree adoption, push, MR, merge or CI capability is introduced.
 
 #### Implementation start (v108)
+
+`issues.implementationRecovery` and `issues.recoverImplementation` (v134) expose a read-only, credential-free recovery diagnosis and an explicit snapshot-bound implementation restart. Eligibility requires every selected member's checkout, Git registration, and workspace registration to be absent with no pending side effect. The execution repeats the diagnosis inside the existing launch fence and preserves the old branch/session ownership before preparing new checkouts. `issues.implementationHistory` reads only recorded session ids from archived Issue transcript files and never attaches them. Ordinary `workspace.remove` keeps its existing transcript purge policy; Issue-bound removal uses the agent's transcript-preserving archive port and a path lifecycle barrier.
 
 `issues.startImplementation({ projectId, reference })` → `IssueSessionLaunch` is the one action behind the
 confirmed implementation button. It is registered at the v108 implementation floor:

@@ -16,6 +16,7 @@ import { ToggleSegment } from "@thinkrail/ui/toggle-segment";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useShallow } from "zustand/react/shallow";
+import { REVIEW_KEYS, shortcutKeyCaps } from "@/keybindings";
 import { usePhoneViewport } from "@/lib";
 import {
 	type ChangesTab,
@@ -32,15 +33,13 @@ import { LARGE_SCOPE_FILES, scopeKey, scopeLabel, sectionCollapsedByDefault } fr
 import { DiffStatBadge } from "./DiffStatBadge";
 import { peekGitStatus, readGitStatus } from "./gitStatusCache";
 import { HeaderIconButton } from "./HeaderIconButton";
+import { focusWhenRevealed } from "./revealFocus";
 import { ownsReviewShortcut } from "./reviewShortcuts";
 import { SendAllReviewsButton } from "./SendReviewButton";
 import { createSectionContentCache } from "./sectionContentCache";
 import { useReviewReveal } from "./useReviewReveal";
 import { useWorkspaceRead } from "./useWorkspaceRead";
 import { useWorkspaceTurns } from "./useWorkspaceTurns";
-
-const VIEWED_KEY = "v";
-const NEXT_UNREVIEWED_KEY = "j";
 
 interface ReviewListContext {
 	tailHeight: number;
@@ -175,6 +174,7 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 		foundIndex >= 0 ? foundIndex : Math.min(lastIndex, Math.max(0, files.length - 1));
 	const current = files[currentIndex];
 
+	const rootRef = useRef<HTMLDivElement>(null);
 	const {
 		virtuoso,
 		attachScroller,
@@ -183,6 +183,7 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 		onTotalListHeightChanged,
 		handoffPath,
 		startHandoff,
+		focusNextCommentReveal,
 	} = useReviewReveal({
 		workspaceId,
 		tabId: tab.id,
@@ -232,21 +233,37 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 		},
 		[setCollapsed, tab.id, workspaceId],
 	);
-	const goTo = (change: GitFileChange | undefined) => {
+	const focusSectionHeader = (path: string) =>
+		focusWhenRevealed(() =>
+			Array.from(
+				rootRef.current?.querySelectorAll<HTMLElement>('[data-testid="changes-section"]') ?? [],
+			)
+				.find((section) => section.dataset.path === path)
+				?.querySelector('[data-testid="changes-section-header"]'),
+		);
+	const reveal = (path: string, commentId: string | undefined, focus: boolean) => {
+		focusNextCommentReveal(focus && commentId !== undefined);
+		requestReveal(workspaceId, tab.id, path, commentId);
+		if (focus && commentId === undefined) focusSectionHeader(path);
+	};
+	const goTo = (change: GitFileChange | undefined, focus: boolean) => {
 		if (!change) return;
-		if (layout === "single") setActivePath(workspaceId, tab.id, change.path);
-		else requestReveal(workspaceId, tab.id, change.path);
+		if (layout === "stacked") reveal(change.path, undefined, focus);
+		else {
+			setActivePath(workspaceId, tab.id, change.path);
+			if (focus) focusSectionHeader(change.path);
+		}
 	};
-	const step = (delta: number) => goTo(files[currentIndex + delta]);
-	const nextUnreviewed = () => {
+	const step = (delta: number, focus = false) => goTo(files[currentIndex + delta], focus);
+	const nextUnreviewed = (focus = false) => {
 		const after = files.slice(currentIndex + 1).find((change) => !viewedSet.has(change.path));
-		goTo(after ?? files.find((change) => !viewedSet.has(change.path)));
+		goTo(after ?? files.find((change) => !viewedSet.has(change.path)), focus);
 	};
-	const markViewedAndAdvance = () => {
+	const markViewedAndAdvance = (focus = false) => {
 		if (!current) return;
 		const wasViewed = viewedSet.has(current.path);
 		setViewed(workspaceId, tab.id, current.path, !wasViewed);
-		if (!wasViewed && layout === "single") step(1);
+		if (!wasViewed && layout === "single") step(1, focus);
 	};
 	const markAllViewed = () =>
 		setViewed(
@@ -261,18 +278,18 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 		const onKey = (event: KeyboardEvent) => {
 			if (!ownsReviewShortcut(event, tab)) return;
 			const plain = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
-			if (event.altKey && event.key === "ArrowDown") {
+			if (event.altKey && event.key === REVIEW_KEYS.nextFile.key) {
 				event.preventDefault();
-				step(1);
-			} else if (event.altKey && event.key === "ArrowUp") {
+				step(1, true);
+			} else if (event.altKey && event.key === REVIEW_KEYS.previousFile.key) {
 				event.preventDefault();
-				step(-1);
-			} else if (plain && event.key === VIEWED_KEY) {
+				step(-1, true);
+			} else if (plain && event.key === REVIEW_KEYS.markViewed.key) {
 				event.preventDefault();
-				markViewedAndAdvance();
-			} else if (plain && event.key === NEXT_UNREVIEWED_KEY) {
+				markViewedAndAdvance(true);
+			} else if (plain && event.key === REVIEW_KEYS.nextUnreviewed.key) {
 				event.preventDefault();
-				nextUnreviewed();
+				nextUnreviewed(true);
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -291,7 +308,7 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 		layout === "stacked" && files.length > LARGE_SCOPE_FILES && !largeNoticeDismissed;
 
 	return (
-		<div data-testid="changes-review" className="flex h-full min-h-0 flex-col">
+		<div ref={rootRef} data-testid="changes-review" className="flex h-full min-h-0 flex-col">
 			<div
 				data-testid="changes-review-toolbar"
 				role="toolbar"
@@ -439,6 +456,7 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 								<HeaderIconButton
 									testid="changes-review-prev"
 									label={t("changes.review.previousFile")}
+									shortcut={shortcutKeyCaps(REVIEW_KEYS.previousFile)}
 									disabled={currentIndex === 0}
 									onClick={() => step(-1)}
 									icon={ChevronLeft}
@@ -452,6 +470,7 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 								<HeaderIconButton
 									testid="changes-review-next"
 									label={t("changes.review.nextFile")}
+									shortcut={shortcutKeyCaps(REVIEW_KEYS.nextFile)}
 									disabled={currentIndex >= files.length - 1}
 									onClick={() => step(1)}
 									icon={ChevronRight}
@@ -463,18 +482,18 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 									data-testid="changes-review-mark-viewed"
 									aria-pressed={viewedSet.has(current.path)}
 									selected={viewedSet.has(current.path)}
-									onClick={markViewedAndAdvance}
+									onClick={() => markViewedAndAdvance()}
 									className="ml-auto"
 								>
 									{viewedSet.has(current.path)
 										? t("changes.review.viewed")
 										: t("changes.review.markViewed")}
 									<kbd className="rounded-xs border border-control-border-default px-4 tr-code-text text-text-subtle">
-										{VIEWED_KEY.toUpperCase()}
+										{REVIEW_KEYS.markViewed.key.toUpperCase()}
 									</kbd>
 								</Button>
 							</div>
-							<div className="min-h-0 flex-1">
+							<div data-focus-list={`changes-review:${tab.id}`} className="min-h-0 flex-1">
 								<ChangesFileSection
 									key={current.path}
 									workspaceId={workspaceId}
@@ -508,12 +527,13 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 									files={files}
 									guide={reviewGuide}
 									comments={reviewComments}
-									onReveal={(path, commentId) =>
-										requestReveal(workspaceId, tab.id, path, commentId)
-									}
+									onReveal={reveal}
 								/>
 							) : null}
-							<div className="relative min-h-0 flex-1 bg-container-content-bg">
+							<div
+								data-focus-list={`changes-review:${tab.id}`}
+								className="relative min-h-0 flex-1 bg-container-content-bg"
+							>
 								{showLargeNotice ? (
 									<div
 										data-testid="changes-review-large-notice"
@@ -523,7 +543,7 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 										<button
 											type="button"
 											onClick={() => setLayout("single")}
-											className="text-text-default underline-offset-2 hover:underline"
+											className="text-text-default underline-offset-2 hover:underline focus-visible:focus-ring"
 										>
 											{t("changes.review.switchToOneFile")}
 										</button>
@@ -589,11 +609,11 @@ export function ChangesReviewPane({ tab }: { tab: ChangesTab }) {
 											size="m"
 											data-testid="changes-review-next-unreviewed"
 											disabled={viewedCount >= files.length}
-											onClick={nextUnreviewed}
+											onClick={() => nextUnreviewed()}
 										>
 											{t("changes.review.nextUnreviewed")}
 											<kbd className="rounded-xs border border-control-border-default px-4 tr-code-text text-text-subtle">
-												{NEXT_UNREVIEWED_KEY.toUpperCase()}
+												{REVIEW_KEYS.nextUnreviewed.key.toUpperCase()}
 											</kbd>
 										</Button>
 										<Button

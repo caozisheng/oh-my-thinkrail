@@ -48,6 +48,7 @@ import { setTrashImplementationForTests } from "../trash";
 import {
 	abortSession,
 	acknowledgeCompletion,
+	archiveIssueWorkspaceSessions,
 	buildSessionSettings,
 	clampThinkingForModel,
 	clearQueueSession,
@@ -71,6 +72,7 @@ import {
 	markWorkspaceUnread,
 	nudgeSession,
 	promptSession,
+	readArchivedSessionTranscript,
 	readFinalAssistantTexts,
 	refreshAgentReviewTool,
 	refreshAvailableModels,
@@ -4493,6 +4495,34 @@ test("removeQueuedSession on an idle session never strands the keepers — they 
 	expect(result.queue).toEqual({ steering: [], followUp: [] });
 	expect(seen(s.sessionId)).toContain("PARKED_DELIVERED");
 	await removeSession(s.sessionId);
+});
+
+test("archiveIssueWorkspaceSessions: disposes Issue sessions but retains their transcript", async () => {
+	setSessionManagerFactory((cwd) => SessionManager.create(cwd));
+	try {
+		fauxA.setResponses([fauxAssistantMessage("ISSUE_ARCHIVE_ME")]);
+		const cwd = tmpCwd("trpi-issue-arch-");
+		const session = await createSession({
+			cwd,
+			workspaceId: "ws-issue-archive",
+			model: toWireModel(fauxA.getModel()),
+		});
+		await promptSession(session.sessionId, "retain this transcript");
+		const before = await listSessions("ws-issue-archive", cwd);
+		expect(before.map((row) => row.sessionId)).toContain(session.sessionId);
+		await archiveIssueWorkspaceSessions("ws-issue-archive", cwd);
+		expect(hasSession(session.sessionId)).toBe(false);
+		expect((await listSessions("ws-issue-archive", cwd)).map((row) => row.sessionId)).toContain(
+			session.sessionId,
+		);
+		const transcript = await readArchivedSessionTranscript(session.sessionId, cwd);
+		expect(JSON.stringify(transcript)).toContain("ISSUE_ARCHIVE_ME");
+		expect(JSON.stringify(transcript)).not.toContain("persist before archive");
+		expect(hasSession(session.sessionId)).toBe(false);
+		expect(await readArchivedSessionTranscript("absent-session", cwd)).toBeNull();
+	} finally {
+		setSessionManagerFactory(() => SessionManager.inMemory());
+	}
 });
 
 test("removeWorkspaceSessions: archives a workspace's live sessions + purges their on-disk transcripts, leaving siblings", async () => {

@@ -66,6 +66,8 @@ mechanical `lg`→`16` rewrite would collapse a 32rem column to 16px. `spacingUs
 
 Spacing stays independent of typography, colour and radius: a change to the type scale or a theme never
 moves layout. `tokens.css` (structure) holds no spacing scale; `spacing.json` is its only authored source.
+The shape scale has one documented capsule exception, `rounded-issue-pill`, backed by
+`--radius-issue-pill` and used only for provider label capsules; it is not a general-purpose radius.
 
 ## Layout roles
 

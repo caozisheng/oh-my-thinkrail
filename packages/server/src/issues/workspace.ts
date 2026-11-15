@@ -2,8 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, realpath, rmdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
+	type IssueImplementationRecovery,
+	type IssueImplementationRecoveryInput,
 	type IssueReference,
 	type IssueSessionLaunch,
+	isIssueImplementationRecoveryInput,
 	isIssueReference,
 	isIssueRepositoriesInput,
 } from "@thinkrail/contracts";
@@ -22,6 +25,7 @@ interface PendingWorkspace {
 	state: "pending";
 	worktreePath: string;
 	branch: string;
+	recoveryCommit?: string;
 }
 interface CompletedWorkspace extends Omit<PendingWorkspace, "state"> {
 	state: "completed";
@@ -51,6 +55,13 @@ export interface IssueWorkspaceMember {
 	/** Durable removal intent for an unchanged member; settling it finishes or reverts the removal. */
 	removing?: true;
 }
+export interface IssueImplementationHistory {
+	workspaceId: string;
+	worktreePath: string;
+	branch: string;
+	sessionId?: string;
+	archivedAt: number;
+}
 export interface IssueWorkspaceRecord {
 	projectId: string;
 	reference: IssueReference;
@@ -61,6 +72,8 @@ export interface IssueWorkspaceRecord {
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
 	implementation?: PendingWorkspace | CompletedWorkspace;
+	/** Prior completed implementation generations; transcript ownership remains with pi. */
+	implementationHistory?: IssueImplementationHistory[];
 }
 
 type Awaitable<T> = T | Promise<T>;
@@ -112,6 +125,11 @@ export interface IssueWorkspaceOptions {
 	sessionExists(sessionId: string, workspaceId: string): Awaitable<false | "idle" | "busy">;
 	/** Create an empty session only. Prompting is outside this coordinator. */
 	createSession(workspaceId: string): Awaitable<string>;
+	recoveryBase?(
+		projectId: string,
+		branch: string,
+	): Awaitable<{ commit: string; source: "previous-branch" | "restart" }>;
+	waitForArchive?(path: string): Awaitable<void>;
 	/** The session this Issue already bound for that stage and workspace; the recovery evidence. */
 	boundSession?(
 		stage: "design" | "implementation",
@@ -157,6 +175,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		input: IssueReference,
 		action: (key: string, record: IssueWorkspaceRecord) => Promise<T>,
 		recover = false,
+		allowPending = false,
 	): Promise<T> {
 		if (!isIssueReference(input) || !projectId) stop();
 		const reference = {
@@ -176,7 +195,14 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					keyFor(record.projectId, record.reference) !== key
 				)
 					stop();
-				return action(key, recover ? await recoverPending(key, record) : rejectPending(record));
+				return action(
+					key,
+					recover
+						? await recoverPending(key, record)
+						: allowPending
+							? record
+							: rejectPending(record),
+				);
 			});
 		tails.set(slot, task);
 		try {
@@ -239,7 +265,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	function segments(path: string): string[] {
-		return path.split("/").filter(Boolean);
+		return path.split(/[\\/]/).filter(Boolean);
 	}
 
 	function digest(record: IssueWorkspaceRecord): string {
@@ -371,26 +397,37 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	async function resolveImplementation(key: string, record: IssueWorkspaceRecord, path: string) {
 		let ownership = record.implementation;
 		let ws: WorkspaceHandle;
-		if (ownership?.state === "pending") {
-			const { occupied, trees } = await implementationPathState(path);
-			const registered = await options.findWorkspace({ worktreePath: path });
-			// An abandoned reservation that left no directory, Git entry or registration created nothing.
-			if (!occupied && trees.length === 0 && !registered) ownership = undefined;
-		}
-		if (ownership) {
+		const state = await implementationPathState(path);
+		const registered = await options.findWorkspace({ worktreePath: path });
+		// An abandoned reservation that left no directory, Git entry or registration created nothing.
+		if (
+			ownership?.state === "pending" &&
+			!state.occupied &&
+			state.trees.length === 0 &&
+			!registered &&
+			!ownership.recoveryCommit
+		)
+			ownership = undefined;
+		const retryRecovery =
+			ownership?.state === "pending" &&
+			ownership.recoveryCommit &&
+			!state.occupied &&
+			!state.trees.length &&
+			!registered;
+		if (ownership && !retryRecovery) {
 			ws = await verifyImplementation(ownership, path);
 		} else {
 			const { occupied, trees } = await implementationPathState(path);
 			if (occupied || trees.length || (await options.findWorkspace({ worktreePath: path }))) stop();
 			// The unpredictable reserved ref correlates a registered worktree with this create intent;
 			// a user checkout at the same numeric path is not ownership evidence.
-			ownership = {
+			ownership = ownership ?? {
 				state: "pending",
 				worktreePath: path,
 				branch: `issue-${record.reference.number}-${randomUUID()}`,
 			};
 			await options.save(key, { ...record, implementation: ownership });
-			const base = await baseFor(record, projectId);
+			const base = ownership.recoveryCommit ?? (await baseFor(record, projectId));
 			ws = verifyWorkspace(
 				await options.createWorkspaceAtPath(
 					projectId,
@@ -443,20 +480,29 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		const state = await implementationPathState(path, member.projectId);
 		const registered = await options.findWorkspace({ worktreePath: path });
 		if (ownership?.state === "pending" && !state.occupied && !state.trees.length && !registered)
-			ownership = undefined;
-		if (ownership) {
+			ownership = ownership.recoveryCommit ? ownership : undefined;
+		if (
+			ownership &&
+			!(
+				ownership.state === "pending" &&
+				ownership.recoveryCommit &&
+				!state.occupied &&
+				!state.trees.length &&
+				!registered
+			)
+		) {
 			const ws = await verifyImplementation(ownership, path, member.projectId);
 			member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
 		} else {
 			if (state.occupied || state.trees.length || registered) stop();
-			ownership = {
+			ownership = ownership ?? {
 				state: "pending",
 				worktreePath: path,
 				branch: `issue-${record.reference.number}-${randomUUID()}`,
 			};
 			member.ownership = ownership;
 			await options.save(key, record);
-			const base = await baseFor(record, member.projectId);
+			const base = ownership.recoveryCommit ?? (await baseFor(record, member.projectId));
 			const ws = verifyWorkspace(
 				await options.createWorkspaceAtPath(
 					member.projectId,
@@ -579,6 +625,101 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		record.members = [...members, { projectId: memberId }];
 		record.repositoryProjectIds = [...(record.repositoryProjectIds ?? []), memberId];
 		await options.save(key, record);
+	}
+
+	async function prepareImplementation(
+		key: string,
+		record: IssueWorkspaceRecord,
+	): Promise<IssueSessionLaunch> {
+		record = await freezeMembers(key, record);
+		record = await settleRemovals(key, record);
+		let primary: CompletedWorkspace | undefined;
+		for (const id of creationOrder(record)) {
+			if (id !== projectId) {
+				await prepareMember(key, record, id);
+				continue;
+			}
+			primary = await resolveImplementation(key, record, await worktreePathFor(record, projectId));
+			record = { ...record, implementation: primary };
+		}
+		if (!primary) stop();
+		const ownership = primary;
+		const { workspaceId, session } = ownership;
+		const status = await sessionStatus(workspaceId, session?.id);
+		if (session && status) return { workspaceId, sessionId: session.id };
+		await options.save(key, {
+			...record,
+			implementation: ownership,
+			sessionPending: { stage: "implementation", workspaceId },
+		});
+		const sessionId = await newSession(workspaceId);
+		await options.save(key, {
+			...record,
+			implementation: { ...ownership, session: { id: sessionId } },
+		});
+		return { workspaceId, sessionId };
+	}
+
+	async function diagnoseRecovery(
+		record: IssueWorkspaceRecord,
+	): Promise<IssueImplementationRecovery> {
+		const generation = record.implementationHistory?.length ?? 0;
+		const members: IssueImplementationRecovery["members"] = [];
+		let reason: IssueImplementationRecovery["reason"] = null;
+		let requiresRestart = false;
+		if (record.sessionPending || record.members?.some((row) => row.removing))
+			reason = "pending-operation";
+		if (!record.implementation) reason = "missing-record";
+		for (const id of [projectId, ...selection(record)]) {
+			if (reason) break;
+			const ownership =
+				id === projectId
+					? record.implementation
+					: record.members?.find((row) => row.projectId === id)?.ownership;
+			if (ownership?.state !== "completed") {
+				reason = "pending-operation";
+				break;
+			}
+			const path = await worktreePathFor(record, id);
+			if (path !== ownership.worktreePath) stop();
+			await options.waitForArchive?.(path);
+			const state = await implementationPathState(path, id);
+			const byId = await options.findWorkspace({ workspaceId: ownership.workspaceId });
+			const byPath = await options.findWorkspace({ worktreePath: path });
+			const missing = !state.occupied && state.trees.length === 0 && !byId && !byPath;
+			if (!missing) {
+				try {
+					await verifyImplementation(ownership, path, id);
+					continue;
+				} catch {
+					reason = "resources-remain";
+					break;
+				}
+			}
+			if (!options.recoveryBase) stop();
+			const base = await options.recoveryBase(id, ownership.branch);
+			if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(base.commit)) stop();
+			requiresRestart ||= base.source === "restart";
+			members.push({
+				projectId: id,
+				worktreePath: path,
+				branch: ownership.branch,
+				baseCommit: base.commit,
+			});
+		}
+		if (!reason && !members.length) reason = "resources-remain";
+		const snapshot = createHash("sha256")
+			.update(JSON.stringify({ record, members, requiresRestart }))
+			.digest("hex");
+		return {
+			status: reason ? "unavailable" : "available",
+			reason,
+			generation,
+			members,
+			baseCommit: members.find((member) => member.projectId === projectId)?.baseCommit ?? null,
+			snapshot,
+			requiresRestart,
+		};
 	}
 
 	return {
@@ -707,6 +848,63 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				return { projectIds: [...projectIds], locked: false };
 			});
 		},
+		implementationRecovery(reference: IssueReference): Promise<IssueImplementationRecovery> {
+			return run(reference, async (_key, record) => diagnoseRecovery(record), false, true);
+		},
+		recoverImplementation(
+			reference: IssueReference,
+			input: IssueImplementationRecoveryInput,
+		): Promise<IssueSessionLaunch> {
+			return run(reference, async (key, record) => {
+				if (
+					!isIssueImplementationRecoveryInput(input) ||
+					keyFor(input.projectId, input.reference) !== key
+				)
+					stop();
+				const diagnosis = await diagnoseRecovery(record);
+				if (
+					diagnosis.status !== "available" ||
+					diagnosis.snapshot !== input.snapshot ||
+					(diagnosis.requiresRestart && !input.restart)
+				)
+					stop();
+				const next = structuredClone(record);
+				for (const member of diagnosis.members) {
+					const ownership =
+						member.projectId === projectId
+							? next.implementation
+							: next.members?.find((row) => row.projectId === member.projectId)?.ownership;
+					if (ownership?.state !== "completed" || !member.baseCommit) stop();
+					if (member.projectId === projectId) {
+						next.implementationHistory = [
+							...(next.implementationHistory ?? []),
+							{
+								workspaceId: ownership.workspaceId,
+								worktreePath: ownership.worktreePath,
+								branch: ownership.branch,
+								...(ownership.session ? { sessionId: ownership.session.id } : {}),
+								archivedAt: Date.now(),
+							},
+						];
+					}
+					const pending: PendingWorkspace = {
+						state: "pending",
+						worktreePath: ownership.worktreePath,
+						branch: `issue-${reference.number}-${randomUUID()}`,
+						recoveryCommit: member.baseCommit,
+					};
+					if (member.projectId === projectId) next.implementation = pending;
+					else {
+						const row = next.members?.find((row) => row.projectId === member.projectId);
+						if (!row) stop();
+						row.ownership = pending;
+						row.base = member.baseCommit;
+					}
+				}
+				await options.save(key, next);
+				return prepareImplementation(key, next);
+			});
+		},
 		ownedImplementation(reference: IssueReference): Promise<WorkspaceHandle> {
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
@@ -745,43 +943,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			);
 		},
 		implementation(reference: IssueReference): Promise<IssueSessionLaunch> {
-			return run(
-				reference,
-				async (key, record) => {
-					record = await freezeMembers(key, record);
-					record = await settleRemovals(key, record);
-					let primary: CompletedWorkspace | undefined;
-					for (const id of creationOrder(record)) {
-						if (id !== projectId) {
-							await prepareMember(key, record, id);
-							continue;
-						}
-						primary = await resolveImplementation(
-							key,
-							record,
-							await worktreePathFor(record, projectId),
-						);
-						record = { ...record, implementation: primary };
-					}
-					if (!primary) stop();
-					const ownership = primary;
-					const { workspaceId, session } = ownership;
-					const status = await sessionStatus(workspaceId, session?.id);
-					if (session && status) return { workspaceId, sessionId: session.id };
-					await options.save(key, {
-						...record,
-						implementation: ownership,
-						sessionPending: { stage: "implementation", workspaceId },
-					});
-					const sessionId = await newSession(workspaceId);
-					await options.save(key, {
-						...record,
-						implementation: { ...ownership, session: { id: sessionId } },
-					});
-					return { workspaceId, sessionId };
-				},
-				true,
-			);
+			return run(reference, async (key, record) => prepareImplementation(key, record), true);
 		},
 	};
 }

@@ -9,6 +9,7 @@ import {
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION,
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
+	ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	type IssueConnection,
 	type IssueConnectionInput,
 	type IssueList,
@@ -59,6 +60,9 @@ export function supportsIssueRepositories(version: number | null): boolean {
 /** On-demand joins after implementation starts, and cleanup of unchanged joined repositories. */
 export function supportsIssueRepositoryJoin(version: number | null): boolean {
 	return version !== null && version >= ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION;
+}
+export function supportsIssueWorkspaceRecovery(version: number | null): boolean {
+	return version !== null && version >= ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION;
 }
 
 /** GitHub Issues as a provider; an older host only understands GitLab references. */
@@ -232,6 +236,7 @@ export function issueActions(
  */
 export type IssueActionResult =
 	| { ok: true; launch: IssueSessionLaunch }
+	| { ok: true; confirmationPending: true }
 	| { ok: false; error: IssueActionError };
 
 /** The transport calls one action needs; injected so the rules stay pure and testable. */

@@ -1,5 +1,6 @@
 import type {
 	IssueConnectionInput,
+	IssueImplementationRecovery,
 	IssueReference,
 	IssueRepositories,
 	IssueSessionLaunch,
@@ -16,8 +17,16 @@ import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
 import { selectIssueRepositoryProjects, useAppStore } from "../store";
-import { getTransport, wsErrorCode } from "../transport";
+import { getTransport, transportEndpointIdentity, wsErrorCode } from "../transport";
+import {
+	expandedIssueDisclosure,
+	issueDisclosureKey,
+	readIssueDisclosure,
+	writeIssueDisclosure,
+} from "./disclosure";
 import type { IssuePreview } from "./IssueBody";
+import { IssueHistoryDialog } from "./IssueHistoryDialog";
+import { IssueRecoveryDialog } from "./IssueRecoveryDialog";
 import type { IssueRepositoriesNotice, IssueRepositoriesView } from "./IssueRepositoriesControl";
 import { IssuesPanel } from "./IssuesPanel";
 import {
@@ -44,10 +53,23 @@ import {
 	supportsIssueRepositoryJoin,
 	supportsIssueSessionStartup,
 	supportsIssues,
+	supportsIssueWorkspaceRecovery,
 } from "./model";
 import { loadIssueRepositories } from "./repositoryReads";
 
 type SnapshotPatch = Partial<Omit<IssueToolSnapshot, "identity">>;
+
+function implementationRecoveryRequest(
+	projectId: string,
+	reference: IssueReference,
+): Promise<
+	{ diagnosis: IssueImplementationRecovery; failed: false } | { diagnosis: null; failed: true }
+> {
+	return getTransport()
+		.request("issues.implementationRecovery", { projectId, reference })
+		.then((diagnosis) => ({ diagnosis, failed: false as const }))
+		.catch(() => ({ diagnosis: null, failed: true as const }));
+}
 
 function failedRepositorySelection(
 	selection: IssueRepositoriesView & object,
@@ -92,6 +114,16 @@ export function IssuesTool({
 	onTrustProject?: () => Promise<void> | void;
 }) {
 	const t = useT();
+	const [recovery, setRecovery] = useState<{
+		identity: string;
+		issue: IssueSummary;
+		diagnosis: IssueImplementationRecovery;
+	} | null>(null);
+	const [recovering, setRecovering] = useState(false);
+	const [historyIssue, setHistoryIssue] = useState<{
+		identity: string;
+		issue: IssueSummary;
+	} | null>(null);
 	const localLocales = useAppStore((s) => s.localLocales);
 	const locale = issueStartupLocale(localeOf(t), availableLocales(localLocales));
 	const version = useAppStore((s) => s.protocolVersion);
@@ -123,6 +155,31 @@ export function IssuesTool({
 	const actionLock = useRef(false);
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}:${trusted}`;
 	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
+	const disclosureIdentity = snapshot?.connection
+		? issueDisclosureKey({
+				endpoint: transportEndpointIdentity(),
+				instanceUrl: snapshot.connection.instanceUrl,
+				projectId,
+				remoteProjectId: snapshot.connection.remoteProjectId,
+			})
+		: null;
+	const [disclosureState, setDisclosureState] = useState<{
+		key: string | null;
+		value: ReturnType<typeof expandedIssueDisclosure>;
+	}>(() => ({ key: null, value: expandedIssueDisclosure() }));
+	useEffect(() => {
+		if (!disclosureIdentity) {
+			setDisclosureState({ key: null, value: expandedIssueDisclosure() });
+			return;
+		}
+		let value: ReturnType<typeof expandedIssueDisclosure>;
+		try {
+			value = readIssueDisclosure(window.localStorage, disclosureIdentity);
+		} catch {
+			value = expandedIssueDisclosure();
+		}
+		setDisclosureState({ key: disclosureIdentity, value });
+	}, [disclosureIdentity]);
 	const requestSequence = useRef(0);
 	const previewSequence = useRef(0);
 	const [preview, setPreview] = useState<IssuePreview | null>(null);
@@ -289,6 +346,41 @@ export function IssuesTool({
 		async (issue: IssueSummary, action: IssueActionId): Promise<IssueActionResult> => {
 			if (!trusted || status !== "connected" || actionLock.current)
 				return { ok: false, error: "launch-blocked" };
+			if (action === "implement" && supportsIssueWorkspaceRecovery(version)) {
+				actionLock.current = true;
+				const sequence = ++actionSequence.current;
+				setActionState({
+					identity,
+					pending: true,
+					progress: { issue: issueKey(issue), action, phase: "starting" },
+					error: null,
+				});
+				const response = await implementationRecoveryRequest(projectId, issue.reference);
+				if (response.failed) {
+					actionLock.current = false;
+					setActionState({
+						identity,
+						pending: false,
+						error: "action",
+						progress: { issue: issueKey(issue), action, phase: "starting" },
+					});
+					return { ok: false, error: "action" };
+				}
+				const diagnosis = response.diagnosis;
+				if (sequence !== actionSequence.current || !trusted || status !== "connected") {
+					actionLock.current = false;
+					setActionState(null);
+					return { ok: false, error: "launch-blocked" };
+				}
+				if (diagnosis.status === "available" || diagnosis.reason !== "missing-record") {
+					actionLock.current = false;
+					setActionState(null);
+					setRecovery({ identity, issue, diagnosis });
+					return { ok: true, confirmationPending: true };
+				}
+				actionLock.current = false;
+				setActionState(null);
+			}
 			actionLock.current = true;
 			const sequence = ++actionSequence.current;
 			const current = () =>
@@ -447,10 +539,80 @@ export function IssuesTool({
 		return <p className="p-panel-inset text-text-muted tr-text-ui">{t("issues.offline")}</p>;
 	return (
 		<QuietScrollArea className="h-full">
+			{historyIssue?.identity === identity && trusted && (
+				<IssueHistoryDialog
+					projectId={projectId}
+					reference={historyIssue.issue.reference}
+					onClose={() => setHistoryIssue(null)}
+				/>
+			)}
+			{recovery?.identity === identity && (
+				<IssueRecoveryDialog
+					diagnosis={recovery.diagnosis}
+					pending={recovering}
+					onClose={() => setRecovery(null)}
+					onConfirm={(restart) => {
+						setRecovering(true);
+						const captured = recovery;
+						const recoveryActionSequence = ++actionSequence.current;
+						const current = () =>
+							recoveryActionSequence === actionSequence.current &&
+							useAppStore.getState().connectionGeneration === generation &&
+							useAppStore.getState().status === "connected" &&
+							useAppStore.getState().protocolVersion === version &&
+							useAppStore.getState().projects.find((row) => row.id === projectId)?.trusted === true;
+						void getTransport()
+							.request(
+								"issues.recoverImplementation",
+								{
+									projectId,
+									reference: captured.issue.reference,
+									locale,
+									snapshot: captured.diagnosis.snapshot,
+									restart,
+								},
+								{ timeoutMs: REPOSITORY_JOIN_TIMEOUT_MS },
+							)
+							.then(async (launch) => {
+								if (current()) {
+									setRecovery(null);
+									await onLaunchSession?.(launch, current);
+									void refresh();
+								}
+							})
+							.catch(() => {
+								if (current()) {
+									setRecovery(null);
+									setActionState({
+										identity,
+										pending: false,
+										error: "action",
+										progress: {
+											issue: issueKey(captured.issue),
+											action: "implement",
+											phase: "starting",
+										},
+									});
+								}
+							})
+							.finally(() => setRecovering(false));
+					}}
+				/>
+			)}
 			<IssuesPanel
 				key={`${identity}:${active?.connection?.connected === true}`}
 				previewSupported={previewSupported}
 				preview={activePreview}
+				initialDisclosure={
+					disclosureState.key === disclosureIdentity
+						? disclosureState.value
+						: expandedIssueDisclosure()
+				}
+				onDisclosureChange={(value) => {
+					if (!disclosureIdentity || disclosureState.key !== disclosureIdentity) return;
+					setDisclosureState({ key: disclosureIdentity, value });
+					writeIssueDisclosure(window.localStorage, disclosureIdentity, value);
+				}}
 				onTogglePreview={(issue) => {
 					void togglePreview(issue);
 				}}
@@ -469,6 +631,8 @@ export function IssuesTool({
 				}}
 				onConnect={refresh}
 				onDisconnect={disconnect}
+				historySupported={supportsIssueWorkspaceRecovery(version)}
+				onOpenHistory={(issue) => setHistoryIssue({ identity, issue })}
 				onOpenIssue={onOpenIssue}
 				onRunAction={runAction}
 				onTrustProject={onTrustProject}

@@ -25,7 +25,9 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { preloadedLazy } from "../components/preloadedLazy";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { IssuesTool } from "../issues";
+import { keybindingKeys } from "../keybindings";
 import { chatDisplayName, type LayoutAttention, layoutResourceIdentity } from "../lib";
+import { ArtifactsPanel } from "../panels/ArtifactsPanel";
 import { DiffPane } from "../panels/DiffPane";
 import { FilePane } from "../panels/FilePane";
 import { FilesPanel } from "../panels/FilesPanel";
@@ -37,6 +39,7 @@ import { ReviewPanel, selectActiveReviewedPath } from "../panels/ReviewPanel";
 import { reviewFlagForPaths, reviewFlags, tabReviewPaths } from "../panels/reviewModel";
 import { SpecsPanel } from "../panels/SpecsPanel";
 import { TerminalWorkbenchBody, useTerminalClose } from "../panels/TerminalWorkbench";
+import { useWorkspaceArtifacts } from "../panels/useWorkspaceArtifacts";
 import { useWorkspaceReview } from "../panels/useWorkspaceReview";
 import { useWorkspaceSpecs } from "../panels/useWorkspaceSpecs";
 import { useLoadWorkspaceTurns } from "../panels/useWorkspaceTurns";
@@ -50,6 +53,7 @@ import {
 	isExternalWorkspace,
 	isFileComparison,
 	type LayoutIntent,
+	selectArtifactsUnseen,
 	selectCanRenameChat,
 	selectChatWorkspaceFirstPrompt,
 	selectChatWorkspaceTitle,
@@ -74,7 +78,6 @@ import {
 	useDeletedChatPlacementReconciliation,
 	useWorkspaceChatCatalogReconciliation,
 } from "./chatReconciliation";
-import { subscribeCloseRequest } from "./closeRequestChannel";
 import {
 	collectAllGroups,
 	findPlacedResource,
@@ -86,6 +89,7 @@ import {
 	type LayoutToolId,
 	showingAuxiliaryKey,
 	Workbench,
+	type WorkbenchChromeShortcuts,
 	type WorkspaceLayoutDocument,
 } from "./layout";
 import { toLayoutTab, useLayoutIntentProcessing } from "./layoutIntents";
@@ -97,9 +101,12 @@ import {
 	workspaceProjectionReference,
 } from "./layoutState";
 import { syncLegacySelectionFromAttention, useLegacySelectionAdapter } from "./legacySelection";
+import { renderShortcutsRailButton } from "./ShortcutsDialog";
 import { useTerminalPlacementReconciliation } from "./terminalReconciliation";
+import { hasNativeShortcuts } from "./useAppShortcuts";
 import { useIdleEditorPreload } from "./useIdleEditorPreload";
 import { WorkspaceChatHistory } from "./WorkspaceChatHistory";
+import { registerTabCommands } from "./workbenchCommands";
 
 /** Re-exported for callers that open a host-launched Issue session from the workbench. */
 export { openIssueSession };
@@ -338,6 +345,18 @@ function useTerminalReservation(workspaceId: string): void {
 	}, [connectionGeneration, pendingIntent, status, workspaceId]);
 }
 
+function workbenchChromeShortcuts(): WorkbenchChromeShortcuts {
+	return {
+		hide: {
+			left: keybindingKeys("view.toggleLeft"),
+			right: keybindingKeys("view.toggleRight"),
+			bottom: keybindingKeys("view.toggleBottom"),
+		},
+		tools: { projects: keybindingKeys("focus.projects"), files: keybindingKeys("view.files") },
+		terminal: keybindingKeys("focus.terminal"),
+	};
+}
+
 export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	const t = useT();
 	const status = useAppStore((state) => state.status);
@@ -374,6 +393,8 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	);
 	const repositoryId = isChat ? null : workspaceId;
 	const specs = useWorkspaceSpecs(repositoryId);
+	const artifacts = useWorkspaceArtifacts(workspaceId);
+	const artifactsUnseen = useAppStore((state) => selectArtifactsUnseen(state, workspaceId));
 	const review = useWorkspaceReview(repositoryId);
 	useLoadWorkspaceTurns(repositoryId);
 	useIdleEditorPreload(workspaceId);
@@ -385,6 +406,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		void ChatView.preload();
 	}, []);
 	const [focusRequest, setFocusRequest] = useState<LayoutTabFocusRequest | null>(null);
+	const [chromeShortcuts] = useState(workbenchChromeShortcuts);
 	const requestRenameChat = useCallback(
 		(sessionId: string, titleInput: string, currentTitle: string) => {
 			const prepared = prepareChatTitle(titleInput);
@@ -698,7 +720,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					className="h-full"
 					viewportClassName="p-panel-inset"
 				>
-					<ProjectTree />
+					<ProjectTree nativeShortcuts={hasNativeShortcuts()} />
 				</QuietScrollArea>
 			),
 			specs: isChat ? (
@@ -719,6 +741,14 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				/>
 			) : null,
 			files: <FilesPanel key={workspaceId} workspaceId={workspaceId} />,
+			artifacts: (
+				<ArtifactsPanel
+					key={workspaceId}
+					workspaceId={workspaceId}
+					failed={artifacts.failed}
+					onRetry={artifacts.reload}
+				/>
+			),
 			review: isChat ? (
 				<ChatUnavailable />
 			) : (
@@ -756,6 +786,8 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		}
 		return bodies;
 	}, [
+		artifacts.failed,
+		artifacts.reload,
 		isChat,
 		launchIssueSession,
 		trustProject,
@@ -784,6 +816,15 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 
 	const renderTabAdornment = useCallback(
 		(tab: LayoutTab): ReactNode => {
+			if (tab.kind === "tool" && tab.tool === "artifacts" && artifactsUnseen) {
+				return (
+					<span
+						aria-hidden="true"
+						data-testid="artifacts-new-dot"
+						className="m-4 block size-6 rounded-full bg-primary"
+					/>
+				);
+			}
 			if (tab.kind === "tool" && tab.tool === "review" && reviewDraftCount > 0) {
 				return (
 					<span
@@ -810,7 +851,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				</span>
 			) : null;
 		},
-		[reviewDraftCount, reviewFlagByPath, t],
+		[artifactsUnseen, reviewDraftCount, reviewFlagByPath, t],
 	);
 
 	const renderEmptyCenter = useCallback(
@@ -938,7 +979,9 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				maxBottomGroups={layoutPreferences.maxBottomGroups}
 				projectionEpoch={projectionEpoch}
 				{...(focusRequest ? { focusRequest } : {})}
-				subscribeCloseRequest={subscribeCloseRequest}
+				registerTabCommands={registerTabCommands}
+				chromeShortcuts={chromeShortcuts}
+				renderLeftRailFooter={renderShortcutsRailButton}
 				renderTabBody={renderTabBody}
 				renderTabAdornment={renderTabAdornment}
 				renderToolBody={renderToolBody}

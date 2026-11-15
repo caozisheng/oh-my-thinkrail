@@ -94,6 +94,7 @@ import type {
 	UserFontsSnapshot,
 	UserThemesSnapshot,
 	Workspace,
+	WorkspaceArtifactsSnapshot,
 	WorkspacePathMatch,
 } from "./domain";
 import { isDelegationRunDetails } from "./domain";
@@ -105,6 +106,8 @@ import type {
 	IssueDesignApproval,
 	IssueDesignPublicationInput,
 	IssueDetail,
+	IssueImplementationRecovery,
+	IssueImplementationRecoveryInput,
 	IssueImplementationTarget,
 	IssueList,
 	IssuePublication,
@@ -170,9 +173,10 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 133;
+export const PROTOCOL_VERSION = 135;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
+export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
 export const PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127;
 export const PROJECT_GROUP_MAX_REPOSITORIES = 500;
 export const SEARCH_PROTOCOL_VERSION = 116;
@@ -199,6 +203,7 @@ export const PROJECT_ORDER_PROTOCOL_VERSION = 130;
 export const FS_MUTATIONS_PROTOCOL_VERSION = 131;
 export const WORKSPACE_PATH_RESOLVE_PROTOCOL_VERSION = 132;
 export const IMAGE_REFS_PROTOCOL_VERSION = 133;
+export const ARTIFACTS_PROTOCOL_VERSION = 135;
 export const IMAGES_ROUTE = "/images/";
 export const GITHUB_STAR_PROTOCOL_VERSION = 103;
 export const ISSUES_IMPLEMENTATION_PROTOCOL_VERSION = 108;
@@ -453,6 +458,9 @@ export const WS_METHODS = {
 	issuesSetRepositories: "issues.setRepositories",
 	issuesAddRepository: "issues.addRepository",
 	issuesCleanupRepositories: "issues.cleanupRepositories",
+	issuesImplementationRecovery: "issues.implementationRecovery",
+	issuesRecoverImplementation: "issues.recoverImplementation",
+	issuesImplementationHistory: "issues.implementationHistory",
 	issuesStartImplementation: "issues.startImplementation",
 	issuesValidateDesign: "issues.validateDesign",
 	issuesValidateImplementation: "issues.validateImplementation",
@@ -528,6 +536,11 @@ export const WS_METHODS = {
 	fsReadFile: "fs.readFile",
 	fsCopy: "fs.copy",
 	fsDelete: "fs.delete",
+	fsRename: "fs.rename",
+	fsMove: "fs.move",
+	artifactsList: "artifacts.list",
+	artifactsRestore: "artifacts.restore",
+	artifactsDiscard: "artifacts.discard",
 	specGraph: "spec.graph",
 	todoList: "todo.list",
 	todoAdd: "todo.add",
@@ -688,6 +701,7 @@ export const WS_CHANNELS = {
 	workspaceUpdated: "workspace.updated",
 	workspaceRemoved: "workspace.removed",
 	workspaceFsChanged: "workspace.fsChanged",
+	workspaceArtifactsChanged: "workspace.artifactsChanged",
 	workspaceCreationChanged: "workspace.creationChanged",
 	workspaceCreationRemoved: "workspace.creationRemoved",
 	chatContinuation: "chat.continuation",
@@ -1007,6 +1021,23 @@ export interface WsMethodMap {
 	"issues.setRepositories": { params: IssueRepositoriesInput; result: IssueRepositories };
 	"issues.addRepository": { params: IssueRepositoryJoinInput; result: IssueRepositories };
 	"issues.cleanupRepositories": { params: IssueTarget; result: IssueRepositoriesCleanup };
+	"issues.implementationHistory": {
+		params: IssueTarget;
+		result: {
+			entries: {
+				workspaceId: string;
+				branch: string;
+				archivedAt: number | null;
+				sessionId: string | null;
+				messages: TranscriptMessage[] | null;
+			}[];
+		};
+	};
+	"issues.implementationRecovery": { params: IssueTarget; result: IssueImplementationRecovery };
+	"issues.recoverImplementation": {
+		params: IssueImplementationRecoveryInput;
+		result: IssueSessionLaunch;
+	};
 
 	"issues.connection": { params: { projectId: string }; result: IssueConnection | null };
 	"issues.connect": {
@@ -1208,6 +1239,22 @@ export interface WsMethodMap {
 		result: { path: string };
 	};
 	"fs.delete": { params: { workspaceId: string; path: string }; result: Ack };
+	"fs.rename": {
+		params: { workspaceId: string; path: string; name: string };
+		result: { path: string };
+	};
+	"fs.move": {
+		params: {
+			sourceWorkspaceId: string;
+			sourcePath: string;
+			destinationWorkspaceId: string;
+			destinationDirectory: string;
+		};
+		result: { path: string };
+	};
+	"artifacts.list": { params: { workspaceId: string }; result: WorkspaceArtifactsSnapshot };
+	"artifacts.restore": { params: { workspaceId: string; path: string }; result: Ack };
+	"artifacts.discard": { params: { workspaceId: string; path: string }; result: Ack };
 	"spec.graph": { params: { workspaceId: string }; result: SpecGraphSnapshot };
 	"todo.list": {
 		params: { workspaceId: string; sessionId: string; opened?: "page" | "rail" };
@@ -1704,6 +1751,9 @@ export type WsErrorCode =
 	| "FILE_TOO_LARGE"
 	| "COPY_TOO_LARGE"
 	| "ENTRY_CHANGED"
+	| "ENTRY_EXISTS"
+	| "MOVE_ACROSS_DEVICES"
+	| "ARTIFACT_UNKNOWN"
 	| "CHATS_CONTAINER"
 	| "CHAT_WORKSPACE"
 	| "CHATS_STORE_UNAVAILABLE"
