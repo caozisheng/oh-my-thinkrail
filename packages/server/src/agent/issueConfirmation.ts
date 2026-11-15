@@ -71,7 +71,7 @@ function isConfirmationResult(value: unknown, expectedQuestion: string): boolean
 
 /** Validate the host's exact, trusted questionnaire receipt before consuming an Issue action. */
 export function isTrustedQuestionnaireReceipt(
-	transcript: readonly MessageView[],
+	transcript: readonly unknown[],
 	toolCallId: string,
 	expectedArgs: unknown,
 ): boolean {
@@ -80,7 +80,7 @@ export function isTrustedQuestionnaireReceipt(
 		.question;
 	if (typeof expectedQuestion !== "string") return false;
 
-	const messages = transcript;
+	const messages = transcript.map((message): MessageView => (isRecord(message) ? message : {}));
 	const allCalls = messages.flatMap(toolCalls);
 	if (
 		allCalls.some(
@@ -101,7 +101,11 @@ export function isTrustedQuestionnaireReceipt(
 	const callIndex = messages.findIndex((message) => toolCalls(message).includes(call));
 	if (
 		callIndex < 0 ||
-		!assistantToolCallsAreExecutable(messages[callIndex]?.stopReason as string | undefined)
+		!assistantToolCallsAreExecutable(
+			typeof messages[callIndex]?.stopReason === "string"
+				? messages[callIndex].stopReason
+				: undefined,
+		)
 	)
 		return false;
 

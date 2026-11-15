@@ -27,13 +27,16 @@ const receipt = (isError = false) => ({
 	isError,
 	details: result,
 });
-const valid = (...messages: Record<string, unknown>[]) =>
+const valid = (...messages: unknown[]) =>
 	isTrustedQuestionnaireReceipt(messages, "call_abc123|fc_0123456789abcdef", args);
 
 test("accepts an exact executable questionnaire and successful answer receipt", () => {
 	expect(valid(call(), receipt())).toBe(true);
 	expect(
 		valid({ role: "user", content: [{ type: "image", ref: "img_123" }] }, call(), receipt()),
+	).toBe(true);
+	expect(
+		valid(call(), { role: "assistant", content: [{ type: "image", data: "wire-ref" }] }, receipt()),
 	).toBe(true);
 	expect(
 		valid(call(), {
@@ -129,10 +132,7 @@ test("rejects changed arguments and non-option answer additions", () => {
 		const expected = { questions: [{ ...args.questions[0], multiSelect }] };
 		expect(
 			isTrustedQuestionnaireReceipt(
-				[
-					{ ...call(), content: [{ ...call().content[0], arguments: expected }] },
-					receipt(),
-				] as Parameters<typeof isTrustedQuestionnaireReceipt>[0],
+				[{ ...call(), content: [{ ...call().content[0], arguments: expected }] }, receipt()],
 				"call_abc123|fc_0123456789abcdef",
 				expected,
 			),
