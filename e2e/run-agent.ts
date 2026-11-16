@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
 import { createAgentRunPlan, WEB_BUILD_READY_ENV } from "./agentRunPlan";
+import { assertE2eTree } from "./fixtures/isolation";
 import { E2E_DATA_DIR } from "./fixtures/paths";
 import { holdE2eIdleSleep } from "./idleSleep";
 import { PARENT_SIGNAL_OWNER_ENV, runE2eProcess } from "./processRunner";
@@ -16,7 +17,10 @@ async function main(): Promise<number> {
 		const { exitCode } = await runE2eProcess(plan.buildCommand);
 		if (exitCode !== 0) return exitCode;
 	}
-	if (!playwrightArgs.includes("--list")) rmSync(E2E_DATA_DIR, { recursive: true, force: true });
+	if (!playwrightArgs.includes("--list")) {
+		assertE2eTree();
+		rmSync(E2E_DATA_DIR, { recursive: true, force: true });
+	}
 	delete plan.env[PARENT_SIGNAL_OWNER_ENV];
 	return (await runE2eProcess(plan.playwrightCommand, { env: plan.env })).exitCode;
 }

@@ -19,6 +19,7 @@ import {
 	writeE2eAgentSettings,
 } from "./centralAgent";
 import { git, gitQuiet, gitText } from "./git";
+import { assertE2eHost, assertE2eTree } from "./isolation";
 import {
 	E2E_CENTRAL_ARTIFACT,
 	E2E_CENTRAL_LOG,
@@ -56,6 +57,7 @@ export async function hideAuxiliaryWorkbench(page: Page): Promise<void> {
 }
 
 function resetState(): void {
+	assertE2eTree();
 	rmSync(join(E2E_DATA_DIR, "projects.json"), { force: true });
 	rmSync(join(E2E_DATA_DIR, "turns.json"), { force: true });
 	removeTree(join(E2E_DATA_DIR, "reviews"));
@@ -159,11 +161,13 @@ export function loadPersistedWorkspaces(): Workspace[] {
 }
 
 async function disposeLiveSessions(page: Page): Promise<void> {
-	const workspaces = loadPersistedWorkspaces();
-	if (workspaces.length === 0) return;
+	assertE2eTree();
 	const health = await page.request.get("/health");
 	const hostUrl = new URL(health.url());
 	await health.dispose();
+	await assertE2eHost(hostUrl.origin);
+	const workspaces = loadPersistedWorkspaces();
+	if (workspaces.length === 0) return;
 	const port = Number(hostUrl.port) || (hostUrl.protocol === "https:" ? 443 : 80);
 	const wire = await E2eWire.connect(port);
 	try {

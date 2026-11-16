@@ -15,6 +15,7 @@ import {
 	writeE2eAgentSettings,
 } from "./fixtures/centralAgent";
 import { writeFakeGh, writeHermeticE2eShell } from "./fixtures/executables";
+import { assertE2eHost, assertE2eTree } from "./fixtures/isolation";
 import {
 	E2E_CENTRAL_BAD_EXTENSION_SOURCE,
 	E2E_CENTRAL_EXTENSION_SOURCE,
@@ -53,10 +54,13 @@ function seedLocalAgentConfiguration(): void {
 	writeE2eAgentSettings();
 }
 
-export default function globalSetup(config?: FullConfig): void | Promise<void> {
+export default async function globalSetup(config?: FullConfig): Promise<void> {
+	const baseURL = config?.projects[0]?.use.baseURL;
+	if (baseURL) await assertE2eHost(baseURL);
 	const centralMode = isRealCentralE2e();
 	try {
 		const globalCentralArtifact = centralMode ? findGlobalCentralArtifact() : undefined;
+		assertE2eTree();
 		removeTree(E2E_DATA_DIR);
 		mkdirSync(E2E_DATA_DIR, { recursive: true });
 		writeFileSync(join(E2E_DATA_DIR, "config.json"), JSON.stringify(E2E_BASE_CONFIG));
@@ -110,11 +114,11 @@ export default function globalSetup(config?: FullConfig): void | Promise<void> {
 		seedSpeechFixture();
 	} catch (error) {
 		if (!centralMode) throw error;
+		assertE2eTree();
 		removeTree(E2E_DATA_DIR);
 		throw centralSetupFailure(error);
 	}
 
-	const baseURL = config?.projects[0]?.use.baseURL;
 	if (!centralMode) {
 		if (!baseURL) return undefined;
 		return E2eWire.connect(Number(new URL(baseURL).port))
@@ -140,6 +144,7 @@ export default function globalSetup(config?: FullConfig): void | Promise<void> {
 			}
 		})
 		.catch((error: unknown) => {
+			assertE2eTree();
 			removeTree(E2E_DATA_DIR);
 			throw centralSetupFailure(error);
 		});

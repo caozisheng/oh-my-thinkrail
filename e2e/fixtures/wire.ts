@@ -1,5 +1,6 @@
 import type { WsMethodName, WsParams, WsRequest, WsResult } from "@thinkrail/contracts";
-import { E2E_PORT } from "./paths";
+import { assertE2eHost } from "./isolation";
+import { E2E_DATA_DIR, E2E_PORT, E2E_RESTART_DATA_DIR, E2E_RESTART_PORT } from "./paths";
 
 export class E2eWireTransientError extends Error {}
 
@@ -19,6 +20,10 @@ export class E2eWire {
 	}
 
 	static async connect(port = E2E_PORT, timeoutMs = 10_000): Promise<E2eWire> {
+		await assertE2eHost(
+			`http://localhost:${port}`,
+			port === E2E_RESTART_PORT ? E2E_RESTART_DATA_DIR : E2E_DATA_DIR,
+		);
 		const socket = new WebSocket(`ws://localhost:${port}/ws`);
 		await new Promise<void>((resolve, reject) => {
 			const timer = setTimeout(() => {

@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import type { Workspace } from "@thinkrail/contracts";
 import { jbcentralExtensionPath } from "@thinkrail/shared/jbcentral";
-import { toolHomeEnv } from "@thinkrail/shared/toolHomes";
 import { stripAmbientPiCredentials } from "./ambientCredentials";
 import { E2E_BASE_CONFIG } from "./fixtures/analyticsConsent";
 import { activeWorktreeRow } from "./fixtures/app";
@@ -28,6 +27,12 @@ import {
 } from "./fixtures/centralAgent";
 import { hermeticE2ePath, hermeticE2eShell, resolveBunExecutable } from "./fixtures/executables";
 import { gitQuiet } from "./fixtures/git";
+import {
+	assertE2eHost,
+	assertE2ePath,
+	assertE2eTree,
+	e2eHostEnvironment,
+} from "./fixtures/isolation";
 import {
 	E2E_CENTRAL_BAD_EXTENSION_SOURCE,
 	E2E_CENTRAL_EXTENSION_SOURCE,
@@ -58,6 +63,8 @@ const bunExecutable = resolveBunExecutable();
 const hostPath = hermeticE2ePath(E2E_FAKE_BIN_DIR);
 
 function seedState(): void {
+	assertE2eTree(DATA_DIR);
+	assertE2ePath(HOST_LOG);
 	rmSync(DATA_DIR, { recursive: true, force: true });
 	rmSync(HOST_LOG, { force: true });
 	mkdirSync(REPO, { recursive: true });
@@ -94,13 +101,11 @@ async function startHost(): Promise<void> {
 			...process.env,
 			THINKRAIL_PORT: String(PORT),
 			THINKRAIL_STATIC_DIR: staticDir,
-			THINKRAIL_DATA_DIR: DATA_DIR,
+			...e2eHostEnvironment(DATA_DIR),
 			THINKRAIL_PICK_DIR: PICK_POINTER,
 			THINKRAIL_GH_OFFLINE: "1",
 			CI: "1",
 			[REAL_CENTRAL_E2E_ENV]: "1",
-			...toolHomeEnv(HOME_DIR),
-			PI_CODING_AGENT_DIR: AGENT_DIR,
 			PI_OFFLINE: "1",
 			PATH: hostPath,
 			SHELL: hermeticE2eShell(E2E_FAKE_BIN_DIR),
@@ -118,6 +123,7 @@ async function startHost(): Promise<void> {
 			healthy = (await fetch(`${BASE}/health`)).ok;
 		} catch {}
 		if (healthy) {
+			await assertE2eHost(BASE, DATA_DIR);
 			let wire: E2eWire;
 			try {
 				wire = await E2eWire.connect(PORT);
@@ -153,6 +159,7 @@ async function stopHost(signal: NodeJS.Signals = "SIGKILL"): Promise<void> {
 
 test.afterEach(async () => {
 	await stopHost();
+	assertE2eTree(DATA_DIR);
 	rmSync(DATA_DIR, { recursive: true, force: true });
 });
 

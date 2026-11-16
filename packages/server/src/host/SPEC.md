@@ -69,6 +69,11 @@ API/ABI/protocol compatibility.
 The wire and composition root: `Bun.serve` HTTP+WS, static SPA serving, the WS method→handler registry,
 channel fan-out, and the process-boot wrapper both launchers share.
 
+A host explicitly launched with `THINKRAIL_E2E_ISOLATION` adds an opaque health header derived
+from that token and its effective data, OS home and PI agent directories captured at server creation.
+This test-only readiness seam lets the E2E harness reject unrelated hosts before destructive resets;
+normal health reveals neither paths nor an isolation header. Isolation policy remains in [[module-browser-e2e]].
+
 ## Boundary
 
 - **Owns:** `server.ts` (async `createServer` first asks auth to start Central artifact watching and publish
