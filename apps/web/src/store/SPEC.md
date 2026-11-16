@@ -186,7 +186,7 @@ roster's catalog reads ([[submodule-web-panels]]).
   atomically, including a previously unloaded workspace list. **`activeProjectGroupId`** (set by `selectProjectGroup`, which clears project, workspace and
   creation selection; cleared by `selectProject`, `selectMain` and `selectCreation`) names the project
   group whose home Project Home shows, read only through `selectActiveProjectGroupId` so any narrower
-  selection wins. `activateGroupWorkspace` atomically installs owner, workspace and selection. `selectIssueReadPermission` centralizes independent group-read permission and repository trust.
+  selection wins. `selectIssueReadPermission` centralizes independent group-read permission and repository trust.
   Group owner records stay in domain projections for session/workspace ownership,
   but `selectRepoProjects` and repository-selection derivations exclude them. Group workspaces are never
   settled as repository branches. **`collapsedRailNodes`** holds the collapsed group headers of the

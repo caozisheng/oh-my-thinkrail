@@ -660,7 +660,7 @@
 	"issues.action.implement": "Run implementation",
 	"issues.address": "Repository or GitLab group address",
 	"issues.addressHint": "Paste an HTTP(S) clone address or a GitLab group Issues URL. SSH addresses are not supported.",
-	"issues.addressInvalid": "Use an HTTP(S) repository clone address or GitLab groups/<group>/-/issues URL matching the confirmed instance.",
+	"issues.addressInvalid": "Use an HTTP(S) repository clone address or GitLab groups/group-path/-/issues URL matching the confirmed instance.",
 	"issues.addressPlaceholder": "https://github.com/owner/repository.git",
 	"issues.addressSsh": "SSH and SCP addresses cannot be used here. Copy the HTTPS clone address from the project instead.",
 	"issues.advanced": "Instance and project or group path",

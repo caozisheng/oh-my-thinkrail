@@ -579,7 +579,7 @@
 	"issues.action.implement": "执行实施",
 	"issues.address": "仓库或 GitLab 组地址",
 	"issues.addressHint": "粘贴 HTTP(S) 克隆地址或 GitLab 组的 Issue 页面地址。不支持 SSH 地址。",
-	"issues.addressInvalid": "请使用与已确认实例一致的 HTTP(S) 克隆地址，或 GitLab 的 groups/<组路径>/-/issues 地址。",
+	"issues.addressInvalid": "请使用与已确认实例一致的 HTTP(S) 克隆地址，或 GitLab 的 groups/组路径/-/issues 地址。",
 	"issues.addressPlaceholder": "https://github.com/owner/repository.git",
 	"issues.addressSsh": "这里不能使用 SSH 或 SCP 地址。请在项目中复制 HTTPS 克隆地址。",
 	"issues.advanced": "实例与项目或组路径",
