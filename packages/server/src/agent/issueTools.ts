@@ -55,6 +55,7 @@ type SummaryResult = { noteId: number; url?: string };
 
 export interface IssueToolHost {
 	context(sessionId: string): Promise<string>;
+	deleteNote?(sessionId: string, noteId: number): Promise<{ noteId: number; deleted: true }>;
 	prepareConfirmation?(
 		sessionId: string,
 		input: {
@@ -154,6 +155,36 @@ function validRecordSummaryParams(value: unknown): value is RecordSummaryParams 
 		params.summary.trim().length > 0 &&
 		new TextEncoder().encode(params.summary).byteLength <= 32_000
 	);
+}
+
+const DeleteNoteSchema = Type.Object(
+	{ noteId: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }) },
+	{ additionalProperties: false },
+);
+export function createIssueDeleteNoteTool(): ToolDefinition<
+	typeof DeleteNoteSchema,
+	{ noteId: number; deleted: true }
+> {
+	return {
+		name: "issue_delete_note",
+		label: "Delete Issue Comment",
+		description:
+			"Delete one explicitly requested comment from this session's bound Issue by noteId. Irreversible, single attempt; never automatically retry a failed or uncertain delete. No other Issue or repository can be selected.",
+		parameters: DeleteNoteSchema,
+		async execute(_id, params, _signal, _update, ctx) {
+			if (
+				!params ||
+				Reflect.ownKeys(params).length !== 1 ||
+				!Object.hasOwn(params, "noteId") ||
+				!Number.isSafeInteger(params.noteId) ||
+				params.noteId < 1
+			)
+				throw invalid();
+			if (!host.deleteNote) throw unavailable();
+			const result = await host.deleteNote(ctx.sessionManager.getSessionId(), params.noteId);
+			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+		},
+	};
 }
 
 export function createIssueContextTool(): ToolDefinition<typeof EmptyParamsSchema, undefined> {
@@ -310,7 +341,12 @@ const PrepareConfirmationSchema = Type.Object(
 		report: Type.Optional(Type.String({ minLength: 1, maxLength: 32000 })),
 		projectId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 		title: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
-		body: Type.Optional(Type.String({ maxLength: 32000 })),
+		body: Type.Optional(
+			Type.String({
+				maxLength: 32000,
+				description: "Complete Issue body replacement, at most 32,000 UTF-8 bytes.",
+			}),
+		),
 		targetBranch: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
 	},
 	{ additionalProperties: false },
@@ -334,6 +370,12 @@ export function createIssuePrepareConfirmationTool(): ToolDefinition<
 		description:
 			"Record/read structured per-repository delivery state; authorize and advance per-repository lifecycle policies using action:'authorize-automation' and action:'advance-automation' with the same operationId/projectId. Before changing a downstream pairing, call action:'preflight-dependencies' with its projectId; this reads exact upstream merged requests and target SHAs. It blocks when host-verified API/ABI/protocol compatibility evidence is unavailable—do not substitute independent CI. Policy advancement also requires host-observed validation evidence bound to the exact SHA/tree/target; agent-reported validation never qualifies. Other actions independently confirm MR ready/merge, Issue close, body replacement, stage report and Draft delivery. Pass returned confirmation questions unchanged to ask_user_question. inspect:true and dependency preflight are read-only. Never bypass host operations through shell.",
 		async execute(_id, params, _signal, _update, ctx) {
+			if (
+				params.action === "update-body" &&
+				(!Object.hasOwn(params, "body") ||
+					new TextEncoder().encode(params.body ?? "").byteLength > 32_000)
+			)
+				throw invalid();
 			if (!host.prepareConfirmation) throw unavailable();
 			const result = await host.prepareConfirmation(ctx.sessionManager.getSessionId(), params);
 			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
@@ -364,6 +406,7 @@ export function createIssueExecuteConfirmationTool(): ToolDefinition<
 }
 export function issueToolsExtension(pi: ExtensionAPI): void {
 	pi.registerTool(createIssueContextTool());
+	pi.registerTool(createIssueDeleteNoteTool());
 	pi.registerTool(createIssueRecordSummaryTool());
 	pi.registerTool(createIssueJoinRepositoryTool());
 	pi.registerTool(createIssuePrepareConfirmationTool());

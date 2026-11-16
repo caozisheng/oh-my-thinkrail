@@ -282,7 +282,7 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 	async function request(
 		path: string,
 		deadline: number,
-		write?: { method: "POST" | "PUT"; body: string },
+		write?: { method: "POST" | "PUT" | "DELETE"; body: string },
 		requestRoot = root,
 	): Promise<{ value: unknown; next: string | null }> {
 		const remaining = deadline - Date.now();
@@ -308,6 +308,11 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 					`gitlab request rejected (status ${response.status}${response.redirected ? ", redirected" : ""})`,
 				);
 				throw unavailable();
+			}
+			if (write?.method === "DELETE") {
+				await response.body?.cancel();
+				if (response.status !== 204) throw unavailable();
+				return { value: null, next: null };
 			}
 			const length = response.headers.get("content-length");
 			if (length !== null && (!/^\d+$/.test(length) || Number(length) > maxBytes)) {
@@ -419,6 +424,12 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 			}
 			if (Object.keys(body).length === 0) invalid();
 			return decoded(path, matchingIid(issue, iid), { method: "PUT", body });
+		},
+		deleteNote: async (iid, noteId) => {
+			const path = `/issues/${positive(iid)}/notes/${positive(noteId)}`;
+			const value = record((await request(path, Date.now() + timeoutMs)).value);
+			if (value.id !== noteId || value.system === true) invalid();
+			await request(path, Date.now() + timeoutMs, { method: "DELETE", body: "" });
 		},
 		addNote: async (iid, body) =>
 			decoded(`/issues/${positive(iid)}/notes`, note, {

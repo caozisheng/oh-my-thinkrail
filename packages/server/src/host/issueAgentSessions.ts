@@ -169,6 +169,14 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 			if (!options.executeConfirmation) stop();
 			return options.executeConfirmation(sessionId, operationId, toolCallId, continuationId);
 		},
+		async deleteNote(sessionId, noteId) {
+			if (!Number.isSafeInteger(noteId) || noteId < 1) stop();
+			const found = await binding(sessionId);
+			const { remote, checked } = await access(found, found);
+			if (!remote.deleteNote) stop();
+			await checked(() => remote.deleteNote?.(found.reference.number, noteId) ?? stop());
+			return { noteId, deleted: true };
+		},
 		async context(sessionId) {
 			const found = await binding(sessionId);
 			const { guard } = await access(found, found);

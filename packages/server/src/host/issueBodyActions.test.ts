@@ -71,6 +71,27 @@ function fixture() {
 	};
 }
 
+test("body update enforces operation id syntax and the UTF-8 byte limit before remote reads", async () => {
+	const f = fixture();
+	try {
+		for (const input of [
+			{ operationId: "bad id", body: "ok" },
+			{ operationId: "ok", body: "界".repeat(10667) },
+		]) {
+			await expect(f.actions.prepare("session", input)).rejects.toMatchObject({
+				code: "ISSUE_CONFIRMATION_BLOCKED",
+			});
+		}
+		const prepared = await f.actions.prepare("session", {
+			operationId: "x".repeat(128),
+			body: "é".repeat(16000),
+		});
+		expect(prepared.questions.questions[0]?.preview).toContain("Complete replacement body:");
+	} finally {
+		f.dispose();
+	}
+});
+
 test("body replacement freezes full before/after and requires a real receipt", async () => {
 	const f = fixture();
 	try {

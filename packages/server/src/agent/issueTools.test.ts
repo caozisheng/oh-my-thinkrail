@@ -9,6 +9,7 @@ import { Check } from "typebox/value";
 import { buildResourceLoader, childExtensionFactories } from "./extensions";
 import {
 	createIssueContextTool,
+	createIssueDeleteNoteTool,
 	createIssueExecuteConfirmationTool,
 	createIssueJoinRepositoryTool,
 	createIssuePrepareConfirmationTool,
@@ -31,6 +32,10 @@ function fakeHost(): { host: IssueToolHost; calls: unknown[][] } {
 			context: async (...args) => {
 				calls.push(args);
 				return "Bound issue context";
+			},
+			deleteNote: async (...args) => {
+				calls.push(args);
+				return { noteId: args[1], deleted: true };
 			},
 			recordSummary: async (...args) => {
 				calls.push(args);
@@ -67,6 +72,27 @@ test("tools delegate only their SDK session identity and return host results", a
 		{ type: "text", text: JSON.stringify({ noteId: 42, url: "https://example.test/note/42" }) },
 	]);
 	expect(calls).toEqual([["own-session"], ["own-session", "summary-1", " 完成 \n"]]);
+});
+
+test("delete note delegates only a valid comment id and current SDK session", async () => {
+	const { host, calls } = fakeHost();
+	host.deleteNote = async (...args) => {
+		calls.push(args);
+		return { noteId: args[1], deleted: true };
+	};
+	setIssueToolHost(host);
+	const tool = createIssueDeleteNoteTool();
+	for (const input of [{ noteId: 0 }, { noteId: 1.2 }, { noteId: 12, issue: 8 }]) {
+		await expect(
+			tool.execute("call", input as never, undefined, undefined, ctx),
+		).rejects.toHaveProperty("code", "RANGE_INVALID");
+	}
+	expect(calls).toEqual([]);
+	expect((await tool.execute("call", { noteId: 12 }, undefined, undefined, ctx)).details).toEqual({
+		noteId: 12,
+		deleted: true,
+	});
+	expect(calls).toEqual([["own-session", 12]]);
 });
 
 test("context has exact empty parameters, enforced at execute time", async () => {
@@ -166,6 +192,18 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	expect(Check(tool.parameters, { operationId: "op", continueDespiteChecks: true })).toBe(true);
 	expect(Check(tool.parameters, { operationId: "op", recovery: "reconcile" })).toBe(true);
 	expect(Check(tool.parameters, { operationId: "op", recovery: "resend" })).toBe(false);
+	for (const body of ["é".repeat(16001), "😀".repeat(8001)]) {
+		expect(Check(tool.parameters, { operationId: "body", action: "update-body", body })).toBe(true);
+		await expect(
+			tool.execute(
+				"call",
+				{ operationId: "body", action: "update-body", body },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toHaveProperty("code", "RANGE_INVALID");
+	}
 	expect(
 		Check(tool.parameters, { operationId: "body", action: "update-body", body: "Replacement" }),
 	).toBe(true);
@@ -247,6 +285,7 @@ test("extension registers the issue tools without injecting global issue instruc
 	} as unknown as ExtensionAPI);
 	expect(tools.map((tool) => tool.name)).toEqual([
 		"issue_context",
+		"issue_delete_note",
 		"issue_record_summary",
 		"issue_join_repository",
 		"issue_prepare_confirmation",
@@ -282,6 +321,7 @@ test("the shared resource loader registers issue tools as a named inline extensi
 		expect(extension).toBeDefined();
 		expect([...(extension?.tools.keys() ?? [])]).toEqual([
 			"issue_context",
+			"issue_delete_note",
 			"issue_record_summary",
 			"issue_join_repository",
 			"issue_prepare_confirmation",

@@ -36,6 +36,60 @@ async function card(
 	)) as IssueContinuationBlocked;
 }
 
+test("unavailable cards expose static lifecycle reasons without verifying or retrying", async () => {
+	let enabled = true;
+	let verifies = 0;
+	let attempts = 0;
+	const service = createIssueContinuations({
+		enabled: () => enabled,
+		verify: async () => {
+			verifies++;
+		},
+	});
+	const blocked = await card(service, async () => {
+		attempts++;
+		throw refusal();
+	});
+	for (const [session, operation, id, reason] of [
+		["foreign", "operation", blocked.continuationId, "session-mismatch"],
+		["session", "foreign", blocked.continuationId, "operation-mismatch"],
+		["session", "operation", "unknown", "missing"],
+	] as const) {
+		await expect(service.execute(session, operation, id, "receipt")).rejects.toHaveProperty(
+			"reason",
+			reason,
+		);
+	}
+	enabled = false;
+	await expect(
+		service.execute("session", "operation", blocked.continuationId, "receipt"),
+	).rejects.toHaveProperty("reason", "disabled");
+	expect(verifies).toBe(0);
+	expect(attempts).toBe(1);
+});
+
+test("expiry while awaiting receipt verification prevents claiming the attempt", async () => {
+	const originalNow = Date.now;
+	let now = originalNow();
+	Date.now = () => now;
+	try {
+		let attempts = 0;
+		const service = host(async () => {
+			now += 31 * 60 * 1000;
+		});
+		const blocked = await card(service, async () => {
+			attempts++;
+			throw refusal();
+		});
+		await expect(
+			service.execute("session", "operation", blocked.continuationId, "receipt"),
+		).rejects.toHaveProperty("reason", "expired");
+		expect(attempts).toBe(1);
+	} finally {
+		Date.now = originalNow;
+	}
+});
+
 test("passes successful values through unchanged", async () => {
 	const service = host();
 	const value = { status: "completed", receipt: 7 };
@@ -309,7 +363,7 @@ test("expired cards release capacity and cannot execute", async () => {
 		now += 31 * 60 * 1000;
 		await expect(
 			service.execute("session", "operation", first.continuationId, "receipt"),
-		).rejects.toHaveProperty("code", "RESOURCE_UNAVAILABLE");
+		).rejects.toHaveProperty("reason", "expired");
 		expect((await card(service)).status).toBe("blocked");
 	} finally {
 		Date.now = originalNow;

@@ -10,6 +10,11 @@ tags: [host, public-surface-checked]
 
 ## Confirmed Issue operations
 
+`issue_delete_note` accepts only a positive comment id and resolves the Issue from the current session's
+persisted binding. The provider reads and verifies comment ownership under that Issue before one DELETE;
+only a confirmed 204 response counts as success. Provider errors are uncertain writes and are not
+retried. This irreversible comment action is intentionally direct and does not create a confirmation card.
+
 `issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
 sessions. Their fixed previews reuse `ask_user_question`; transcript verification admits only the exact
 submitted `Looks right` response. The private `issue-confirmations` journal snapshots bounded payloads,
@@ -39,8 +44,10 @@ prepare/execute refusals may use host-local `issueContinuations`, which return a
 input snapshot and exact continuation questions. A real receipt authorizes one memoized attempt;
 concurrent/replayed calls share it. A successful prepare continuation returns a new normal/warned operation
 card needing separate approval, not remote mutation. Snapshots expire with host restart or after 30 minutes,
-are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Invalid receipts grant no
-action.
+are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Unavailable execution
+reports static `disabled`, `missing`, `session-mismatch`, `operation-mismatch` or `expired` reasons;
+missing includes restart, eviction and previously pruned entries, not proof of a particular cause.
+Expiry is rechecked after receipt verification before claiming an attempt. Invalid receipts grant no action.
 
 `continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
 include closed Issue, missing design receipt, unexpected workflow labels and uncommitted files; delivery
@@ -1651,7 +1658,9 @@ branch SHA. Uncertain writes are observed/reconciled under the original operatio
 `issueSessions.ts` exports `IssueSessionStore`. `createIssuesHost` composes both with the same lazy
 IssuesService, trusted project and managed workspace lookup. The private `<dataDir>/issue-sessions`
 root is provisioned lazily before session creation. Server composition installs context/summary
-callbacks with `setIssueToolHost` after session services are available and clears them on shutdown.
+callbacks with `setIssueToolHost` and the async association probe for missing tool recovery after
+session services are available, and clears both on shutdown. A bound Issue session with missing core
+registry definitions receives one gated resource reload; absent bindings and intentional extension disablement do not trigger it.
 No credential crosses this seam. The new v109 `issues.beginDesign` and
 `issues.beginImplementation` actions require the exact `IssueSessionStartupTarget` (including its
 effective locale) and are gated independently at `ISSUES_SESSION_STARTUP_PROTOCOL_VERSION`.

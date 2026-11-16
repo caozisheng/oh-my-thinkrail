@@ -131,6 +131,7 @@ describe("pi-thinkrail-workflow extension", () => {
 		}
 		expect(skill).toContain("Stage records are not delivery gates");
 		expect(skill).toContain("Issue closure always needs its own authorization");
+		expect(skill).toContain("A successful context read with `comments: []` is valid");
 	});
 
 	test("classifies every GitHub merge state before declaring a PR ready", () => {
