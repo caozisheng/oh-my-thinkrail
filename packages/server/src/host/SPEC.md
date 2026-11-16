@@ -39,8 +39,10 @@ prepare/execute refusals may use host-local `issueContinuations`, which return a
 input snapshot and exact continuation questions. A real receipt authorizes one memoized attempt;
 concurrent/replayed calls share it. A successful prepare continuation returns a new normal/warned operation
 card needing separate approval, not remote mutation. Snapshots expire with host restart or after 30 minutes,
-are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Invalid receipts grant no
-action.
+are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Unavailable execution
+reports static `disabled`, `missing`, `session-mismatch`, `operation-mismatch` or `expired` reasons;
+missing includes restart, eviction and previously pruned entries, not proof of a particular cause.
+Expiry is rechecked after receipt verification before claiming an attempt. Invalid receipts grant no action.
 
 `continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
 include closed Issue, missing design receipt, unexpected workflow labels and uncommitted files; delivery
