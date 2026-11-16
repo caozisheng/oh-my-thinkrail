@@ -113,7 +113,7 @@ export function resolveSearchRoot(
 			root: current.worktreePath,
 			projectId: current.projectId,
 			workspaceId: current.id,
-			git: current.kind !== "chat",
+			git: current.kind !== "chat" && current.kind !== "group",
 		};
 	}
 	const project = projects.find((candidate) => candidate.id === context.projectId);

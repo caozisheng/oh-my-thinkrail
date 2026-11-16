@@ -47,7 +47,7 @@ export function reviewRefreshRows(
 ): Workspace[] {
 	const idleDays = getConfig().settleIdleDays;
 	return rows.filter((row) => {
-		if (row.kind === "default" || isChatWorkspace(row)) return false;
+		if (row.kind === "default" || row.kind === "group" || isChatWorkspace(row)) return false;
 		if (row.settledOverride === "settled") return false;
 		if (
 			(row.review?.state === "merged" || row.review?.state === "closed") &&
@@ -82,7 +82,7 @@ async function backfillActivity(row: Workspace): Promise<void> {
 	} catch {
 		at = undefined;
 	}
-	if (at === undefined && row.kind !== "default" && !isChatWorkspace(row)) {
+	if (at === undefined && row.kind !== "default" && row.kind !== "group" && !isChatWorkspace(row)) {
 		try {
 			at = statSync(join(row.worktreePath, ".git")).mtimeMs;
 		} catch {

@@ -44,7 +44,8 @@ export function canRenameWorkspace(protocolVersion: number | null, workspace: Wo
 		protocolVersion !== null &&
 		protocolVersion >= WORKSPACE_RENAME_PROTOCOL_VERSION &&
 		workspace.kind !== "default" &&
-		workspace.kind !== "external"
+		workspace.kind !== "external" &&
+		workspace.kind !== "group"
 	);
 }
 
@@ -52,7 +53,8 @@ export function canSettleWorkspace(protocolVersion: number | null, workspace: Wo
 	return (
 		supportsWorkspaceSettling(protocolVersion) &&
 		workspace.kind !== "default" &&
-		workspace.kind !== "chat"
+		workspace.kind !== "chat" &&
+		workspace.kind !== "group"
 	);
 }
 

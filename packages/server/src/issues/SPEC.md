@@ -18,6 +18,16 @@ seam and is composed by server-only host actions. Stage publication and draft de
 
 ## Public surface
 
+GitLab group associations use the existing vault/lifecycle with optional `scope: "group"`.
+They verify the group and its complete owned-project catalog, including subgroups and excluding shared
+projects. Group reads reuse the bounded GitLab transport; refresh replaces the catalog atomically only
+after complete success. Every summary and detail retains the owning project's numeric id and
+verified namespace path. Unknown/out-of-group projects and cross-instance references fail closed.
+Group connections refuse repository workflow and delivery capabilities. Those remain on ordinary
+repository connections, with their existing trust, confirmation and checkout guards. No production
+credentials enter tests.
+The barrel exports `createGitLabGroupClient`, `GitLabGroupClient` and `GitLabGroupIssue`; its group,
+owned-project catalog and group-Issue reads share the project's bounded request transport.
 `index.ts` exports `createIssuesService`, `IssuesService`, `IssuesServiceOptions`, `IssueBinding`,
 and `IssueBindingPersistence`, `IssueStoredBinding`, and `IssueCredentialStore`. The async factory loads
 and validates metadata only: startup never touches the vault or network. The required
@@ -51,7 +61,8 @@ a server-only lazy asynchronous seam, not a wire contract. Host composition supp
 
 `remoteFor(localProjectId, reference)` is a synchronous server-only capability lookup, not an RPC
 or workflow action. It validates the full reference and requires a live client plus exact canonical
-instance URL and verified numeric remote project id equality with the current binding; the provider
+instance URL and verified numeric remote project id equality with a project binding, or membership in
+the verified owned-project catalog of a group binding; the provider
 follows the instance host through `issueProviderForInstanceUrl`, never the caller. It returns the
 neutral read port, never reconstructing a client from persisted metadata and never exposing a token
 accessor. `workflowFor(localProjectId, reference)` is the GitLab-only companion: it refuses a
@@ -77,6 +88,12 @@ detail, MR creation, and SHA-conditional merge. These are provider primitives, n
 permission to merge. Provider input/read types are exported through the barrel.
 
 ## Connection and read invariants
+
+GitLab Issue reads project optional assignee/author identities into summaries, using only
+numeric id, name and username. GitLab's legacy singular assignee is accepted only when the plural
+field is absent. Missing metadata is not fabricated as an empty assignment. People filtering belongs
+to the loaded browser list; it causes no provider requests, changes no Issue, and cannot bypass the
+existing complete-pagination/resource limits.
 
 - `connect` validates through shared `canonicalIssueInstanceUrl` / `hasIssueHttpConsent` before
   any PAT request. Non-loopback HTTP requires consent for the exact canonical instance, either

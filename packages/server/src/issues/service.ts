@@ -16,7 +16,13 @@ import {
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { logger } from "../log";
-import { createGitLabClient, type GitLabClientOptions, type GitLabIssue } from "./client";
+import {
+	createGitLabClient,
+	createGitLabGroupClient,
+	type GitLabClientOptions,
+	type GitLabGroupClient,
+	type GitLabIssue,
+} from "./client";
 import { createGitHubClient } from "./github";
 import type { IssueDeliveryRemote, IssueRemote, IssueWorkflowRemote } from "./remote";
 
@@ -76,6 +82,7 @@ function publicBinding(binding: IssueBinding): IssueBinding {
 		projectId: binding.projectId,
 		instanceUrl: binding.instanceUrl,
 		remoteProjectId: binding.remoteProjectId,
+		...(binding.scope ? { scope: binding.scope } : {}),
 	};
 }
 function storedBinding(row: IssueStoredBinding): IssueStoredBinding {
@@ -83,6 +90,7 @@ function storedBinding(row: IssueStoredBinding): IssueStoredBinding {
 		row.projectId,
 		row.instanceUrl,
 		row.remoteProjectId,
+		row.scope,
 	);
 	if (row.credentialId !== undefined) {
 		if (typeof row.credentialId !== "string" || !uuid.test(row.credentialId)) invalid();
@@ -135,12 +143,18 @@ function unavailable(message: string): never {
 	throw new CodedError("RESOURCE_UNAVAILABLE", message);
 }
 
-function bindingOf(projectId: string, instanceUrl: string, remoteProjectId: string): IssueBinding {
+function bindingOf(
+	projectId: string,
+	instanceUrl: string,
+	remoteProjectId: string,
+	scope?: "group",
+): IssueBinding {
 	const provider = issueProviderForInstanceUrl(instanceUrl);
 	if (
 		typeof projectId !== "string" ||
 		!projectId.trim() ||
 		provider === null ||
+		(scope !== undefined && (scope !== "group" || provider !== "gitlab")) ||
 		!isIssueReference({ provider, instanceUrl, projectId: remoteProjectId, number: 1 }) ||
 		!/^[1-9]\d*$/.test(remoteProjectId) ||
 		!Number.isSafeInteger(Number(remoteProjectId))
@@ -150,6 +164,7 @@ function bindingOf(projectId: string, instanceUrl: string, remoteProjectId: stri
 		projectId,
 		instanceUrl: canonicalIssueInstanceUrl(instanceUrl) ?? invalid(),
 		remoteProjectId,
+		...(scope ? { scope } : {}),
 	};
 }
 
@@ -170,10 +185,11 @@ function stageOf(issue: GitLabIssue): IssueStage {
 			: "backlog";
 }
 
-function projectPath(path: string): string {
+function projectPath(path: string, minimum = 2): string {
 	// GitLab project paths contain slug segments. Do not interpret API text as a URL.
 	const parts = path.split("/");
-	if (parts.length < 2 || parts.some((part) => !/^[a-z\d_][a-z\d_.-]*$/i.test(part))) invalid();
+	if (parts.length < minimum || parts.some((part) => !/^[a-z\d_][a-z\d_.-]*$/i.test(part)))
+		invalid();
 	return parts.join("/");
 }
 
@@ -183,15 +199,20 @@ export async function createIssuesService({
 	fetch,
 }: IssuesServiceOptions): Promise<IssuesService> {
 	const bindings = new Map<string, IssueStoredBinding>();
-	const clients = new Map<
-		string,
-		{
-			client: IssueDeliveryRemote;
-			workflow?: IssueWorkflowRemote;
-			path: string;
-			provider: IssueProvider;
-		}
-	>();
+	type ProjectClient = {
+		client: IssueDeliveryRemote;
+		workflow?: IssueWorkflowRemote;
+		path: string;
+		provider: IssueProvider;
+	};
+	type GroupClient = {
+		group: GitLabGroupClient;
+		path: string;
+		provider: "gitlab";
+		projects: Map<string, ProjectClient>;
+		refreshId: number;
+	};
+	const clients = new Map<string, ProjectClient | GroupClient>();
 	type Operation = { cancelled: boolean; done: Promise<unknown> };
 	const pending = new Map<string, Operation>();
 	const disconnecting = new Map<string, Promise<void>>();
@@ -256,7 +277,7 @@ export async function createIssuesService({
 	};
 	const workflowOf = (client: IssueRemote): IssueWorkflowRemote | undefined =>
 		client.provider === "gitlab" ? (client as IssueWorkflowRemote) : undefined;
-	const connected = (client: IssueDeliveryRemote, path: string) => {
+	const connected = (client: IssueDeliveryRemote, path: string): ProjectClient => {
 		const workflow = workflowOf(client);
 		return {
 			client,
@@ -265,88 +286,151 @@ export async function createIssuesService({
 			provider: client.provider,
 		};
 	};
+	const groupProjects = async (
+		group: GitLabGroupClient,
+		path: string,
+		previous?: Map<string, ProjectClient>,
+	) => {
+		const projects = new Map<string, ProjectClient>();
+		const paths = new Set<string>();
+		for (const metadata of await group.projects()) {
+			const memberPath = projectPath(metadata.pathWithNamespace);
+			const id = String(metadata.id);
+			if (!memberPath.startsWith(`${path}/`) || projects.has(id) || paths.has(memberPath))
+				invalid();
+			paths.add(memberPath);
+			const old = previous?.get(id);
+			projects.set(
+				id,
+				old?.path === memberPath ? old : connected(group.projectClient(metadata.id), memberPath),
+			);
+		}
+		return projects;
+	};
+	const prepare = async (instanceUrl: string, target: string, token: string, scope?: "group") => {
+		if (scope === "group") {
+			const options = { instanceUrl, project: target, token, ...(fetch ? { fetch } : {}) };
+			const metadata = await createGitLabGroupClient(options).group();
+			const path = projectPath(metadata.fullPath, 1);
+			const group = createGitLabGroupClient({ ...options, project: metadata.id });
+			const source: GroupClient = {
+				group,
+				path,
+				provider: "gitlab",
+				projects: await groupProjects(group, path),
+				refreshId: 0,
+			};
+			return { id: metadata.id, path, source };
+		}
+		const metadata = await makeClient(instanceUrl, target, token).project();
+		const path = projectPath(metadata.pathWithNamespace);
+		return {
+			id: metadata.id,
+			path,
+			source: connected(makeClient(instanceUrl, String(metadata.id), token), path),
+		};
+	};
+	const resolve = (projectId: string, reference: IssueReference) => {
+		if (!isIssueReference(reference)) invalid();
+		const binding = bindings.get(projectId);
+		const source = clients.get(projectId);
+		if (!binding || !source) return unavailable("Issue project is not connected.");
+		if (reference.instanceUrl !== binding.instanceUrl || reference.provider !== source.provider)
+			invalid();
+		const member =
+			"group" in source
+				? source.projects.get(reference.projectId)
+				: reference.projectId === binding.remoteProjectId
+					? source
+					: undefined;
+		if (!member) invalid();
+		return { binding, source, member };
+	};
+	const connect = (projectId: string, input: IssueConnectionInput): Promise<IssueConnection> => {
+		if (typeof projectId !== "string" || !projectId.trim() || !isIssueConnectionInput(input))
+			return Promise.reject(new CodedError("RANGE_INVALID", "Invalid Issue binding."));
+		if (pending.has(projectId) || disconnecting.has(projectId) || blocked.has(projectId))
+			return Promise.reject(
+				new CodedError("RESOURCE_UNAVAILABLE", "Issue connection is busy or blocked."),
+			);
+		return run(projectId, async (operation) => {
+			const instanceUrl = canonicalIssueInstanceUrl(input.instanceUrl) ?? invalid();
+			const token = input.token;
+			check(operation);
+			if (!validToken(token)) invalid();
+
+			const previous = bindings.get(projectId);
+			if (
+				!hasIssueHttpConsent(
+					{ ...input, token },
+					previous?.httpConsentInstanceUrl
+						? { instanceUrl: previous.httpConsentInstanceUrl }
+						: undefined,
+				)
+			)
+				invalid();
+			const project = await prepare(instanceUrl, input.projectId, token, input.scope).catch(() =>
+				failAt("verify"),
+			);
+			check(operation);
+			const path = project.path;
+			const binding: IssueStoredBinding = bindingOf(
+				projectId,
+				instanceUrl,
+				String(project.id),
+				input.scope,
+			);
+			const link = input.scope
+				? `${instanceUrl}/groups/${path}/-/issues`
+				: issueWebUrl(providerOf(instanceUrl), instanceUrl, path, 1);
+			if (
+				[...Object.values(binding), link ?? ""].some(
+					(field) => field.includes(token) || field.includes(encodeURIComponent(token)),
+				)
+			)
+				invalid();
+			if (instanceUrl.startsWith("http:")) binding.httpConsentInstanceUrl = instanceUrl;
+			await cleanup(projectId, operation).catch(() => failAt("cleanup"));
+			check(operation);
+			const old = bindings.get(projectId);
+			const credentialId = crypto.randomUUID();
+			// Persist a deletion marker BEFORE a potentially uncertain vault write.
+			const staged: IssueStoredBinding = {
+				...(old ?? binding),
+				cleanupCredentialIds: [credentialId],
+			};
+			await save(staged).catch(() => failAt("binding-save"));
+			check(operation);
+			try {
+				await credentialStore.set(credentialId, token).catch(() => failAt("vault-write"));
+				check(operation);
+				await save({
+					...binding,
+					credentialId,
+					cleanupCredentialIds: old?.credentialId ? [old.credentialId] : [],
+				}).catch(() => failAt("binding-save"));
+			} catch {
+				// Never delete an active key, even if cancellation raced a successful metadata save.
+				if (bindings.get(projectId)?.credentialId !== credentialId) {
+					try {
+						await cleanup(projectId);
+					} catch {
+						/* durable marker retains cleanup debt */
+					}
+				}
+				unavailable("Issue credential or binding could not be saved.");
+			}
+			check(operation);
+			clients.set(projectId, project.source);
+			// Cleanup failure is reported, but the committed replacement remains live.
+			await cleanup(projectId, operation);
+			check(operation);
+			return connection(projectId) ?? invalid();
+		});
+	};
 	return {
 		connection,
-		connect(projectId, input) {
-			if (
-				typeof projectId !== "string" ||
-				!projectId.trim() ||
-				!isIssueConnectionInput(input) ||
-				!validToken(input.token)
-			)
-				return Promise.reject(new CodedError("RANGE_INVALID", "Invalid Issue binding."));
-			if (pending.has(projectId) || disconnecting.has(projectId) || blocked.has(projectId))
-				return Promise.reject(
-					new CodedError("RESOURCE_UNAVAILABLE", "Issue connection is busy or blocked."),
-				);
-			return run(projectId, async (operation) => {
-				const instanceUrl = canonicalIssueInstanceUrl(input.instanceUrl) ?? invalid();
-				const previous = bindings.get(projectId);
-				if (
-					!hasIssueHttpConsent(
-						input,
-						previous?.httpConsentInstanceUrl
-							? { instanceUrl: previous.httpConsentInstanceUrl }
-							: undefined,
-					)
-				)
-					invalid();
-				const project = await makeClient(instanceUrl, input.projectId, input.token)
-					.project()
-					.catch(() => failAt("verify"));
-				check(operation);
-				const path = projectPath(project.pathWithNamespace);
-				const binding: IssueStoredBinding = bindingOf(projectId, instanceUrl, String(project.id));
-				const link = issueWebUrl(providerOf(instanceUrl), instanceUrl, path, 1);
-				if (
-					[...Object.values(binding), link ?? ""].some(
-						(field) =>
-							field.includes(input.token) || field.includes(encodeURIComponent(input.token)),
-					)
-				)
-					invalid();
-				if (instanceUrl.startsWith("http:")) binding.httpConsentInstanceUrl = instanceUrl;
-				await cleanup(projectId, operation).catch(() => failAt("cleanup"));
-				check(operation);
-				const old = bindings.get(projectId);
-				const credentialId = crypto.randomUUID();
-				// Persist a deletion marker BEFORE a potentially uncertain vault write.
-				const staged: IssueStoredBinding = {
-					...(old ?? binding),
-					cleanupCredentialIds: [credentialId],
-				};
-				await save(staged).catch(() => failAt("binding-save"));
-				check(operation);
-				try {
-					await credentialStore.set(credentialId, input.token).catch(() => failAt("vault-write"));
-					check(operation);
-					await save({
-						...binding,
-						credentialId,
-						cleanupCredentialIds: old?.credentialId ? [old.credentialId] : [],
-					}).catch(() => failAt("binding-save"));
-				} catch {
-					// Never delete an active key, even if cancellation raced a successful metadata save.
-					if (bindings.get(projectId)?.credentialId !== credentialId) {
-						try {
-							await cleanup(projectId);
-						} catch {
-							/* durable marker retains cleanup debt */
-						}
-					}
-					unavailable("Issue credential or binding could not be saved.");
-				}
-				check(operation);
-				clients.set(
-					projectId,
-					connected(makeClient(instanceUrl, binding.remoteProjectId, input.token), path),
-				);
-				// Cleanup failure is reported, but the committed replacement remains live.
-				await cleanup(projectId, operation);
-				check(operation);
-				return connection(projectId) ?? invalid();
-			});
-		},
+		connect,
 		restore(projectId) {
 			if (blocked.has(projectId) || disconnecting.has(projectId))
 				return Promise.reject(
@@ -374,6 +458,7 @@ export async function createIssuesService({
 					instanceUrl: binding.instanceUrl,
 					projectId: binding.remoteProjectId,
 					token,
+					...(binding.scope ? { scope: binding.scope } : {}),
 				};
 				if (
 					!hasIssueHttpConsent(
@@ -384,18 +469,22 @@ export async function createIssuesService({
 					)
 				)
 					invalid();
-				const client = makeClient(binding.instanceUrl, binding.remoteProjectId, token);
-				const project = await client.project().catch(() => failAt("restore-verify"));
+				const project = await prepare(
+					binding.instanceUrl,
+					binding.remoteProjectId,
+					token,
+					binding.scope,
+				).catch(() => failAt("restore-verify"));
 				check(operation);
 				if (String(project.id) !== binding.remoteProjectId) invalid();
-				const path = projectPath(project.pathWithNamespace);
+				const path = project.path;
 				if (
 					[...Object.values(publicBinding(binding)), path].some(
 						(field) => field.includes(token) || field.includes(encodeURIComponent(token)),
 					)
 				)
 					invalid();
-				clients.set(projectId, connected(client, path));
+				clients.set(projectId, project.source);
 				return connection(projectId);
 			});
 		},
@@ -428,60 +517,35 @@ export async function createIssuesService({
 			return done;
 		},
 		remoteFor(projectId, reference) {
-			if (!isIssueReference(reference)) invalid();
-			const binding = bindings.get(projectId);
-			const linked = clients.get(projectId);
-			if (!binding || !linked) return unavailable("Issue project is not connected.");
-			if (
-				reference.instanceUrl !== binding.instanceUrl ||
-				reference.projectId !== binding.remoteProjectId
-			)
-				invalid();
-			return linked.client;
+			return resolve(projectId, reference).member.client;
 		},
 		deliveryFor(projectId, reference) {
-			if (!isIssueReference(reference)) invalid();
-			const binding = bindings.get(projectId);
-			const linked = clients.get(projectId);
-			if (!binding || !linked) return unavailable("Issue project is not connected.");
-			if (
-				reference.provider !== linked.provider ||
-				reference.instanceUrl !== binding.instanceUrl ||
-				reference.projectId !== binding.remoteProjectId
-			)
-				invalid();
-			return linked.client;
+			if ("group" in (clients.get(projectId) ?? {}))
+				unavailable("Group connections have no repository delivery.");
+			return resolve(projectId, reference).member.client;
 		},
+
 		workflowFor(projectId, reference) {
+			if ("group" in (clients.get(projectId) ?? {}))
+				unavailable("Group connections have no repository workflow.");
 			if (!isIssueReference(reference)) invalid();
 			if (reference.provider !== "gitlab")
 				throw new CodedError(
 					"RESOURCE_UNAVAILABLE",
 					"Issue workflow actions are unavailable for this provider.",
 				);
-			const binding = bindings.get(projectId);
-			const linked = clients.get(projectId);
-			if (!binding || !linked?.workflow) return unavailable("Issue project is not connected.");
-			if (
-				reference.instanceUrl !== binding.instanceUrl ||
-				reference.projectId !== binding.remoteProjectId
-			)
-				invalid();
-			return linked.workflow;
+			return (
+				resolve(projectId, reference).member.workflow ??
+				unavailable("Issue project is not connected.")
+			);
 		},
 		async content(projectId, reference) {
-			if (!isIssueReference(reference)) invalid();
-			const binding = bindings.get(projectId);
-			const linked = clients.get(projectId);
-			if (!binding || !linked) return unavailable("Issue project is not connected.");
-			if (
-				reference.provider !== linked.provider ||
-				reference.instanceUrl !== binding.instanceUrl ||
-				reference.projectId !== binding.remoteProjectId
-			)
-				invalid();
+			const { binding, source, member: linked } = resolve(projectId, reference);
 			const issue = await linked.client.issue(reference.number);
-			if (clients.get(projectId) !== linked)
+			if (
+				clients.get(projectId) !== source ||
+				("group" in source && source.projects.get(reference.projectId) !== linked)
+			)
 				unavailable("Issue connection changed during the read.");
 			if (issue.iid !== reference.number) invalid();
 			return {
@@ -490,22 +554,19 @@ export async function createIssuesService({
 			};
 		},
 		async detail(projectId, reference) {
-			if (!isIssueReference(reference)) invalid();
-			const binding = bindings.get(projectId);
-			const connected = clients.get(projectId);
-			if (!binding || !connected) return unavailable("Issue project is not connected.");
-			if (
-				reference.instanceUrl !== binding.instanceUrl ||
-				reference.projectId !== binding.remoteProjectId ||
-				reference.provider !== connected.provider
-			)
-				invalid();
+			const { binding, source, member: connected } = resolve(projectId, reference);
 			const issue = await connected.client.issue(reference.number);
-			if (clients.get(projectId) !== connected)
+			if (
+				clients.get(projectId) !== source ||
+				("group" in source && source.projects.get(reference.projectId) !== connected)
+			)
 				unavailable("Issue connection changed during the read.");
 			if (issue.iid !== reference.number) invalid();
 			const notes = await connected.client.notes(reference.number);
-			if (clients.get(projectId) !== connected)
+			if (
+				clients.get(projectId) !== source ||
+				("group" in source && source.projects.get(reference.projectId) !== connected)
+			)
 				unavailable("Issue connection changed during the read.");
 			return {
 				reference: { ...reference },
@@ -530,28 +591,52 @@ export async function createIssuesService({
 			const binding = bindings.get(projectId);
 			const connected = clients.get(projectId);
 			if (!binding || !connected) return unavailable("Issue project is not connected.");
-			const issues = await connected.client.issues().catch(() => failAt("list-fetch"));
+			const refreshId = "group" in connected ? ++connected.refreshId : 0;
+			const projects =
+				"group" in connected
+					? await groupProjects(connected.group, connected.path, connected.projects).catch(() =>
+							failAt("list-fetch"),
+						)
+					: null;
+			const rows =
+				"group" in connected
+					? (await connected.group.issues().catch(() => failAt("list-fetch"))).map((issue) => ({
+							issue,
+							remoteProjectId: String(issue.projectId),
+						}))
+					: (await connected.client.issues().catch(() => failAt("list-fetch"))).map((issue) => ({
+							issue,
+							remoteProjectId: binding.remoteProjectId,
+						}));
 			if (clients.get(projectId) !== connected)
 				unavailable("Issue connection changed during the read.");
-			return {
-				issues: issues.map((issue) => ({
+			if ("group" in connected && connected.refreshId !== refreshId)
+				unavailable("Issue group refresh changed during the read.");
+			const summaries = rows.map(({ issue, remoteProjectId }) => {
+				const member =
+					projects?.get(remoteProjectId) ?? (!("group" in connected) ? connected : invalid());
+				return {
 					reference: {
 						provider: connected.provider,
 						instanceUrl: binding.instanceUrl,
-						projectId: binding.remoteProjectId,
+						projectId: remoteProjectId,
 						number: issue.iid,
 					},
+					...(projects ? { projectPath: member.path } : {}),
 					title: issue.title,
 					url:
-						issueWebUrl(connected.provider, binding.instanceUrl, connected.path, issue.iid) ??
+						issueWebUrl(connected.provider, binding.instanceUrl, member.path, issue.iid) ??
 						invalid(),
 					labels: issue.labels,
 					...(issue.labelColors ? { labelColors: issue.labelColors } : {}),
+					...(issue.assignees !== undefined ? { assignees: issue.assignees } : {}),
+					...(issue.author !== undefined ? { author: issue.author } : {}),
 					stage: stageOf(issue),
 					updatedAt: issue.updatedAt,
-				})),
-				fetchedAt: new Date().toISOString(),
-			};
+				};
+			});
+			if ("group" in connected && projects) connected.projects = projects;
+			return { issues: summaries, fetchedAt: new Date().toISOString() };
 		},
 	};
 }

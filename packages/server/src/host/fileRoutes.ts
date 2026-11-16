@@ -175,7 +175,8 @@ export async function serveBlob(pathname: string, signal?: AbortSignal): Promise
 	if (!OID.test(blob.segment)) return notFound();
 	try {
 		const record = loadWorkspaces().find((candidate) => candidate.id === workspace.segment);
-		if (record === undefined || isChatWorkspace(record)) return notFound();
+		if (record === undefined || isChatWorkspace(record) || record.kind === "group")
+			return notFound();
 		const { worktreePath } = record;
 		resolveWorktreeFile(workspace.segment, relPath);
 		const size = await readBlobSizeAtAsync(worktreePath, blob.segment, relPath);

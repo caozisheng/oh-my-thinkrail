@@ -47,6 +47,7 @@ export {
 	createWorkspaceAtPathWithBranch,
 	defaultWorkspaceOf,
 	type ExplicitPlacement,
+	ensureGroupWorkspace,
 	ensureWorkspaceScratchDir,
 	forgetWorkspace,
 	getWorkspace,

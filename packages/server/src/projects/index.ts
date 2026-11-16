@@ -6,6 +6,7 @@ export {
 } from "./clone";
 export {
 	importProjectGroup,
+	openProjectGroupContext,
 	PROJECT_GROUP_SCAN_DEPTH,
 	type ProjectGroupScanOptions,
 	projectGroupMembers,

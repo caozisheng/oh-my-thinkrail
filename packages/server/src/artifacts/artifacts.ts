@@ -744,7 +744,8 @@ function liveOutputs(workspace: Workspace): WorkspaceIgnoredOutput[] {
 export function listArtifacts(workspaceId: string): WorkspaceArtifactsSnapshot {
 	const workspace = requireWorkspace(workspaceId);
 	if (reconcile(workspace)) publish(workspaceId);
-	const outputs = isChatWorkspace(workspace) ? null : liveOutputs(workspace);
+	const outputs =
+		isChatWorkspace(workspace) || workspace.kind === "group" ? null : liveOutputs(workspace);
 	const artifacts = [...load(workspaceId).records.values()]
 		.map(toWire)
 		.sort((a, b) => b.changedAt - a.changedAt);
@@ -875,12 +876,13 @@ function openWindow(workspace: Workspace, sessionId: string): void {
 		open.sessions.add(sessionId);
 		return;
 	}
-	const rootsAtStart = isChatWorkspace(workspace)
-		? Promise.resolve(null)
-		: listIgnoredRoots(workspace.worktreePath).catch((error) => {
-				log.warn("ignored outputs baseline failed", error);
-				return null;
-			});
+	const rootsAtStart =
+		isChatWorkspace(workspace) || workspace.kind === "group"
+			? Promise.resolve(null)
+			: listIgnoredRoots(workspace.worktreePath).catch((error) => {
+					log.warn("ignored outputs baseline failed", error);
+					return null;
+				});
 	windows.set(workspace.id, {
 		startedAt: Date.now(),
 		sessions: new Set([sessionId]),
@@ -1030,7 +1032,7 @@ export async function observeArtifactSessionEvent(
 				running.delete(workspaceId);
 				const window = windows.get(workspaceId);
 				windows.delete(workspaceId);
-				if (window && !isChatWorkspace(workspace))
+				if (window && !(isChatWorkspace(workspace) || workspace.kind === "group"))
 					changed = (await detectOutputs(workspace, window)) || changed;
 			}
 			if (changed) publish(workspaceId);

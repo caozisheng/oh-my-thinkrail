@@ -11,6 +11,13 @@ tags: [wire]
 
 ## Responsibility
 
+From v136 a project group has its own working context: `Project.kind: "group"` with the membership
+group id, and one `Workspace.kind: "group"` rooted at the group folder. These are owners, never member
+repositories. `project.openGroup` materializes/reuses that context without selecting a primary repository.
+Group Issues connections use the group owner id and require group scope; repository owners reject
+group scope. Group workspaces support sessions, files, terminals and specs, but no repository git,
+review or delivery RPCs. Group trust is independent of every member's trust.
+
 The browser↔host wire spine: the single source of truth for the protocol. Types plus a small
 dependency-free runtime: the WS method/channel constants, protocol/feature versions, the small config
 default, narrow cross-ring guards, the quit-confirmation rule both clients drive, and the search matcher
@@ -18,6 +25,17 @@ the palette ranks with — kept here so host-side search can rank with the same 
 `apps/web` may depend on—which is what lets the UI ship independently of the host.
 
 ## Issue integration
+
+Protocol v136 adds GitLab group associations. `IssueConnectionInput.scope` and the persisted/public
+connection's optional `scope` are `"group"` for a group; absence retains the project association.
+`remoteProjectId` remains the verified numeric association target (a group id when scoped to a group),
+never an Issue reference's project id. Group summaries carry `projectPath` and always reference the
+actual owning project. A group id and a project id may coincide without sharing an identity.
+
+At the same v136 floor, summaries optionally include `assignees: IssuePerson[]` and
+`author: IssuePerson | null`. `IssuePerson` projects only numeric id, display name and username;
+emails, avatars, profile URLs and credentials do not cross this surface. Absent fields remain unknown
+for older hosts/provider responses; an empty assignee array means unassigned.
 
 Protocol v134 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.
 

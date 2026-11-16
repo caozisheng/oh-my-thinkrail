@@ -15,6 +15,13 @@ persisted binding. The provider reads and verifies comment ownership under that 
 only a confirmed 204 response counts as success. Provider errors are uncertain writes and are not
 retried. This irreversible comment action is intentionally direct and does not create a confirmation card.
 
+At v136 `project.openGroup` materializes a group owner and its stable non-Git workspace. Group Home
+opens it for sessions, terminals, files and specs. Group Issue connections require that owner and group
+scope; repository owners reject group scope. Group Issue reads preserve verified owning-project
+identities. Repository stage/worktree/delivery actions reject group owners before repository work.
+Group trust is independent, and old clients receive neither group contexts nor their resource pushes.
+The contexts persist separately so old hosts do not see group folders as repositories.
+
 `issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
 sessions. Their fixed previews reuse `ask_user_question`; transcript verification admits only the exact
 submitted `Looks right` response. The private `issue-confirmations` journal snapshots bounded payloads,

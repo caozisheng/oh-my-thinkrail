@@ -33,6 +33,16 @@ export function LocationBar({
 	const settled = useActiveWorkspaceSettled(workspace, now);
 	const resolvedReview = resolveBranchReview(review, workspace?.review, workspaceSettlingSupported);
 	const shownReview = resolvedReview.review;
+	if (project.kind === "group")
+		return (
+			<div
+				data-testid="scope-context"
+				data-context="group"
+				className="flex min-w-0 flex-1 items-stretch self-stretch overflow-hidden"
+			>
+				<ProjectSegment project={project} atHome={workspace === null} />
+			</div>
+		);
 	if (workspace && isChatWorkspace(workspace)) {
 		return (
 			<div

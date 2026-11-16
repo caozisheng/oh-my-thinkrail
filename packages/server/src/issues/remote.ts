@@ -1,4 +1,4 @@
-import type { IssueProvider } from "@thinkrail/contracts";
+import type { IssuePerson, IssueProvider } from "@thinkrail/contracts";
 
 /** Provider-neutral read model shared by every Issue transport. */
 export interface IssueProject {
@@ -20,6 +20,8 @@ export interface IssueRecord {
 	state: "opened" | "closed";
 	labels: string[];
 	labelColors?: IssueLabelColor[];
+	assignees?: IssuePerson[];
+	author?: IssuePerson | null;
 	updatedAt: string;
 	closedAt?: string | null;
 }

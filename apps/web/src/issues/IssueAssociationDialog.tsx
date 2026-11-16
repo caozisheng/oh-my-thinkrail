@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
 import { useState } from "react";
+import { useAppStore } from "../store";
 import { getTransport } from "../transport";
 import { IssueAssociationForm } from "./IssueAssociationForm";
 import {
@@ -17,6 +18,7 @@ import {
 	type ConnectResult,
 	ISSUE_ERROR_KEY,
 	type IssuePanelError,
+	supportsIssueGroups,
 } from "./model";
 
 export interface IssueAssociationDialogProps {
@@ -40,6 +42,7 @@ export function IssueAssociationBody({
 	onPendingChange,
 }: IssueAssociationBodyProps) {
 	const t = useT();
+	const groupsSupported = supportsIssueGroups(useAppStore((s) => s.protocolVersion));
 	const [error, setError] = useState<IssuePanelError | null>(null);
 
 	const connect = (input: IssueConnectionInput): Promise<ConnectResult> => {
@@ -72,10 +75,12 @@ export function IssueAssociationBody({
 				</p>
 			)}
 			<IssueAssociationForm
+				associationScope="project"
 				connection={null}
 				initialRepositoryUrl={initialRepositoryUrl}
 				pending={pending}
 				authSupported
+				groupsSupported={groupsSupported}
 				onConnect={connect}
 				onError={setError}
 			/>

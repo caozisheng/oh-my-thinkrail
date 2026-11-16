@@ -173,10 +173,14 @@ re-read while a server starts. The state vocabulary and the attention/active pre
   project workspace writes invalidate that project's list identity. A read cannot undo a later push.
   No second creation cache or receipt-derived running state exists. The slice also owns **`activeCreationId`** — mutually exclusive with
   `activeWorkspaceId`: `selectCreation` clears the workspace, and every workspace activation, `selectProject`,
-  `selectMain` and project reconciliation clears the creation. **`activeProjectGroupId`** (set by `selectProjectGroup`, which clears project, workspace and
+  `selectMain` and project reconciliation clears the creation. **`activateGroupWorkspace(project, workspace)`** installs the group owner, workspace and active selection
+  atomically, including a previously unloaded workspace list. **`activeProjectGroupId`** (set by `selectProjectGroup`, which clears project, workspace and
   creation selection; cleared by `selectProject`, `selectMain` and `selectCreation`) names the project
   group whose home Project Home shows, read only through `selectActiveProjectGroupId` so any narrower
-  selection wins. **`collapsedRailNodes`** holds the collapsed group headers of the
+  selection wins. `activateGroupWorkspace` atomically installs owner, workspace and selection. `selectIssueReadPermission` centralizes independent group-read permission and repository trust.
+  Group owner records stay in domain projections for session/workspace ownership,
+  but `selectRepoProjects` and repository-selection derivations exclude them. Group workspaces are never
+  settled as repository branches. **`collapsedRailNodes`** holds the collapsed group headers of the
   rail (`toggleRailNode`, `hydrateCollapsedRailNodes`; persisted by `panels/projectExpansion`). **`applyWorkspaceCreationRemoved` is the whole
   removal reaction**: if that creation was selected it activates the new workspace (or lands on its project
   after a dismiss) and queues `creationChatToOpen` (`sessionId`, `kickoffError`, and the prompt this window

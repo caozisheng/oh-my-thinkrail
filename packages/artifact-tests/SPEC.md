@@ -59,6 +59,11 @@ stdio fixture must report *connected · 1 tool* and an in-probe HTTP server that
 protected-resource metadata *needs sign-in*, read back through `mcp.list`, which proves the lazily imported
 MCP runtime executes inside the artifact), reach an OAuth URL without a provider turn, verify health/UI
 and transcript trash, and shut down. CLI-specific probes also check its exit-only and embedded-cache behavior.
+
+A third scripted turn creates a plain-folder project group and runs `bash` in the group's own session.
+The transcript must report the group root as its cwd, with no Git initialization at that root. The
+provider is the same disposable faux stream, so the probe exercises the real pi runtime without user
+credentials or external provider calls.
 On Windows both smokes first read executables' resources, without running them:
 - the CLI smoke reads the built exe;
 - the desktop smoke reads the bundle's `bin/bun.exe`, `bin/launcher.exe` and `Resources/uninstall`.

@@ -14,6 +14,8 @@ export {
 export type {
 	GitLabClient,
 	GitLabClientOptions,
+	GitLabGroupClient,
+	GitLabGroupIssue,
 	GitLabIssue,
 	GitLabIssueUpdate,
 	GitLabLabelEvent,
@@ -23,7 +25,7 @@ export type {
 	GitLabNote,
 	GitLabProject,
 } from "./client";
-export { createGitLabClient } from "./client";
+export { createGitLabClient, createGitLabGroupClient } from "./client";
 export type {
 	IssueDeliveryRemote,
 	IssueMergeReadiness,

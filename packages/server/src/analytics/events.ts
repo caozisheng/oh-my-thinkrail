@@ -64,7 +64,7 @@ export type AnalyticsRunOutcome =
 
 export interface AnalyticsRunProperties {
 	origin: "user" | "internal" | "mixed" | "unknown";
-	workspace_kind: "default" | "managed" | "external" | "chat";
+	workspace_kind: "default" | "managed" | "external" | "chat" | "group";
 	provider: string;
 	model: string;
 }

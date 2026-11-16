@@ -600,8 +600,8 @@ the same last-intent fence as opening a project. Per-repository failures (e.g. `
 dialog open on a failure list with Done; nothing else is retried.
 
 **Grouping in the rail.** `projectRailEntries` folds two or more open members of one
-`Project.projectGroup` into a single entry at the first member's place in the incoming order; a group
-with one open member renders as a plain row. Members are a **flat list sorted by relative path**
+`Project.projectGroup` into a single entry at the first member's place in the incoming order; even one
+open member retains the group header and its Home entrance. Members are a **flat list sorted by relative path**
 (`compareGroupMembers`); no member is special. A project group is a folder plus its member repositories —
 the folder is usually a plain non-Git folder (`repo`/`west` style) — and a folder that happens to be a
 repository is an ordinary member labelled `.` (sorting first only lexically). Each row is labelled
@@ -616,7 +616,7 @@ default expanded) and persisted beside project expansion by `projectExpansion`; 
 keys from earlier builds are ignored. A collapsed header shows the attention dot when any member
 needs attention.
 
-**Group start (`+`).** The group header ends with the same ghost `+` as a repository row; it opens
+**Group start (`+`) on hosts before v136.** The group header ends with the same ghost `+` as a repository row; it opens
 `ProjectGroupStartDialog`, the project start screen's three `WelcomeCard`s and copy scoped to the
 group. **Start building** is the highlighted card and the group's main path, *start an Issue*: it
 switches the dialog to a primary-repository picker (group members by relative path; default the first
@@ -663,6 +663,14 @@ shows when every main checkout is fine. The actions are
 per-repository result list and a status refresh), **Refresh**, and **Remove group** — a danger-styled
 dialog offering *Ungroup* or *Ungroup and close* (`project.removeGroup`), stating that nothing on disk
 changes.
+
+**Group workbench (v136).** Each group has a Default workspace row before its repository members.
+Clicking the group name or Default enters that stable group workspace directly in `WorkspaceWorkbench`;
+no overview/button landing is required. The group's plus, workbench New conversation and global new-work
+shortcut all create a blank chat in the group workspace, without a member-repository fallback or generated
+repository-list draft. Group id, workspace owner and active row remain aligned across reload and selection.
+An explicit Overview header action retains group management. Issue, Terminal and Specs use existing
+workbench panels with the group root as cwd. No group-wide Git branch, review or delivery is invented.
 
 **Cold-start onboarding wizard.** `OnboardingWizard` replaces the Welcome cards only on a true cold start:
 the host supports `ONBOARDING_PROTOCOL_VERSION`, `AppConfig.onboardingDismissed` is false, there are no

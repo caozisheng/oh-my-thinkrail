@@ -18,6 +18,7 @@ import {
 	FEEDBACK_SURVEY_PROTOCOL_VERSION,
 	FONTS_PROTOCOL_VERSION,
 	GITHUB_STAR_PROTOCOL_VERSION,
+	GROUP_WORKSPACE_PROTOCOL_VERSION,
 	IMAGES_ROUTE,
 	LOCALES_PROTOCOL_VERSION,
 	MCP_PROTOCOL_VERSION,
@@ -751,6 +752,17 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 			sendOrQuarantine(socket, frame, `${channel} push`, warnSlowConsumer);
 		};
 
+	const groupContextIds = new Set(
+		getProjects()
+			.filter((project) => project.kind === "group")
+			.map((project) => project.id),
+	);
+	const groupWorkspaceIds = new Set(
+		listAllWorkspaceRecords()
+			.filter((workspace) => workspace.kind === "group")
+			.map((workspace) => workspace.id),
+	);
+
 	const admitsScope = (scope: {
 		workspaceId?: string;
 		projectId?: string;
@@ -759,7 +771,13 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		const aboutChats =
 			(scope.workspaceId !== undefined && isChatWorkspaceId(scope.workspaceId)) ||
 			(scope.projectId !== undefined && isChatsContainerId(scope.projectId));
-		const floor = scope.belowProtocol ?? 0;
+		const groupScope =
+			(scope.projectId !== undefined && groupContextIds.has(scope.projectId)) ||
+			(scope.workspaceId !== undefined && groupWorkspaceIds.has(scope.workspaceId));
+		const floor = Math.max(
+			scope.belowProtocol ?? 0,
+			groupScope ? GROUP_WORKSPACE_PROTOCOL_VERSION : 0,
+		);
 		return ({ data: { protocolVersion } }) =>
 			protocolVersion >= floor && (!aboutChats || seesChats(protocolVersion));
 	};
@@ -938,7 +956,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	});
 
 	setAgentReviewEnabledResolver(
-		(workspaceId) => !isChatWorkspaceId(workspaceId) && getConfig().agentReviewEnabled !== false,
+		(workspaceId) =>
+			!isChatWorkspaceId(workspaceId) &&
+			!groupWorkspaceIds.has(workspaceId) &&
+			getConfig().agentReviewEnabled !== false,
 	);
 	setSpecsEnabledResolver((workspaceId) => !isChatWorkspaceId(workspaceId));
 
@@ -947,6 +968,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	setDisabledPackagesResolver(() => new Set(getConfig().disabledPackages));
 
 	setProjectPublisher((project) => {
+		if (project.kind === "group") groupContextIds.add(project.id);
 		const capture = additionalCapture();
 		if (capture) {
 			try {
@@ -1002,7 +1024,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		const projectId = event.kind === "removed" ? event.projectId : event.workspace.projectId;
 		publishScoped(channel, data, { workspaceId, projectId });
 	};
-	setWorkspacePublisher(publishWorkspaceEvent);
+	setWorkspacePublisher((event) => {
+		if (event.kind !== "removed" && event.workspace.kind === "group")
+			groupWorkspaceIds.add(event.workspace.id);
+		publishWorkspaceEvent(event);
+	});
 	setChatPublishers({
 		project: (project) =>
 			publishScoped(WS_CHANNELS.projectUpdated, project, { projectId: project.id }),
@@ -1173,7 +1199,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	const turnTracker = new TurnTracker(
 		(sessionId) => {
 			const workspaceId = getSessionWorkspaceId(sessionId);
-			if (!workspaceId || isChatWorkspaceId(workspaceId)) return null;
+			if (!workspaceId || isChatWorkspaceId(workspaceId) || groupWorkspaceIds.has(workspaceId))
+				return null;
 			try {
 				return { workspaceId, worktreePath: getWorkspace(workspaceId).worktreePath };
 			} catch {
@@ -1216,7 +1243,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		});
 		if (isTodoToolEnd(payload.event)) {
 			const observeCompletion = taskObservation.toolFinished(payload.sessionId, payload.event);
-			if (isChatWorkspaceId(workspaceId)) void observeCompletion();
+			if (isChatWorkspaceId(workspaceId) || groupWorkspaceIds.has(workspaceId))
+				void observeCompletion();
 			else
 				void maybeAttachChangeArtifacts(workspaceId, payload.sessionId).then(async () => {
 					await observeCompletion();

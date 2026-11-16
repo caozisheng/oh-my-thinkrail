@@ -9,6 +9,8 @@ import type {
 import {
 	ISSUES_CONTENT_PROTOCOL_VERSION,
 	ISSUES_DETAIL_PROTOCOL_VERSION,
+	ISSUES_GROUPS_PROTOCOL_VERSION,
+	ISSUES_PEOPLE_PROTOCOL_VERSION,
 	isIssueWebUrl,
 } from "@thinkrail/contracts";
 import { localeOf, useT } from "@thinkrail/locales/react";
@@ -16,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
-import { selectIssueRepositoryProjects, useAppStore } from "../store";
+import { selectIssueReadPermission, selectIssueRepositoryProjects, useAppStore } from "../store";
 import { getTransport, transportEndpointIdentity, wsErrorCode } from "../transport";
 import {
 	expandedIssueDisclosure,
@@ -132,9 +134,12 @@ export function IssuesTool({
 	const supported = supportsIssues(version);
 	const authSupported = supportsIssueAuth(version);
 	const githubSupported = supportsIssueGithub(version);
-	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
+	const trusted = useAppStore((s) => selectIssueReadPermission(s, projectId));
 	const projects = useAppStore(useShallow(selectIssueRepositoryProjects));
-	const repositoriesSupported = supportsIssueRepositories(version);
+	const groupContext = useAppStore(
+		(s) => s.projects.find((p) => p.id === projectId)?.kind === "group",
+	);
+	const repositoriesSupported = !groupContext && supportsIssueRepositories(version);
 	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
 		() => ({
@@ -142,8 +147,9 @@ export function IssuesTool({
 			startupSupported: supportsIssueSessionStartup(version),
 			implementationSupported: supportsIssueImplementation(version),
 			trusted,
+			readOnly: groupContext,
 		}),
-		[version, trusted],
+		[version, trusted, groupContext],
 	);
 	const [actionState, setActionState] = useState<{
 		identity: string;
@@ -161,6 +167,7 @@ export function IssuesTool({
 				instanceUrl: snapshot.connection.instanceUrl,
 				projectId,
 				remoteProjectId: snapshot.connection.remoteProjectId,
+				...(snapshot.connection.scope ? { scope: snapshot.connection.scope } : {}),
 			})
 		: null;
 	const [disclosureState, setDisclosureState] = useState<{
@@ -276,8 +283,7 @@ export function IssuesTool({
 				sequence === requestSequence.current &&
 				useAppStore.getState().connectionGeneration === generation &&
 				useAppStore.getState().status === "connected" &&
-				(useAppStore.getState().projects.find((p) => p.id === projectId)?.trusted === true) ===
-					trusted;
+				selectIssueReadPermission(useAppStore.getState(), projectId) === trusted;
 			setSnapshot((previous) => update(previous, { pending: true, error: null }));
 			const transport = getTransport();
 			const result = await loadIssueSnapshot(
@@ -624,6 +630,11 @@ export function IssuesTool({
 				pending={active?.pending ?? true}
 				authSupported={authSupported}
 				githubSupported={githubSupported}
+				groupsSupported={version !== null && version >= ISSUES_GROUPS_PROTOCOL_VERSION}
+				groupContext={groupContext}
+				peopleSupported={
+					groupContext && version !== null && version >= ISSUES_PEOPLE_PROTOCOL_VERSION
+				}
 				capabilities={capabilities}
 				error={active?.error ?? undefined}
 				onRefresh={() => {
@@ -631,7 +642,7 @@ export function IssuesTool({
 				}}
 				onConnect={refresh}
 				onDisconnect={disconnect}
-				historySupported={supportsIssueWorkspaceRecovery(version)}
+				historySupported={!groupContext && supportsIssueWorkspaceRecovery(version)}
 				onOpenHistory={(issue) => setHistoryIssue({ identity, issue })}
 				onOpenIssue={onOpenIssue}
 				onRunAction={runAction}

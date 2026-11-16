@@ -16,7 +16,7 @@ import {
 	implementationVersion,
 	type WorkflowRecord,
 } from "../issues";
-import { saveProjects, saveWorkspaces } from "../persistence";
+import { loadProjects, saveProjects, saveWorkspaces } from "../persistence";
 import { setProjectTrust } from "../projects";
 import { createIssueSessionStore } from "./issueSessions";
 import { createIssuesHost, deliveryPushUrl } from "./issues";
@@ -43,6 +43,54 @@ const input = {
 	projectId: "group/repo",
 	token: "private-test-PAT",
 };
+
+test("group association metadata and owning-project detail survive the host persistence adapter", async () => {
+	saveProjects(
+		loadProjects().map((project) =>
+			project.id === "one" ? { ...project, kind: "group" as const, trusted: false } : project,
+		),
+	);
+	const groupInput = { ...input, projectId: "engineering/platform", scope: "group" as const };
+	const groupFetch = async (value: string) => {
+		const url = new URL(value);
+		if (url.pathname.endsWith("/projects"))
+			return Response.json([{ id: 99, path_with_namespace: "engineering/platform/repo" }]);
+		if (url.pathname.endsWith("/notes")) return Response.json([]);
+		if (url.pathname.endsWith("/issues/12"))
+			return Response.json({
+				iid: 12,
+				title: "Group issue",
+				description: "Owning project body",
+				labels: [],
+				state: "opened",
+				updated_at: "2026-01-01T00:00:00Z",
+			});
+		return Response.json({ id: 7, full_path: "engineering/platform" });
+	};
+	let host = createIssuesHost({ dir, credentials, fetch: groupFetch });
+	expect(await host.connect({ projectId: "one", input: groupInput })).toMatchObject({
+		scope: "group",
+		remoteProjectId: "7",
+		connected: true,
+	});
+	const stored = JSON.parse(readFileSync(join(dir, "issue-bindings.json"), "utf8"));
+	expect(stored[0].scope).toBe("group");
+	expect(JSON.stringify(stored)).not.toContain(groupInput.token);
+	host = createIssuesHost({ dir, credentials, fetch: groupFetch });
+	expect(await host.connection({ projectId: "one" })).toMatchObject({
+		scope: "group",
+		connected: true,
+	});
+	const reference = {
+		provider: "gitlab",
+		instanceUrl: input.instanceUrl,
+		projectId: "99",
+		number: 12,
+	};
+	expect((await host.detail({ projectId: "one", reference })).description).toBe(
+		"Owning project body",
+	);
+});
 beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "issues-host-"));
 	previous = process.env.THINKRAIL_DATA_DIR;
@@ -69,6 +117,23 @@ const fetcher = (async (url: string | URL | Request) =>
 			String(url).includes("/issues?") ? [] : { id: 42, path_with_namespace: "group/repo" },
 		),
 	)) as typeof fetch;
+
+test("repository owners reject group connections before fetching or storing credentials", async () => {
+	let fetched = false;
+	const host = createIssuesHost({
+		dir,
+		credentials,
+		fetch: async () => {
+			fetched = true;
+			throw new Error("unexpected");
+		},
+	});
+	await expect(
+		host.connect({ projectId: "one", input: { ...input, scope: "group" } }),
+	).rejects.toThrow("Group trackers belong");
+	expect(fetched).toBe(false);
+	expect(existsSync(join(dir, "issue-bindings.json"))).toBe(false);
+});
 
 test("the group home's Issue records carry titles the host saw in an Issues list", async () => {
 	const listing = (async (url: string | URL | Request) =>

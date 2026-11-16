@@ -13,10 +13,12 @@ import {
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { canonicalPath, gitAsync } from "../git";
+import { saveProjects } from "../persistence";
 import {
 	closeProject,
 	getProjects,
 	openProject,
+	publishProject,
 	resolveProjectPath,
 	setProjectGroupMembership,
 } from "./projects";
@@ -366,6 +368,31 @@ export function projectGroupProjects(groupId: string): Project[] {
 		.sort((a, b) => shallowFirst(a.projectGroup?.path ?? "", b.projectGroup?.path ?? ""));
 }
 
+export async function openProjectGroupContext(groupId: string): Promise<Project> {
+	const members = projectGroupProjects(groupId);
+	const group = members[0]?.projectGroup;
+	if (!group) throw new CodedError("RESOURCE_UNAVAILABLE", "Unknown project group.");
+	if (!(await stat(group.root)).isDirectory())
+		throw new CodedError("RESOURCE_UNAVAILABLE", "Group folder is unavailable.");
+	const projects = getProjects();
+	const existing = projects.find((project) => project.id === groupId);
+	if (existing && existing.kind !== "group")
+		throw new CodedError("RESOURCE_UNAVAILABLE", "Group context identity is occupied.");
+	const project: Project = {
+		...(existing ?? { trusted: false, piResourceTrust: "untrusted" as const }),
+		id: groupId,
+		name: group.name,
+		path: group.root,
+		slug: `group-${groupId}`,
+		kind: "group",
+		lastOpened: Date.now(),
+	};
+	delete project.closed;
+	saveProjects([...projects.filter((candidate) => candidate.id !== groupId), project]);
+	publishProject(project);
+	return project;
+}
+
 /**
  * Dissolve a group: every member (open or closed) loses its membership, and with `close` every open
  * member is also closed. Only project records change; no folder, repository or workspace is touched.
@@ -380,6 +407,10 @@ export function removeProjectGroup(input: ProjectGroupRemoveInput): ProjectGroup
 	const members = getProjects().filter((project) => project.projectGroup?.id === input.groupId);
 	if (members.length === 0) throw new Error(`Unknown project group: ${input.groupId}`);
 	const projects: Project[] = [];
+	const context = getProjects().find(
+		(project) => project.id === input.groupId && project.kind === "group",
+	);
+	if (context && !context.closed) projects.push(closeProject(context.id));
 	for (const member of members) {
 		let project = setProjectGroupMembership(member.id, null);
 		if (input.close && project.closed !== true) project = closeProject(member.id);
