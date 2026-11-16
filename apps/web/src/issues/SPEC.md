@@ -363,3 +363,9 @@ cached. Failed refreshes retain the previous list with an error instead of showi
 
 A healthy implementation resumes through the coordinator after diagnosis; resources-remain alone
 does not block reopening. The coordinator still refuses ambiguous ownership or incomplete resources.
+
+## Shared Issue repository admission
+
+Issue selectors use the shared admission predicates in contracts. Candidate visibility and owner
+read permission therefore agree with the host. Effective permission changes invalidate retained reads
+and in-flight replies; selecting a candidate never writes project trust.

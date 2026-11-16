@@ -1959,3 +1959,13 @@ They are pure, shared by host and web, and never grant trust or remote authoriza
 Managed, Default and external workspaces support Git, Specs and Issues; group workspaces
 support Specs and Issues without Git; projectless chats support neither. Creation, protocol
 compatibility and presentation still explicitly recognize group identity at their boundaries.
+
+## Shared Issue repository admission
+
+Contracts owns `hasIssueProjectTrust` and `isIssueRepositoryCandidate`. Issue access recognizes
+either an existing alias-skill trust grant (`trusted === true`) or an existing native project-resource
+grant (`piResourceTrust === "granted"`). Missing/revoked grants grant nothing. This is Issue admission
+only: it never writes either trust field, admits native pi resources, acknowledges aliases, or enables MCP.
+Candidates must also be open repository projects; a group owner limits them to its own members.
+The UI, host selection/join guards and agent reference candidates use the same predicate. Host checks
+repeat around asynchronous work. The existing project trust revocation clears both grants.

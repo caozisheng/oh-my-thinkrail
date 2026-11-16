@@ -1,4 +1,5 @@
-import { isLocalePreference } from "./domain";
+import { isLocalePreference, type Project } from "./domain";
+import { isRepositoryProject } from "./workspaceCapabilities";
 
 export type IssueProvider = "gitlab" | "github";
 export interface IssueReference {
@@ -513,5 +514,23 @@ export function isIssueApprovalResult(value: unknown): value is IssueApprovalRes
 		(exact(value, ["approved", "reason"]) &&
 			value.approved === false &&
 			value.reason === "unproven")
+	);
+}
+
+export function hasIssueProjectTrust(
+	project: Pick<Project, "trusted" | "piResourceTrust">,
+): boolean {
+	return project.trusted === true || project.piResourceTrust === "granted";
+}
+
+export function isIssueRepositoryCandidate(
+	project: Pick<Project, "kind" | "closed" | "trusted" | "piResourceTrust" | "projectGroup">,
+	owner?: Pick<Project, "kind" | "id">,
+): boolean {
+	return (
+		isRepositoryProject(project) &&
+		!project.closed &&
+		hasIssueProjectTrust(project) &&
+		(owner?.kind !== "group" || project.projectGroup?.id === owner.id)
 	);
 }

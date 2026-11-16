@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { TranscriptMessage } from "@thinkrail/contracts";
 import {
 	canonicalIssueInstanceUrl,
+	hasIssueProjectTrust,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
 	type IssueReference,
 	type IssueTarget,
@@ -135,7 +136,7 @@ function project(projectId: string, trusted: boolean) {
 	const found = getProjects().find((candidate) => candidate.id === projectId);
 	if (!found || found.kind === "chats" || (found.kind === "group" && found.closed))
 		throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project is unavailable.");
-	if (trusted && found.kind !== "group" && found.trusted !== true)
+	if (trusted && found.kind !== "group" && !hasIssueProjectTrust(found))
 		throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project requires trust.");
 	return found;
 }

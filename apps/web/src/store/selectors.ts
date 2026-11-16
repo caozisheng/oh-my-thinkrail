@@ -14,6 +14,7 @@ import {
 	firstPromptOfTexts,
 	type GitDiffScope,
 	INSTALLED_EXTENSIONS_PROTOCOL_VERSION,
+	isIssueRepositoryCandidate,
 	isLiveResource,
 	isRepositoryProject,
 	isRepositoryWorkspace,
@@ -1094,13 +1095,8 @@ export function selectIssueRepositoryProjects(
 	state: Pick<ProjectContextState, "projects">,
 	ownerId?: string,
 ): Project[] {
-	const group = state.projects.find((project) => project.id === ownerId)?.kind === "group";
-	return selectRepoProjects(state).filter(
-		(project) =>
-			project.trusted === true &&
-			!project.closed &&
-			(!group || project.projectGroup?.id === ownerId),
-	);
+	const owner = state.projects.find((project) => project.id === ownerId);
+	return state.projects.filter((project) => isIssueRepositoryCandidate(project, owner));
 }
 
 export function selectIssueReadPermission(
@@ -1108,7 +1104,11 @@ export function selectIssueReadPermission(
 	projectId: string,
 ): boolean {
 	const owner = state.projects.find((project) => project.id === projectId);
-	return owner !== undefined && !owner.closed && (owner.kind === "group" || owner.trusted === true);
+	return (
+		owner !== undefined &&
+		!owner.closed &&
+		(owner.kind === "group" || isIssueRepositoryCandidate(owner))
+	);
 }
 
 export function selectChatsContainer(state: Pick<ProjectContextState, "projects">): Project | null {
