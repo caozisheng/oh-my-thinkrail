@@ -194,7 +194,9 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 		await expect(history).toHaveText("");
 		const geometry = await card.evaluate((element) => ({
 			card: element.getBoundingClientRect().width,
-			title: element.querySelector("a")?.parentElement?.getBoundingClientRect().width ?? 0,
+			title:
+				element.querySelector('[data-testid="issue-title-leading"]')?.getBoundingClientRect()
+					.width ?? 0,
 			overflow: element.scrollWidth - element.clientWidth,
 		}));
 		expect(geometry.title).toBeGreaterThan(geometry.card * 0.45);

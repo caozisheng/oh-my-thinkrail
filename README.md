@@ -46,7 +46,8 @@ repository address — only `github.com` is GitHub, every other host is GitLab. 
   The outer folder is usually a plain folder (as with Google `repo` or `west`) and never has to be a
   repository. The project rail lists the members flat under the group header, sorted and labelled by
   relative path (a folder that is itself a repository is just another member, `.`). Clicking the
-  group name opens the group home: the group's Issues as a collapsed-by-default list (each row shows
+  group name opens its Default workbench; the group overview button opens the group's Issues as a
+  collapsed-by-default list (each row shows
   how many repositories the Issue touches, how many changed, its commits and uncommitted files; expand
   it for every repository's Issue branch, commits since its start, commits behind the default branch
   and uncommitted files), a warning only when a repository's main directory has uncommitted changes or

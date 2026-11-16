@@ -965,8 +965,8 @@ const handlers: WsHandlers = {
 	},
 	"project.setTrust": async (p) => {
 		const project = listProjects().find((candidate) => candidate.id === p.id);
-		if (!project || project.kind === "chats")
-			throw new CodedError("RESOURCE_UNAVAILABLE", "Unknown work context.");
+		if (!project) throw new Error(`Unknown project: ${p.id}`);
+		if (project.kind !== "group") assertNotChatsContainer(project);
 		const acknowledged =
 			p.trusted && project.trusted !== true
 				? await listProjectAliasSkillNames(project.path)

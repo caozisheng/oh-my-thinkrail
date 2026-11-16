@@ -464,7 +464,7 @@ export function IssuesPanel({
 															className="text-primary"
 														>
 															{issue.projectPath ? `${issue.projectPath}#` : "#"}
-{issue.reference.number} {issue.title}
+															{issue.reference.number} {issue.title}
 														</a>
 														{typeof repositoryView === "object" && repositoryView.blocked && (
 															<TooltipProvider>
