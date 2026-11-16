@@ -10,7 +10,10 @@ const args = {
 		},
 	],
 };
-const call = (id = "call_abc123|fc_0123456789abcdef", stopReason = "toolUse") => ({
+const call = (
+	id = "call_abc123|fc_0123456789abcdef",
+	stopReason: string | undefined = "toolUse",
+) => ({
 	role: "assistant",
 	stopReason,
 	content: [{ type: "toolCall", id, name: "ask_user_question", arguments: args }],
