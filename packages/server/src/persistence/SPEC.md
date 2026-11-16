@@ -109,3 +109,11 @@ kept); it accepts only the current bounded
 `customLayoutPresets` catalog as synchronized layout data. Current/default preset ids, group limits, and
 chat message order are not config fields; retired config shapes are stripped rather than upgraded or
 preserved as extensions. Historical `layouts/` files remain untouched and inert.
+
+## Group store adapter
+
+`groupContexts.ts` privately owns the version-1 group document validation and partitioning.
+The persistence facade supplies lazy data-dir reads and its existing atomic writer, and only
+composes the returned lists with repository/Chats stores. No filesystem format or migration changes.
+Group saves preserve the document's other half; malformed or newer stores refuse partitioning
+before any ordinary project/workspace write. No feature module imports this private adapter.

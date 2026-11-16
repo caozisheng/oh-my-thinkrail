@@ -22,6 +22,7 @@ import type {
 	WorkspaceArtifactsSnapshot,
 	WorkspaceIgnoredOutput,
 } from "@thinkrail/contracts";
+import { isRepositoryWorkspace } from "@thinkrail/contracts";
 import { seedArtifactsDir } from "@thinkrail/shared/artifactsDir";
 import { CodedError } from "@thinkrail/shared/codedError";
 import {
@@ -30,7 +31,7 @@ import {
 	WORKSPACE_TODOS_DIR,
 } from "@thinkrail/shared/paths";
 import { logger } from "../log";
-import { dataDir, isChatWorkspace, loadWorkspaces } from "../persistence";
+import { dataDir, loadWorkspaces } from "../persistence";
 import { trashFile } from "../trash";
 import {
 	countOutputFiles,
@@ -744,8 +745,7 @@ function liveOutputs(workspace: Workspace): WorkspaceIgnoredOutput[] {
 export function listArtifacts(workspaceId: string): WorkspaceArtifactsSnapshot {
 	const workspace = requireWorkspace(workspaceId);
 	if (reconcile(workspace)) publish(workspaceId);
-	const outputs =
-		isChatWorkspace(workspace) || workspace.kind === "group" ? null : liveOutputs(workspace);
+	const outputs = !isRepositoryWorkspace(workspace) ? null : liveOutputs(workspace);
 	const artifacts = [...load(workspaceId).records.values()]
 		.map(toWire)
 		.sort((a, b) => b.changedAt - a.changedAt);
@@ -876,13 +876,12 @@ function openWindow(workspace: Workspace, sessionId: string): void {
 		open.sessions.add(sessionId);
 		return;
 	}
-	const rootsAtStart =
-		isChatWorkspace(workspace) || workspace.kind === "group"
-			? Promise.resolve(null)
-			: listIgnoredRoots(workspace.worktreePath).catch((error) => {
-					log.warn("ignored outputs baseline failed", error);
-					return null;
-				});
+	const rootsAtStart = !isRepositoryWorkspace(workspace)
+		? Promise.resolve(null)
+		: listIgnoredRoots(workspace.worktreePath).catch((error) => {
+				log.warn("ignored outputs baseline failed", error);
+				return null;
+			});
 	windows.set(workspace.id, {
 		startedAt: Date.now(),
 		sessions: new Set([sessionId]),
@@ -1032,7 +1031,7 @@ export async function observeArtifactSessionEvent(
 				running.delete(workspaceId);
 				const window = windows.get(workspaceId);
 				windows.delete(workspaceId);
-				if (window && !(isChatWorkspace(workspace) || workspace.kind === "group"))
+				if (window && isRepositoryWorkspace(workspace))
 					changed = (await detectOutputs(workspace, window)) || changed;
 			}
 			if (changed) publish(workspaceId);

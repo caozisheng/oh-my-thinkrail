@@ -20,6 +20,7 @@ import {
 	isIssueRepositoryJoinInput,
 	isIssueSessionStartupTarget,
 	isIssueTarget,
+	isRepositoryProject,
 	PROJECT_GROUP_MAX_REPOSITORIES,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
@@ -44,7 +45,7 @@ import {
 	type WorkflowRemote,
 	type WorkspaceHandle,
 } from "../issues";
-import { getProjects, projectGroupMembers, projectGroupProjects } from "../projects";
+import { getProjects } from "../projects";
 import {
 	createWorkspaceAtPathWithBranch,
 	defaultWorkspaceOf,
@@ -57,6 +58,11 @@ import {
 } from "../workspaces";
 import { createHostSession } from "./createHostSession";
 import type { IssueAgentSessionHost } from "./issueAgentSessions";
+import {
+	issueReferenceCandidates,
+	readIssueRepository,
+	readIssueOwner as trusted,
+} from "./issueOwner";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
@@ -145,16 +151,6 @@ function parse(value: unknown, action: Action): ParsedAction {
 			return { action, args: snapshot(value) };
 	}
 }
-function trusted(projectId: string) {
-	const project = getProjects().find((p) => p.id === projectId);
-	if (
-		!project ||
-		project.closed ||
-		(project.kind === "group" ? false : project.trusted !== true || project.kind !== undefined)
-	)
-		stop();
-	return project;
-}
 // Walk every existing ancestor: recursive mkdir must never traverse a symlink/junction.
 export function privateDirectory(path: string): void {
 	const parent = dirname(path);
@@ -171,16 +167,7 @@ export function privateDirectory(path: string): void {
  * The trusted, open other members of the project's group: the repositories an Issue reads as
  * `reference` and may join on demand. Untrusted members are never offered (joining never grants trust).
  */
-export function groupReferenceCandidates(projectId: string): string[] {
-	return (
-		getProjects().find((project) => project.id === projectId)?.kind === "group"
-			? projectGroupProjects(projectId)
-			: projectGroupMembers(projectId)
-	)
-		.filter((project) => project.trusted === true)
-		.slice(0, PROJECT_GROUP_MAX_REPOSITORIES)
-		.map((project) => project.id);
-}
+export const groupReferenceCandidates = issueReferenceCandidates;
 
 /**
  * A layout only when every listed participant belongs to the primary's group and still sits at its
@@ -192,7 +179,8 @@ export function groupWorkspaceLayout(
 	projectIds: readonly string[],
 ): IssueWorkspaceLayout | null {
 	const projects = getProjects();
-	const group = projects.find((project) => project.id === primaryId)?.projectGroup;
+	const primary = projects.find((project) => project.id === primaryId);
+	const group = primary && isRepositoryProject(primary) ? primary.projectGroup : undefined;
 	if (!group) return null;
 	let root: string;
 	try {
@@ -315,6 +303,7 @@ export function createIssuesActions(
 		const request = parse(input, action);
 		const { projectId, reference } = request.args;
 		const initialProject = trusted(projectId);
+		const ownerKind = initialProject.kind === "group" ? "group" : undefined;
 		const issues = await service();
 		if (trusted(projectId).path !== initialProject.path) stop();
 		// Durable credentials restore lazily; actions must never require a manual reconnect first.
@@ -336,14 +325,8 @@ export function createIssuesActions(
 			action === "launchDesign" || action === "beginDesign" ? "design" : "implementation";
 		function guard() {
 			for (const [id, path] of selectedProjects) {
-				const member = trusted(id);
-				if (
-					member.closed ||
-					member.path !== path ||
-					member.kind !== undefined ||
-					(initialProject.kind === "group" && member.projectGroup?.id !== projectId)
-				)
-					stop();
+				const member = readIssueRepository(initialProject, id);
+				if (member.path !== path) stop();
 			}
 			if (
 				trusted(projectId).path !== initialProject.path ||
@@ -378,10 +361,7 @@ export function createIssuesActions(
 		privateDirectory(workspaceDir);
 		guard();
 		const receipts = createIssueWorkflowPersistence(receiptDir);
-		const launches = createIssueWorkspacePersistence(
-			workspaceDir,
-			initialProject.kind === "group" ? "group" : undefined,
-		);
+		const launches = createIssueWorkspacePersistence(workspaceDir, ownerKind);
 		guard();
 		return launches.withLaunch(
 			projectId,
@@ -416,25 +396,13 @@ export function createIssuesActions(
 							? [...savedIds, request.args.repositoryProjectId]
 							: savedIds;
 				for (const id of selectedIds) {
-					const member = trusted(id);
-					if (
-						member.closed ||
-						member.kind !== undefined ||
-						(initialProject.kind === "group" && member.projectGroup?.id !== projectId)
-					)
-						stop();
+					const member = readIssueRepository(initialProject, id);
 					selectedProjects.set(id, member.path);
 				}
 				function memberProject(id: string) {
 					if (id === projectId) return trusted(id);
-					const member = trusted(id);
-					if (
-						member.closed ||
-						selectedProjects.get(id) !== member.path ||
-						member.kind !== undefined ||
-						(initialProject.kind === "group" && member.projectGroup?.id !== projectId)
-					)
-						stop();
+					const member = readIssueRepository(initialProject, id);
+					if (selectedProjects.get(id) !== member.path) stop();
 					return member;
 				}
 				function nameOf(context: Pick<IssueRepositoryContext, "projectId" | "role">): string {
@@ -453,7 +421,6 @@ export function createIssuesActions(
 					);
 				}
 				async function currentCommit(ref: IssueReference) {
-					if (initialProject.kind === "group") stop();
 					const ws = await checked(() => coordinator.ownedImplementation(ref));
 					if (
 						pinned &&
@@ -491,7 +458,7 @@ export function createIssuesActions(
 				let sessionTitle: string | undefined;
 				const coordinator = createIssueWorkspaceCoordinator({
 					projectId,
-					...(initialProject.kind === "group" ? { ownerKind: "group" as const } : {}),
+					...(ownerKind ? { ownerKind } : {}),
 					waitForArchive: (path) => checked(() => waitForArchive(path)),
 					projectPath: (id) => checked(() => memberProject(id).path),
 					load: (key) => checked(() => ports.load(key)),
@@ -509,10 +476,7 @@ export function createIssuesActions(
 								layoutRoot === undefined ? {} : { layoutRoot },
 							),
 						),
-					layout: (ids) =>
-						checked(() =>
-							initialProject.kind === "group" ? null : groupWorkspaceLayout(projectId, ids),
-						),
+					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
 					baseRef: (id) => checked(() => freshBaseRef(memberProject(id).path)),
 					headCommit: (path) => checked(() => resolveCommitOid(path, "HEAD")),
 					recoveryBase: (id, branch) =>
@@ -568,23 +532,18 @@ export function createIssuesActions(
 							// Persistence-only read: resolving folder truth here would run synchronous git on
 							// every session-context read (design launch, bound issue_context). The record's own
 							// path/branch is what the coordinator verifies against the real project root.
-							if (initialProject.kind === "group" && id === projectId) {
-								const rows = await checked(() => listWorkspaces(id, { includeDiffStats: false }));
-								const ws = rows.find((row) => row.kind === "group");
-								if (!ws) stop();
-								return ws;
-							}
-							const recorded = listWorkspaceRecords(id).find((w) => w.kind === "default");
+							const kind = id === projectId ? (ownerKind ?? "default") : "default";
+							const recorded = listWorkspaceRecords(id).find((w) => w.kind === kind);
 							if (recorded)
 								return {
 									id: recorded.id,
 									projectId: recorded.projectId,
 									worktreePath: recorded.worktreePath,
 									branch: recorded.branch,
-									kind: "default" as const,
+									kind,
 								};
 							const rows = await checked(() => listWorkspaces(id, { includeDiffStats: false }));
-							const ws = rows.find((w) => w.projectId === id && w.kind === "default");
+							const ws = rows.find((w) => w.projectId === id && w.kind === kind);
 							if (!ws) stop();
 							return ws;
 						}),

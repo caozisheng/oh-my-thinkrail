@@ -505,3 +505,11 @@ Reopening reuses stage sessions and startup reservation exactly as repository la
 A group has no primary Git commit: legacy primary-commit publication refuses it. Bound session
 confirmation uses the participating repositories and their verified commits. Recovery rebuilds missing
 associated checkouts while retaining the group workspace and its bound session.
+
+## Workspace owner policy
+
+`workspaceOwner.ts` privately owns the group-versus-repository session placement policy:
+the default session workspace, primary repository participation, launch key scope and primary
+implementation ownership. The coordinator retains the single journaling, session reuse,
+member-worktree, join, cleanup and recovery algorithms. Group owners never acquire a primary Git
+checkout. Records and persisted ownerKind markers are unchanged; callers still use the existing barrel.

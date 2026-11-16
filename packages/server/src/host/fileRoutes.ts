@@ -1,9 +1,10 @@
 import { statSync } from "node:fs";
 import { extname } from "node:path";
 import { WORKSPACE_VIEW_ROUTE } from "@thinkrail/contracts";
+import { isRepositoryWorkspace } from "@thinkrail/contracts";
 import { CONTENT_SNIFF_BYTES, classifyBytes, mimeFromPath, resolveWorktreeFile } from "../fs";
 import { readBlobSizeAtAsync, readBlobStreamAtAsync } from "../git";
-import { isChatWorkspace, loadWorkspaces } from "../persistence";
+import { loadWorkspaces } from "../persistence";
 
 export const FILES_PREFIX = "/files/";
 export const BLOB_PREFIX = "/blob/";
@@ -175,8 +176,7 @@ export async function serveBlob(pathname: string, signal?: AbortSignal): Promise
 	if (!OID.test(blob.segment)) return notFound();
 	try {
 		const record = loadWorkspaces().find((candidate) => candidate.id === workspace.segment);
-		if (record === undefined || isChatWorkspace(record) || record.kind === "group")
-			return notFound();
+		if (record === undefined || !isRepositoryWorkspace(record)) return notFound();
 		const { worktreePath } = record;
 		resolveWorktreeFile(workspace.segment, relPath);
 		const size = await readBlobSizeAtAsync(worktreePath, blob.segment, relPath);

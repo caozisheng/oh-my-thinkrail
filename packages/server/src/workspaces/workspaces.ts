@@ -15,6 +15,7 @@ import {
 	DEFAULT_WORKSPACE_NAME,
 	type DiffStats,
 	type ExistingWorktreeCandidate,
+	isRepositoryWorkspace,
 	isSubagentMaxConcurrent,
 	type OpenBranchReview,
 	type Project,
@@ -51,13 +52,9 @@ import {
 	saveWorkspaces,
 } from "../persistence";
 import { assertOutsideChatsRoot, getProjects, listProjects } from "../projects";
-import {
-	assertNotChatsContainer,
-	assertNotChatWorkspace,
-	isChatsContainer,
-	isChatWorkspace,
-} from "./chats";
+import { assertNotChatsContainer, assertNotChatWorkspace, isChatsContainer } from "./chats";
 import { creationBranchReserved, creationRecords, repointCreationBases } from "./creationRecords";
+import { ensureGroupWorkspaceRecord } from "./group";
 import { gitWorktreeEntries } from "./worktreeRegistry";
 
 const log = logger("workspaces");
@@ -692,28 +689,7 @@ function ensureDefaultWorkspace(project: Project): Workspace {
 }
 
 export function ensureGroupWorkspace(project: Project): Workspace {
-	if (project.kind !== "group")
-		throw new CodedError("RESOURCE_UNAVAILABLE", "Not a group context.");
-	const all = loadWorkspaces();
-	const existing = all.find(
-		(workspace) => workspace.projectId === project.id && workspace.kind === "group",
-	);
-	if (existing) return existing;
-	const workspace: Workspace = {
-		id: randomUUID(),
-		projectId: project.id,
-		kind: "group",
-		name: project.name,
-		branch: "",
-		baseBranch: "",
-		worktreePath: project.path,
-		renamed: true,
-		initialTerminalPending: true,
-	};
-	all.push(workspace);
-	saveWorkspaces(all);
-	emit({ kind: "created", workspace });
-	return workspace;
+	return ensureGroupWorkspaceRecord(project, emit);
 }
 
 export function completeInitialTerminalReservation(workspaceId: string): Workspace {
@@ -977,7 +953,7 @@ export function backfillWorkspaceActivity(id: string, at: number): Workspace | n
 
 export function recordWorkspaceHead(id: string): void {
 	const workspace = loadWorkspaces().find((candidate) => candidate.id === id);
-	if (!workspace || isChatWorkspace(workspace) || workspace.kind === "group") return;
+	if (!workspace || !isRepositoryWorkspace(workspace)) return;
 	const sha = headShaAt(workspace.worktreePath, { onTimeout: "return" });
 	if (!sha) return;
 	const previous = observedHeadSha.get(id);
@@ -1038,7 +1014,7 @@ export function setWorkspaceReview(
 ): Workspace | null {
 	const all = loadWorkspaces();
 	const ws = all.find((workspace) => workspace.id === id);
-	if (!ws || ws.branch !== branch || isChatWorkspace(ws) || ws.kind === "group") return null;
+	if (!ws || ws.branch !== branch || !isRepositoryWorkspace(ws)) return null;
 	const next = review ? reviewSnapshot(review) : undefined;
 	const observed = observedActivityAt.get(id) ?? 0;
 	const activityChanged = observed > (ws.lastActiveAt ?? 0);
@@ -1142,8 +1118,7 @@ export function nestedWorkspaces(id: string): Workspace[] {
 }
 
 export async function reclaimWorktree(ws: Workspace): Promise<void> {
-	if (ws.kind === "default" || ws.kind === "external" || ws.kind === "group" || isChatWorkspace(ws))
-		return;
+	if (ws.kind === "default" || ws.kind === "external" || !isRepositoryWorkspace(ws)) return;
 	const project = loadProjects().find((p) => p.id === ws.projectId);
 	if (!project) return;
 	if (resolve(ws.worktreePath) === resolve(project.path)) return;

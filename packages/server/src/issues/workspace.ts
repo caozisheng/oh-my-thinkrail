@@ -11,6 +11,7 @@ import {
 	isIssueRepositoriesInput,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
+import { createWorkspaceOwner } from "./workspaceOwner";
 
 export interface WorkspaceHandle {
 	id: string;
@@ -172,6 +173,13 @@ async function directoryAt(path: string): Promise<boolean> {
 
 export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) {
 	const { projectId } = options;
+	const owner = createWorkspaceOwner({
+		kind: options.ownerKind,
+		projectId,
+		root: () => projectRoot(),
+		defaultWorkspace: () => options.defaultWorkspace(projectId),
+		refuse: stop,
+	});
 
 	async function run<T>(
 		input: IssueReference,
@@ -187,8 +195,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			number: input.number,
 		};
 		const key = keyFor(projectId, reference);
-		const slot =
-			options.ownerKind === "group" ? key : JSON.stringify([projectId, reference.number]);
+		const slot = owner.lockKey(key, reference.number);
 		const task = (tails.get(slot) ?? Promise.resolve())
 			.catch(() => {})
 			.then(async () => {
@@ -538,7 +545,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	/** The Issue's joined checkouts (primary first) with their recorded worktree paths. */
 	async function joinedPaths(record: IssueWorkspaceRecord) {
 		const rows: { projectId: string; path: string }[] = [];
-		for (const id of [...(options.ownerKind === "group" ? [] : [projectId]), ...selection(record)])
+		for (const id of [...owner.primaryRepositoryIds, ...selection(record)])
 			rows.push({ projectId: id, path: await worktreePathFor(record, id) });
 		return rows;
 	}
@@ -635,19 +642,6 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		await options.save(key, record);
 	}
 
-	async function groupOwnerWorkspace(): Promise<WorkspaceHandle> {
-		const ws = await options.defaultWorkspace(projectId);
-		if (
-			options.ownerKind !== "group" ||
-			ws.kind !== "group" ||
-			ws.projectId !== projectId ||
-			!samePath(ws.worktreePath, await projectRoot()) ||
-			ws.branch !== ""
-		)
-			stop();
-		return ws;
-	}
-
 	async function prepareImplementation(
 		key: string,
 		record: IssueWorkspaceRecord,
@@ -660,29 +654,9 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				await prepareMember(key, record, id);
 				continue;
 			}
-			if (options.ownerKind === "group") {
-				const ws = await groupOwnerWorkspace();
-				const old = record.implementation;
-				if (
-					old &&
-					(old.state !== "completed" ||
-						old.workspaceId !== ws.id ||
-						!samePath(old.worktreePath, ws.worktreePath) ||
-						old.branch !== "")
-				)
-					stop();
-				primary = old ?? {
-					state: "completed",
-					workspaceId: ws.id,
-					worktreePath: ws.worktreePath,
-					branch: "",
-				};
-			} else
-				primary = await resolveImplementation(
-					key,
-					record,
-					await worktreePathFor(record, projectId),
-				);
+			primary = await owner.implementation(record, async () =>
+				resolveImplementation(key, record, await worktreePathFor(record, projectId)),
+			);
 			record = { ...record, implementation: primary };
 		}
 		if (!primary) stop();
@@ -713,10 +687,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		if (record.sessionPending || record.members?.some((row) => row.removing))
 			reason = "pending-operation";
 		if (!record.implementation) reason = "missing-record";
-		for (const id of [
-			...(options.ownerKind === "group" ? [] : [projectId]),
-			...selection(record),
-		]) {
+		for (const id of [...owner.primaryRepositoryIds, ...selection(record)]) {
 			if (reason) break;
 			const ownership =
 				id === projectId
@@ -771,7 +742,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	return {
 		contexts(reference: IssueReference, stage: "design" | "implementation") {
 			return run(reference, async (_key, record) => {
-				const ids = [...(options.ownerKind === "group" ? [] : [projectId]), ...selection(record)];
+				const ids = [...owner.primaryRepositoryIds, ...selection(record)];
 				const taken = new Set([...ids, ...(record.members ?? []).map((m) => m.projectId)]);
 				const references = ((await options.references?.()) ?? [])
 					.filter((candidate) => !taken.has(candidate.projectId))
@@ -955,7 +926,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
 				if (
-					options.ownerKind === "group" ||
+					owner.primaryRepositoryIds.length === 0 ||
 					ownership?.state !== "completed" ||
 					!ownership.workspaceId
 				)
@@ -967,15 +938,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(
 				reference,
 				async (key, record) => {
-					const root = await projectRoot();
-					const ws = await options.defaultWorkspace(projectId);
-					if (
-						!ws.id ||
-						ws.projectId !== projectId ||
-						ws.kind !== (options.ownerKind === "group" ? "group" : "default") ||
-						!samePath(ws.worktreePath, root)
-					)
-						stop();
+					const ws = await owner.defaultWorkspace();
 					const workspaceId = ws.id;
 					const existing =
 						record.design?.workspaceId === workspaceId ? record.design.sessionId : undefined;

@@ -557,3 +557,10 @@ actions do not rely on it: they focus what they revealed themselves. Neither doe
 focused row unmounts: the chat transcript moves focus to its own list container in the row's unmount
 cleanup, before the browser drops it, so recovery sees focus held and the list keeps its cursor
 ([[submodule-web-chat]], *Transcript keyboard model*).
+
+## Group workbench integration
+
+The shared workbench uses contracts' workspace capabilities to gate repository tools and reads.
+`GroupWorkspaceWelcome.tsx` owns the group-only empty-center presentation and receives its data
+and start action through props. The repository/chat welcome remains in the upstream workbench.
+Group navigation and context creation remain explicit shell boundaries; no second workbench runtime.

@@ -164,4 +164,9 @@ export {
 	SPEECH_SAMPLE_RATE,
 	SPEECH_SOCKET_ROUTE,
 } from "./speech";
+export {
+	isRepositoryProject,
+	isRepositoryWorkspace,
+	workspaceCapabilities,
+} from "./workspaceCapabilities";
 export * from "./wsProtocol";

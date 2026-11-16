@@ -11,6 +11,8 @@ import {
 	firstPromptOfTexts,
 	type GitDiffScope,
 	isLiveResource,
+	isRepositoryProject,
+	isRepositoryWorkspace,
 	isSessionWorking,
 	MCP_PROTOCOL_VERSION,
 	type McpServerResourceSummary,
@@ -497,8 +499,7 @@ export function selectWorkspaceSettledReason(
 	if (
 		!state.workspaceSettlingSupported ||
 		isDefaultWorkspace(workspace) ||
-		workspace.kind === "group" ||
-		isChatWorkspace(workspace)
+		!isRepositoryWorkspace(workspace)
 	)
 		return null;
 	if (
@@ -937,7 +938,7 @@ export function isChatsContainer(project: Pick<Project, "kind">): boolean {
 
 /** Every repository project — the Chats container is never one of them. */
 export function selectRepoProjects(state: Pick<ProjectContextState, "projects">): Project[] {
-	return state.projects.filter((project) => project.kind === undefined);
+	return state.projects.filter(isRepositoryProject);
 }
 
 /** Repositories eligible to associate with an Issue; trust must be granted in the owning project. */
@@ -1010,7 +1011,7 @@ export function selectActiveWorkspaceProjectId(state: ActiveWorkspaceState): str
 /** The active workspace when it has a repository: a chat without a project has none to scope to. */
 export function selectActiveRepoWorkspaceId(state: ActiveWorkspaceState): string | undefined {
 	const active = selectActiveWorkspace(state);
-	return active && !isChatWorkspace(active) && active.kind !== "group" ? active.id : undefined;
+	return active && isRepositoryWorkspace(active) ? active.id : undefined;
 }
 
 export function selectContextProject(state: ProjectContextState): Project | null {
