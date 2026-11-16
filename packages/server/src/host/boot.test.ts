@@ -441,6 +441,24 @@ test("boot applies the stored environment before serving, and launch variables w
 	}
 });
 
+test("health carries isolation identity only for explicitly marked test hosts", async () => {
+	const previous = process.env.THINKRAIL_E2E_ISOLATION;
+	try {
+		delete process.env.THINKRAIL_E2E_ISOLATION;
+		const ordinary = await boot({ port: grabFreePort(), host: "localhost", portMode: "exact" });
+		const plain = await fetch(`http://localhost:${ordinary.port}/health`);
+		expect(plain.headers.get("x-thinkrail-e2e-isolation")).toBeNull();
+		process.env.THINKRAIL_E2E_ISOLATION = "disposable-test-token";
+		const marked = await boot({ port: grabFreePort(), host: "localhost", portMode: "exact" });
+		const health = await fetch(`http://localhost:${marked.port}/health`);
+		expect(health.headers.get("x-thinkrail-e2e-isolation")).toMatch(/^[a-f0-9]{64}$/);
+		expect(await health.text()).toBe("ok");
+	} finally {
+		if (previous === undefined) delete process.env.THINKRAIL_E2E_ISOLATION;
+		else process.env.THINKRAIL_E2E_ISOLATION = previous;
+	}
+});
+
 test('portMode "exact" binds the requested port', async () => {
 	const requested = grabFreePort();
 	const b = await boot({ port: requested, host: "localhost", portMode: "exact" });

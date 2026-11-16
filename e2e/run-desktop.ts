@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { locateDesktopLauncher, waitForDocument, within } from "@thinkrail/artifact-tests";
 import { artifactHostEnvironment } from "./artifactPlaywright";
+import { assertE2eHost } from "./fixtures/isolation";
 import {
 	E2E_DESKTOP_CACHE,
 	E2E_DESKTOP_CONTROL_FILE,
@@ -65,6 +66,7 @@ const desktop = Bun.spawn([launcher], {
 
 try {
 	const origin = await waitForReady(desktop.exited);
+	await assertE2eHost(origin);
 	const [laneArgs = []] = await testListArgs;
 	const playwright = Bun.spawn(
 		[process.execPath, "x", "playwright", "test", ...playwrightArgs, ...laneArgs],

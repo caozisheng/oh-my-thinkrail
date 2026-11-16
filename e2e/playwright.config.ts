@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { toolHomeEnv } from "@thinkrail/shared/toolHomes";
 import { assertCentralPlaywrightRunner } from "./agentRunPlan";
 import {
 	CENTRAL_STUB_READ_ONLY_ENV,
@@ -13,17 +12,15 @@ import {
 	hermeticE2eShell,
 	resolveBunExecutable,
 } from "./fixtures/executables";
+import { e2eHostEnvironment } from "./fixtures/isolation";
 import {
 	E2E_CENTRAL_BAD_EXTENSION_SOURCE,
 	E2E_CENTRAL_EXTENSION_SOURCE,
 	E2E_CENTRAL_LOG,
 	E2E_CENTRAL_STATE,
-	E2E_DATA_DIR,
 	E2E_EDITOR_LOG,
 	E2E_FAKE_BIN_DIR,
-	E2E_HOME_DIR,
 	E2E_INSTALLED_FONTS,
-	E2E_PI_AGENT_DIR,
 	E2E_PICK_DIR_POINTER,
 	E2E_PORT,
 	E2E_SPEECH_MANIFEST,
@@ -87,7 +84,7 @@ export default defineConfig({
 		env: {
 			THINKRAIL_PORT: String(PORT),
 			THINKRAIL_STATIC_DIR: staticDir,
-			THINKRAIL_DATA_DIR: E2E_DATA_DIR,
+			...e2eHostEnvironment(),
 			DISPLAY: "",
 			WAYLAND_DISPLAY: "",
 			// Stub the host's native directory picker so "Open project" is drivable headlessly. It names a
@@ -105,8 +102,7 @@ export default defineConfig({
 			// regardless of the dev machine's real `gh` auth — and exercises the offline/local-branch degrade path.
 			THINKRAIL_GH_OFFLINE: "1",
 			// Keep cross-agent personal skill aliases away from the developer's real homes/overrides.
-			...toolHomeEnv(E2E_HOME_DIR),
-			PI_CODING_AGENT_DIR: E2E_PI_AGENT_DIR,
+
 			// Keep the suite hermetic: `model.list` fires a detached pi.dev catalog refresh (issue #98) that
 			// must never leave the machine in tests — PI_OFFLINE is pi's own convention and our guard honors it.
 			PI_OFFLINE: "1",
