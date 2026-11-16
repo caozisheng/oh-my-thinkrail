@@ -94,6 +94,7 @@ function renderIssues(
 		githubSupported?: boolean;
 		error?: IssuePanelError;
 		onOpenIssue?: (reference: IssueSummary["reference"]) => void;
+		onTogglePreview?: (issue: IssueSummary) => void;
 		historySupported?: boolean;
 		onOpenHistory?: (issue: IssueSummary) => void;
 		capabilities?: IssueActionCapabilities;
@@ -116,6 +117,7 @@ function renderIssues(
 		onDisconnect: async () => {},
 		onRefresh: () => {},
 		onOpenIssue: props.onOpenIssue,
+		...(props.onTogglePreview ? { onTogglePreview: props.onTogglePreview } : {}),
 		historySupported: props.historySupported,
 		onOpenHistory: props.onOpenHistory,
 		initialDisclosure: props.initialDisclosure,
@@ -1028,6 +1030,27 @@ function callSpy(overrides: Partial<IssueActionCall> = {}): {
 		},
 	};
 }
+
+test("issue title and its three utility icons stay left of stage actions", () => {
+	const html = renderIssues({
+		connection: connected,
+		issues: [summary],
+		onTogglePreview: () => {},
+		historySupported: true,
+		onOpenHistory: () => {},
+		onRunAction: async () => ({ ok: true, launch: { workspaceId: "w1", sessionId: "s1" } }),
+	});
+	const titleGroupStart = html.indexOf('data-testid="issue-title-leading"');
+	const title = html.indexOf("#1 First issue");
+	const preview = html.indexOf('data-testid="issue-preview-toggle"');
+	const history = html.indexOf('data-testid="issue-history"');
+	const actions = html.indexOf('data-testid="issue-actions"');
+	expect(titleGroupStart).toBeGreaterThanOrEqual(0);
+	expect(titleGroupStart).toBeLessThan(title);
+	expect(title).toBeLessThan(preview);
+	expect(preview).toBeLessThan(history);
+	expect(history).toBeLessThan(actions);
+});
 
 test("implementation history is an icon button with a hover label", () => {
 	const html = renderIssues({

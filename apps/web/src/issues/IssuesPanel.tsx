@@ -392,96 +392,105 @@ export function IssuesPanel({
 											className="flex flex-col gap-4 rounded-sm border border-border-muted p-8"
 										>
 											<div className="flex items-start gap-6">
-												<div className="min-w-0 flex-1 break-words">
-													<a
-														href={safeIssueUrl(issue.url)}
-														target="_blank"
-														rel="noopener noreferrer"
-														className="text-primary"
-													>
-														#{issue.reference.number} {issue.title}
-													</a>
-													{typeof repositoryView === "object" && repositoryView.blocked && (
-														<TooltipProvider>
-															<IconButton
-																icon={RiLockLine}
-																size="s"
-																variant="ghost"
-																label={t("issues.error.launchBlocked")}
-																data-testid="issue-lock"
-																className="ml-4 align-middle"
-															/>
-														</TooltipProvider>
-													)}
+												<div
+													data-testid="issue-title-leading"
+													className="min-w-0 flex-1 break-words"
+												>
+													<span>
+														<a
+															href={safeIssueUrl(issue.url)}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="text-primary"
+														>
+															#{issue.reference.number} {issue.title}
+														</a>
+														{typeof repositoryView === "object" && repositoryView.blocked && (
+															<TooltipProvider>
+																<IconButton
+																	icon={RiLockLine}
+																	size="s"
+																	variant="ghost"
+																	label={t("issues.error.launchBlocked")}
+																	data-testid="issue-lock"
+																	className="ml-4 align-middle"
+																/>
+															</TooltipProvider>
+														)}
+													</span>
+													<span className="ml-4 inline-flex items-center gap-4 align-middle">
+														{onTogglePreview && (
+															<TooltipProvider>
+																<IconButton
+																	size="s"
+																	icon={preview?.key === issueKey(issue) ? RiEyeOffLine : RiEyeLine}
+																	variant={
+																		preview?.key === issueKey(issue) ? "soft-primary" : "ghost"
+																	}
+																	label={t(
+																		preview?.key === issueKey(issue)
+																			? "issues.previewClose"
+																			: "issues.previewOpen",
+																	)}
+																	tooltip={t(
+																		previewSupported
+																			? preview?.key === issueKey(issue)
+																				? "issues.previewClose"
+																				: "issues.previewOpen"
+																			: "issues.previewUnsupported",
+																	)}
+																	disabled={!previewSupported || pending}
+																	aria-expanded={preview?.key === issueKey(issue)}
+																	aria-controls={
+																		preview?.key === issueKey(issue) ? previewId : undefined
+																	}
+																	data-testid="issue-preview-toggle"
+																	onClick={() => onTogglePreview(issue)}
+																/>
+															</TooltipProvider>
+														)}
+														{repositoriesSupported &&
+															primaryProjectId &&
+															repositoryProjects &&
+															onToggleRepository && (
+																<TooltipProvider>
+																	<IssueRepositoriesControl
+																		issue={issue}
+																		primaryProjectId={primaryProjectId}
+																		projects={repositoryProjects}
+																		view={repositoriesFor?.(issue)}
+																		disabled={pending || actionPending === true}
+																		onOpen={() => onLoadRepositories?.(issue)}
+																		onToggle={(projectId) => {
+																			void onToggleRepository(issue, projectId);
+																		}}
+																		onJoin={
+																			onJoinRepository
+																				? (projectId) => onJoinRepository(issue, projectId)
+																				: undefined
+																		}
+																		onCleanup={
+																			onCleanupRepositories
+																				? () => onCleanupRepositories(issue)
+																				: undefined
+																		}
+																	/>
+																</TooltipProvider>
+															)}
+														{historySupported && onOpenHistory && (
+															<TooltipProvider>
+																<IconButton
+																	size="s"
+																	variant="ghost"
+																	icon={RiCalendarTodoLine}
+																	label={t("issues.history.open")}
+																	data-testid="issue-history"
+																	onClick={() => onOpenHistory(issue)}
+																/>
+															</TooltipProvider>
+														)}
+													</span>
 												</div>
-												{onTogglePreview && (
-													<TooltipProvider>
-														<IconButton
-															size="s"
-															icon={preview?.key === issueKey(issue) ? RiEyeOffLine : RiEyeLine}
-															variant={preview?.key === issueKey(issue) ? "soft-primary" : "ghost"}
-															label={t(
-																preview?.key === issueKey(issue)
-																	? "issues.previewClose"
-																	: "issues.previewOpen",
-															)}
-															tooltip={t(
-																previewSupported
-																	? preview?.key === issueKey(issue)
-																		? "issues.previewClose"
-																		: "issues.previewOpen"
-																	: "issues.previewUnsupported",
-															)}
-															disabled={!previewSupported || pending}
-															aria-expanded={preview?.key === issueKey(issue)}
-															aria-controls={
-																preview?.key === issueKey(issue) ? previewId : undefined
-															}
-															data-testid="issue-preview-toggle"
-															onClick={() => onTogglePreview(issue)}
-														/>
-													</TooltipProvider>
-												)}
-												{repositoriesSupported &&
-													primaryProjectId &&
-													repositoryProjects &&
-													onToggleRepository && (
-														<TooltipProvider>
-															<IssueRepositoriesControl
-																issue={issue}
-																primaryProjectId={primaryProjectId}
-																projects={repositoryProjects}
-																view={repositoriesFor?.(issue)}
-																disabled={pending || actionPending === true}
-																onOpen={() => onLoadRepositories?.(issue)}
-																onToggle={(projectId) => {
-																	void onToggleRepository(issue, projectId);
-																}}
-																onJoin={
-																	onJoinRepository
-																		? (projectId) => onJoinRepository(issue, projectId)
-																		: undefined
-																}
-																onCleanup={
-																	onCleanupRepositories
-																		? () => onCleanupRepositories(issue)
-																		: undefined
-																}
-															/>
-														</TooltipProvider>
-													)}
-												{historySupported && onOpenHistory && (
-													<TooltipProvider>
-														<IconButton
-															size="s"
-															variant="ghost"
-															icon={RiCalendarTodoLine}
-															label={t("issues.history.open")}
-															data-testid="issue-history"
-															onClick={() => onOpenHistory(issue)}
-														/>
-													</TooltipProvider>
-												)}
 												{onRunAction && (
 													<IssueActionRow
 														issue={issue}
