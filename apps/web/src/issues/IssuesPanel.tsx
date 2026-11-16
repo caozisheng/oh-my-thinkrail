@@ -1,5 +1,6 @@
 import {
 	type RemixiconComponentType,
+	RiCalendarTodoLine,
 	RiCodeBoxLine,
 	RiEyeLine,
 	RiEyeOffLine,
@@ -470,9 +471,16 @@ export function IssuesPanel({
 														</TooltipProvider>
 													)}
 												{historySupported && onOpenHistory && (
-													<Button size="s" variant="ghost" onClick={() => onOpenHistory(issue)}>
-														{t("issues.history.open")}
-													</Button>
+													<TooltipProvider>
+														<IconButton
+															size="s"
+															variant="ghost"
+															icon={RiCalendarTodoLine}
+															label={t("issues.history.open")}
+															data-testid="issue-history"
+															onClick={() => onOpenHistory(issue)}
+														/>
+													</TooltipProvider>
 												)}
 												{onRunAction && (
 													<IssueActionRow

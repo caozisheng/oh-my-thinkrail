@@ -94,6 +94,8 @@ function renderIssues(
 		githubSupported?: boolean;
 		error?: IssuePanelError;
 		onOpenIssue?: (reference: IssueSummary["reference"]) => void;
+		historySupported?: boolean;
+		onOpenHistory?: (issue: IssueSummary) => void;
 		capabilities?: IssueActionCapabilities;
 		onRunAction?: (issue: IssueSummary, action: IssueActionId) => Promise<IssueActionResult>;
 		actionPending?: boolean;
@@ -114,6 +116,8 @@ function renderIssues(
 		onDisconnect: async () => {},
 		onRefresh: () => {},
 		onOpenIssue: props.onOpenIssue,
+		historySupported: props.historySupported,
+		onOpenHistory: props.onOpenHistory,
 		initialDisclosure: props.initialDisclosure,
 		onDisclosureChange: () => {},
 		onRunAction: props.onRunAction,
@@ -1024,6 +1028,19 @@ function callSpy(overrides: Partial<IssueActionCall> = {}): {
 		},
 	};
 }
+
+test("implementation history is an icon button with a hover label", () => {
+	const html = renderIssues({
+		connection: connected,
+		issues: [summary],
+		historySupported: true,
+		onOpenHistory: () => {},
+	});
+	expect(html).toContain('data-testid="issue-history"');
+	expect(html).toContain('aria-label="View implementation history"');
+	expect(html).not.toContain(">View implementation history</button>");
+	expect(html).toContain("<svg");
+});
 
 test("stage actions follow the v104 launch and v106 approval floors", () => {
 	expect(supportsIssueActions(null)).toBe(false);
