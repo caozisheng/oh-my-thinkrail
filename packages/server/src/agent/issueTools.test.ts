@@ -192,6 +192,18 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	expect(Check(tool.parameters, { operationId: "op", continueDespiteChecks: true })).toBe(true);
 	expect(Check(tool.parameters, { operationId: "op", recovery: "reconcile" })).toBe(true);
 	expect(Check(tool.parameters, { operationId: "op", recovery: "resend" })).toBe(false);
+	for (const body of ["é".repeat(16001), "😀".repeat(8001)]) {
+		expect(Check(tool.parameters, { operationId: "body", action: "update-body", body })).toBe(true);
+		await expect(
+			tool.execute(
+				"call",
+				{ operationId: "body", action: "update-body", body },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toHaveProperty("code", "RANGE_INVALID");
+	}
 	expect(
 		Check(tool.parameters, { operationId: "body", action: "update-body", body: "Replacement" }),
 	).toBe(true);
