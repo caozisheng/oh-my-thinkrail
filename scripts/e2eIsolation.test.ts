@@ -6,6 +6,7 @@ import {
 	assertE2eHost,
 	assertE2ePath,
 	assertE2eTree,
+	assertNoE2eHost,
 	e2eHostEnvironment,
 } from "../e2e/fixtures/isolation";
 import { E2E_DATA_DIR } from "../e2e/fixtures/paths";
@@ -40,6 +41,36 @@ test("junction redirection fails before deleting a fake production sentinel", ()
 	}
 });
 
+test("caller data aliases into a lane block teardown and preserve registry bytes", async () => {
+	const fake = mkdtempSync(join(tmpdir(), "thinkrail-isolation-alias-"));
+	const alias = join(fake, "production-data");
+	const sentinel = join(E2E_DATA_DIR, `protected-${process.pid}.json`);
+	mkdirSync(E2E_DATA_DIR, { recursive: true });
+	writeFileSync(sentinel, "protected registry");
+	try {
+		symlinkSync(E2E_DATA_DIR, alias, process.platform === "win32" ? "junction" : "dir");
+		const child = Bun.spawn(
+			[
+				process.execPath,
+				"-e",
+				`
+			const { default: teardown } = await import("./e2e/global-teardown.ts");
+			try { teardown(); process.exit(2); } catch (error) {
+				if (!error.message.includes("E2E isolation")) throw error;
+			}
+		`,
+			],
+			{ env: { ...process.env, THINKRAIL_DATA_DIR: alias }, stdout: "pipe", stderr: "pipe" },
+		);
+		expect(await child.exited).toBe(0);
+		expect(readFileSync(sentinel, "utf8")).toBe("protected registry");
+	} finally {
+		rmSync(alias, { recursive: true, force: true });
+		rmSync(fake, { recursive: true, force: true });
+		rmSync(sentinel, { force: true });
+	}
+});
+
 test("an ordinary healthy host grants no reset authority", async () => {
 	const server = Bun.serve({ port: 0, fetch: () => new Response("ok") });
 	try {
@@ -47,6 +78,17 @@ test("an ordinary healthy host grants no reset authority", async () => {
 	} finally {
 		server.stop(true);
 	}
+});
+
+test("prelaunch rejects an occupied endpoint", async () => {
+	const server = Bun.serve({ port: 0, fetch: () => new Response("stale host") });
+	const port = Number(server.port);
+	try {
+		await expect(assertNoE2eHost(port)).rejects.toThrow("E2E isolation");
+	} finally {
+		server.stop(true);
+	}
+	await assertNoE2eHost(port);
 });
 
 test("host environment overrides both homes, data and tool paths", () => {

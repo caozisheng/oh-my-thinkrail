@@ -1,6 +1,6 @@
 import { devices, type PlaywrightTestConfig } from "@playwright/test";
 import { executableOnPath, hermeticE2ePath, hermeticE2eShell } from "./fixtures/executables";
-import { e2eHostEnvironment } from "./fixtures/isolation";
+import { assertE2eTree, e2eHostEnvironment } from "./fixtures/isolation";
 import {
 	E2E_CENTRAL_BAD_EXTENSION_SOURCE,
 	E2E_CENTRAL_EXTENSION_SOURCE,
@@ -14,6 +14,7 @@ import {
 } from "./fixtures/paths";
 
 export function artifactHostEnvironment(cacheDir: string): Record<string, string> {
+	assertE2eTree(cacheDir);
 	const hostPath = hermeticE2ePath(E2E_FAKE_BIN_DIR);
 	if (executableOnPath(hostPath, "pi")) {
 		throw new Error("artifact e2e host PATH must not contain pi");

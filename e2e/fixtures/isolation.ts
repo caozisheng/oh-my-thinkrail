@@ -14,9 +14,21 @@ import {
 const runToken = process.env.THINKRAIL_E2E_RUN_TOKEN ?? randomUUID();
 process.env.THINKRAIL_E2E_RUN_TOKEN = runToken;
 const callerHome = homedir();
-const forbidden = [callerHome, join(callerHome, ".oh-my-thinkrail"), process.env.THINKRAIL_DATA_DIR]
+function canonical(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+		const parent = dirname(path);
+		if (parent === path) throw error;
+		return join(canonical(parent), relative(parent, path));
+	}
+}
+
+const protectedHomes = [resolve(callerHome), canonical(resolve(callerHome))];
+const forbidden = [join(callerHome, ".oh-my-thinkrail"), process.env.THINKRAIL_DATA_DIR]
 	.filter((path): path is string => Boolean(path))
-	.map((path) => resolve(path));
+	.flatMap((path) => [resolve(path), canonical(resolve(path))]);
 const roots = [
 	E2E_DATA_DIR,
 	E2E_RESTART_DATA_DIR,
@@ -68,7 +80,8 @@ export function assertE2ePath(path: string): void {
 	if (!isAbsolute(path) || key(resolve(path)) !== key(path)) fail();
 	if (!contains(resolve(tmpdir()), path) || key(resolve(tmpdir())) === key(path)) fail();
 	if (!roots.some((root) => contains(root, path))) fail();
-	if (forbidden.some((target) => contains(path, target))) fail();
+	if (protectedHomes.some((target) => contains(path, target))) fail();
+	if (forbidden.some((target) => contains(path, target) || contains(target, path))) fail();
 	checkComponents(path);
 }
 
@@ -96,6 +109,28 @@ export function e2eHostEnvironment(dataDir = E2E_DATA_DIR): Record<string, strin
 		PI_CODING_AGENT_DIR: join(dataDir, "pi-agent"),
 		THINKRAIL_E2E_ISOLATION: runToken,
 	};
+}
+
+export async function assertNoE2eHost(port: number): Promise<void> {
+	try {
+		const response = await fetch(`http://localhost:${port}/health`, {
+			signal: AbortSignal.timeout(1000),
+		});
+		await response.body?.cancel();
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ConnectionRefused") return;
+		if (
+			error instanceof TypeError &&
+			"cause" in error &&
+			error.cause &&
+			typeof error.cause === "object" &&
+			"code" in error.cause &&
+			error.cause.code === "ECONNREFUSED"
+		)
+			return;
+		throw error;
+	}
+	fail();
 }
 
 export async function assertE2eHost(origin: string, dataDir = E2E_DATA_DIR): Promise<void> {

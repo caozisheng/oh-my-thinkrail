@@ -1,4 +1,11 @@
-import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { FullConfig } from "@playwright/test";
 import { removeTree } from "@thinkrail/shared/removeTree";
@@ -15,12 +22,14 @@ import {
 	writeE2eAgentSettings,
 } from "./fixtures/centralAgent";
 import { writeFakeGh, writeHermeticE2eShell } from "./fixtures/executables";
-import { assertE2eHost, assertE2eTree } from "./fixtures/isolation";
+import { assertE2eHost, assertE2eTree, assertNoE2eHost } from "./fixtures/isolation";
 import {
+	E2E_BINARY_PORT,
 	E2E_CENTRAL_BAD_EXTENSION_SOURCE,
 	E2E_CENTRAL_EXTENSION_SOURCE,
 	E2E_CENTRAL_STATE,
 	E2E_DATA_DIR,
+	E2E_DESKTOP_READY_FILE,
 	E2E_FAKE_BIN_DIR,
 	E2E_FIXTURE_REPO,
 	E2E_GH_LOG,
@@ -30,6 +39,8 @@ import {
 	E2E_PI_AGENT_DIR,
 	E2E_PI_MODELS_SEED,
 	E2E_PICK_DIR_POINTER,
+	E2E_PORT,
+	E2E_RESTART_PORT,
 } from "./fixtures/paths";
 import { seedFixtureRepo } from "./fixtures/repo";
 import { seedExternalCwdSessions } from "./fixtures/sessions";
@@ -57,6 +68,21 @@ function seedLocalAgentConfiguration(): void {
 export default async function globalSetup(config?: FullConfig): Promise<void> {
 	const baseURL = config?.projects[0]?.use.baseURL;
 	if (baseURL) await assertE2eHost(baseURL);
+	else {
+		for (const port of [E2E_PORT, E2E_BINARY_PORT, E2E_RESTART_PORT]) await assertNoE2eHost(port);
+		assertE2eTree();
+		if (existsSync(E2E_DESKTOP_READY_FILE)) {
+			const ready: unknown = JSON.parse(readFileSync(E2E_DESKTOP_READY_FILE, "utf8"));
+			if (
+				typeof ready !== "object" ||
+				ready === null ||
+				!("origin" in ready) ||
+				typeof ready.origin !== "string"
+			)
+				throw new Error("E2E isolation cannot verify previous desktop endpoint");
+			await assertNoE2eHost(Number(new URL(ready.origin).port));
+		}
+	}
 	const centralMode = isRealCentralE2e();
 	try {
 		const globalCentralArtifact = centralMode ? findGlobalCentralArtifact() : undefined;
