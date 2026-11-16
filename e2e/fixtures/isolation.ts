@@ -46,6 +46,10 @@ function contains(parent: string, child: string): boolean {
 	return rest === "" || (!rest.startsWith(`..${sep}`) && rest !== ".." && !isAbsolute(rest));
 }
 
+function hasCode(value: unknown, code: string): boolean {
+	return typeof value === "object" && value !== null && "code" in value && value.code === code;
+}
+
 function fail(): never {
 	throw new Error("E2E isolation rejected an unsafe path or host; no reset is permitted");
 }
@@ -118,14 +122,20 @@ export async function assertNoE2eHost(port: number): Promise<void> {
 		});
 		await response.body?.cancel();
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ConnectionRefused") return;
+		if (
+			error instanceof Error &&
+			(error.name === "ConnectionRefused" ||
+				error.message.includes("ECONNREFUSED") ||
+				error.message.startsWith("Unable to connect") ||
+				hasCode(error, "ECONNREFUSED"))
+		)
+			return;
 		if (
 			error instanceof TypeError &&
 			"cause" in error &&
 			error.cause &&
 			typeof error.cause === "object" &&
-			"code" in error.cause &&
-			error.cause.code === "ECONNREFUSED"
+			hasCode(error.cause, "ECONNREFUSED")
 		)
 			return;
 		throw error;
