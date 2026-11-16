@@ -143,7 +143,6 @@ an on-demand NVIDIA speech runtime and model download. Audio and transcripts are
 speech service. Structured agent questions support rich previews,
 per-option notes, and a Discuss action. These upstream capabilities remain separate from this fork's
 Issue association and Tomato sessions.
-
 - **Agent tools beyond the shell.** Thanks to the ThinkRail GUI, your AI agent can ask you structured multiple-choice questions in the chat instead of guessing, draw Mermaid diagrams, and show comparisons and file previews. When the agent proposes a UI change, it shows a before/after mockup you can comment on like a diff; the agent's mockups are clickable prototypes whose scripts run in a sandbox with no network access. When a question's options come with mockups, open them full screen to flip through them, put two side by side (two HTML mockups scroll together and also compare with a swipe or an overlay), or see them all at once, and pick one right there.
 
   - Settings → Extensions lists the ThinkRail extensions the agent may use. It can also install any `pi` package by source (npm, git or a local folder), for you or for a repository, showing what each one adds and letting you switch individual packages, their extensions and skills, and `pi`'s built-ins on or off.
