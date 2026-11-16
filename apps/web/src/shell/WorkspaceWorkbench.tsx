@@ -3,7 +3,7 @@ import {
 	RiChatNewLine as MessageSquarePlus,
 	RiTerminalBoxLine as SquareTerminal,
 } from "@remixicon/react";
-import type { IssueSessionLaunch } from "@thinkrail/contracts";
+import type { IssueReference, IssueSessionLaunch } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { t, useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
@@ -44,6 +44,7 @@ import { ArtifactsPanel } from "../panels/ArtifactsPanel";
 import { DiffPane } from "../panels/DiffPane";
 import { FilePane } from "../panels/FilePane";
 import { FilesPanel } from "../panels/FilesPanel";
+import { discussGroupIssue } from "../panels/groupWorkspace";
 import { openIssueSession } from "../panels/issueSession";
 import { startChatInTab } from "../panels/openChat";
 import { fileComparisonTab, openFileInTab } from "../panels/openTabs";
@@ -167,14 +168,14 @@ const RESTORING_LABEL = {
 } satisfies Record<string, MessageKey>;
 
 /** A chat without a project has no repository: git- and spec-backed bodies say so instead of asking the host. */
-function ChatUnavailable() {
+function ChatUnavailable({ group = false }: { group?: boolean }) {
 	const t = useT();
 	return (
 		<div
 			data-testid="chat-tool-unavailable"
 			className="flex h-full items-center justify-center p-16 text-center text-text-subtle tr-text-ui"
 		>
-			{t("panels.chats.notAvailable")}
+			{t(group ? "panels.groupHome.repositoryRequired" : "panels.chats.notAvailable")}
 		</div>
 	);
 }
@@ -430,6 +431,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	const deletedSessions = useAppStore((state) => state.deletedSessionsByWorkspace[workspaceId]);
 	const terminalClose = useTerminalClose();
 	const isChat = workspace != null && isChatWorkspace(workspace);
+	const isGroup = workspace?.kind === "group";
 	const chatTitle = useAppStore((state) =>
 		isChat
 			? chatDisplayName(
@@ -439,8 +441,8 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				)
 			: "",
 	);
-	const repositoryId = isChat ? null : workspaceId;
-	const specs = useWorkspaceSpecs(repositoryId);
+	const repositoryId = isChat || isGroup ? null : workspaceId;
+	const specs = useWorkspaceSpecs(isChat ? null : workspaceId);
 	const artifacts = useWorkspaceArtifacts(workspaceId);
 	const artifactsUnseen = useAppStore((state) => selectArtifactsUnseen(state, workspaceId));
 	const review = useWorkspaceReview(repositoryId);
@@ -798,6 +800,13 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		},
 		[projectId],
 	);
+	const openGroupIssue = useCallback(
+		(reference: IssueReference) => {
+			if (projectId === undefined) return;
+			return discussGroupIssue(workspaceId, projectId, reference);
+		},
+		[projectId, workspaceId],
+	);
 	const toolBodies = useMemo<Record<LayoutToolId, ReactNode>>(() => {
 		const bodies: Record<LayoutToolId, ReactNode> = {
 			projects: (
@@ -828,6 +837,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					key={projectId}
 					projectId={projectId}
 					onLaunchSession={launchIssueSession}
+					{...(isGroup ? { onOpenIssue: openGroupIssue } : {})}
 					onTrustProject={trustProject}
 				/>
 			) : null,
@@ -840,11 +850,12 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					onRetry={artifacts.reload}
 				/>
 			),
-			review: isChat ? (
-				<ChatUnavailable />
-			) : (
-				<ReviewPanel key={workspaceId} workspaceId={workspaceId} failed={review.failed} />
-			),
+			review:
+				isChat || isGroup ? (
+					<ChatUnavailable />
+				) : (
+					<ReviewPanel key={workspaceId} workspaceId={workspaceId} failed={review.failed} />
+				),
 			plan: railPlanSessionId ? (
 				<ErrorBoundary
 					label={t("shell.workbench.panel.planRail")}
@@ -881,6 +892,8 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		artifacts.reload,
 		chatActions,
 		isChat,
+		isGroup,
+		openGroupIssue,
 		launchIssueSession,
 		trustProject,
 		keybindings,
@@ -895,7 +908,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	]);
 	const renderToolBody = useCallback((tool: LayoutToolId) => toolBodies[tool], [toolBodies]);
 
-	const isDefault = workspace != null && isDefaultWorkspace(workspace);
+	const isDefault = workspace != null && (isDefaultWorkspace(workspace) || isGroup);
 	const isExternal = workspace != null && isExternalWorkspace(workspace);
 
 	const startChat = useCallback(
@@ -958,13 +971,15 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				className="flex h-full flex-col items-center justify-center gap-4 px-16 text-center"
 			>
 				<span className="tr-text-eyebrow text-text-muted">
-					{isChat
-						? t("panels.chats.title")
-						: isDefault
-							? t("shell.workbench.ready.defaultEyebrow")
-							: isExternal
-								? t("shell.workbench.ready.externalEyebrow")
-								: t("shell.workbench.ready.worktreeEyebrow")}
+					{isGroup
+						? t("panels.groupHome.workbench")
+						: isChat
+							? t("panels.chats.title")
+							: isDefault
+								? t("shell.workbench.ready.defaultEyebrow")
+								: isExternal
+									? t("shell.workbench.ready.externalEyebrow")
+									: t("shell.workbench.ready.worktreeEyebrow")}
 				</span>
 				{workspace && isChat ? (
 					<h2 className="max-w-full truncate tr-title-entity text-text-default">{chatTitle}</h2>
@@ -973,29 +988,37 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 						<h2 className="max-w-full truncate tr-title-entity text-text-default">
 							{isDefault ? (contextProject?.name ?? workspaceName(t, workspace)) : workspace.name}
 						</h2>
-						<p className="flex max-w-full items-center gap-4 tr-text-metadata text-text-muted">
-							<GitBranch className="size-14 shrink-0" />
-							{isDefault || isExternal ? (
-								<span className="truncate">
-									{t("shell.workbench.ready.onBranch", { branch: workspace.branch })}
-								</span>
-							) : (
-								<>
-									<span className="truncate">{workspace.branch}</span>
-									<span className="shrink-0 text-text-muted">
-										{t("shell.workbench.ready.fromBase", { base: workspace.baseBranch })}
+						{isGroup ? (
+							<p className="max-w-full truncate tr-code-text text-text-muted">
+								{workspace.worktreePath}
+							</p>
+						) : (
+							<p className="flex max-w-full items-center gap-4 tr-text-metadata text-text-muted">
+								<GitBranch className="size-14 shrink-0" />
+								{isDefault || isExternal ? (
+									<span className="truncate">
+										{t("shell.workbench.ready.onBranch", { branch: workspace.branch })}
 									</span>
-								</>
-							)}
-						</p>
+								) : (
+									<>
+										<span className="truncate">{workspace.branch}</span>
+										<span className="shrink-0 text-text-muted">
+											{t("shell.workbench.ready.fromBase", { base: workspace.baseBranch })}
+										</span>
+									</>
+								)}
+							</p>
+						)}
 					</>
 				) : null}
 				<p className="mt-4 tr-text-ui text-text-muted">
-					{isChat
-						? t("panels.newWorkspace.descriptionChat")
-						: isDefault
-							? t("shell.workbench.ready.defaultDescription")
-							: t("shell.workbench.ready.worktreeDescription")}
+					{isGroup
+						? t("panels.groupHome.workbenchHint")
+						: isChat
+							? t("panels.newWorkspace.descriptionChat")
+							: isDefault
+								? t("shell.workbench.ready.defaultDescription")
+								: t("shell.workbench.ready.worktreeDescription")}
 				</p>
 				<Button
 					variant="outline"
@@ -1020,6 +1043,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 			contextProject,
 			isChat,
 			isDefault,
+			isGroup,
 			isExternal,
 			startChat,
 			t,

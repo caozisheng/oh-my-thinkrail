@@ -201,6 +201,8 @@ export function dropChatRecord(id: string): void {
 
 /** The container is never a repository: nothing may give it a Default workspace or a worktree. */
 export function assertNotChatsContainer(project: Pick<Project, "id" | "kind">): void {
+	if (project.kind === "group")
+		throw new CodedError("RESOURCE_UNAVAILABLE", "A group context is not a repository.");
 	if (isChatsContainer(project)) {
 		throw new CodedError(
 			"CHATS_CONTAINER",
@@ -210,6 +212,8 @@ export function assertNotChatsContainer(project: Pick<Project, "id" | "kind">): 
 }
 
 export function assertNotChatWorkspace(workspace: Pick<Workspace, "kind">, action: string): void {
+	if (workspace.kind === "group")
+		throw new CodedError("RESOURCE_UNAVAILABLE", `A group workspace cannot be ${action}.`);
 	if (isChatWorkspace(workspace)) {
 		throw new CodedError("CHAT_WORKSPACE", `A chat without a project cannot be ${action}.`);
 	}

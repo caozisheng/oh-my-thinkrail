@@ -10,6 +10,9 @@ tags: [ui, topbar, public-surface-checked]
 
 ## Responsibility
 
+A group workbench shows its group context and a Home menu action returning to Group Home. It omits
+repository workspace, branch and shipping segments.
+
 The persistent "where am I / what state is it in" strip after the ThinkRail mark: one row of captioned
 segments — **Project · Workspace · Branch · from base · Remote · Pull request** — whose values are the
 controls for switching project or workspace, acting on the workspace, reading or retargeting the

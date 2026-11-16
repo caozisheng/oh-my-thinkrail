@@ -1368,6 +1368,7 @@ interface AppState {
 	hydrateCollapsedRailNodes: (keys: readonly string[]) => void;
 	selectMain: () => void;
 	activateWorkspace: (workspace: Pick<Workspace, "id" | "projectId">) => void;
+	activateGroupWorkspace: (project: Project, workspace: Workspace) => void;
 	activateWorkspaceFromRoute: (
 		workspace: Pick<Workspace, "id" | "projectId">,
 		sessionId?: string,
@@ -3259,6 +3260,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 		if (refusesEntry(get(), workspace.id)) return;
 		set((state) => workspaceActivationPatch(state, workspace));
 	},
+	activateGroupWorkspace: (project, workspace) =>
+		set((state) => {
+			if (
+				project.kind !== "group" ||
+				workspace.kind !== "group" ||
+				workspace.projectId !== project.id ||
+				refusesEntry(state, workspace.id)
+			)
+				return {};
+			const projects = sortOpenProjects(upsertProject(state.projects, project));
+			const rows = state.workspaces[project.id] ?? [];
+			const workspaces = {
+				...state.workspaces,
+				[project.id]: [...rows.filter((row) => row.id !== workspace.id), workspace],
+			};
+			return {
+				projects,
+				workspaces,
+				recentProjects: sortRecentProjects(upsertProject(state.recentProjects, project)),
+				...workspaceActivationPatch({ ...state, workspaces }, workspace),
+			};
+		}),
 	activateWorkspaceFromRoute: (workspace, sessionId) =>
 		set((state) => {
 			if (refusesEntry(state, workspace.id)) return {};

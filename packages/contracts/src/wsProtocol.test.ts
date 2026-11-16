@@ -61,6 +61,7 @@ import {
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_DETAIL_PROTOCOL_VERSION,
 	ISSUES_GITHUB_PROTOCOL_VERSION,
+	ISSUES_GROUPS_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
@@ -133,6 +134,12 @@ import {
 	type WsErrorCode,
 	type WsMethodMap,
 } from "./wsProtocol";
+
+test("GitLab group associations have an additive protocol floor after artifacts", () => {
+	expect(ISSUES_GROUPS_PROTOCOL_VERSION).toBe(136);
+	expect(ISSUES_GROUPS_PROTOCOL_VERSION).toBeGreaterThan(ARTIFACTS_PROTOCOL_VERSION);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(ISSUES_GROUPS_PROTOCOL_VERSION);
+});
 
 test("retired workspace activity keeps only its empty snapshot compatibility method", () => {
 	expect(WS_METHODS.sessionActivityList).toBe("session.activityList");

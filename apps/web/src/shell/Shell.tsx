@@ -20,6 +20,7 @@ import {
 import { NotificationPermissionPrompt, useAttentionNotifications } from "../notifications";
 import { AnalyticsConsentDialog } from "../panels/AnalyticsConsentDialog";
 import { canStartProjectlessChat } from "../panels/chatActions";
+import { openGroupWorkspace } from "../panels/groupWorkspace";
 import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
 import { ProjectGroupHome } from "../panels/ProjectGroupHome";
 import { SettingsDialog } from "../panels/SettingsDialog";
@@ -37,6 +38,7 @@ import {
 	selectContextProject,
 	selectContextRepoProject,
 	selectOnboardingActive,
+	toast,
 	useAppStore,
 } from "../store";
 import {
@@ -49,6 +51,7 @@ import {
 } from "../themes";
 import {
 	type ConnectionStatus,
+	errorText,
 	hostUrl,
 	runHostUpdate,
 	supportsFonts,
@@ -132,7 +135,11 @@ function ShellLayout() {
 		status: branchStatus,
 		noteOpenReview,
 		refreshBranchStatus,
-	} = useBranchStatus(activeChat ? null : activeWorkspace, status, { pollChecks: true });
+	} = useBranchStatus(
+		activeChat || activeWorkspace?.kind === "group" ? null : activeWorkspace,
+		status,
+		{ pollChecks: true },
+	);
 	const locationReview =
 		openReview && openReviewUrl ? { ...openReview, url: openReviewUrl } : openReview;
 	const hasActiveWorkspace = activeWorkspaceId != null;
@@ -151,6 +158,13 @@ function ShellLayout() {
 	useCreationChatHandoff();
 	const canStartChat = useAppStore(canStartProjectlessChat);
 	const openNewWork = (initialPrompt?: string): boolean => {
+		const groupId = activeGroupId ?? (contextProject?.kind === "group" ? contextProject.id : null);
+		if (groupId) {
+			void openGroupWorkspace(groupId, "chat", initialPrompt).catch((error) =>
+				toast.error(errorText(error)),
+			);
+			return true;
+		}
 		if (!contextRepoProject && !canStartChat) return false;
 		if (newWorkspace !== null || workspaceRetryDraft !== null) return false;
 		setNewWorkspace({

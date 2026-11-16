@@ -3,6 +3,7 @@ import {
 	ISSUES_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_AUTH_PROTOCOL_VERSION,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
+	ISSUES_GROUPS_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
@@ -19,6 +20,43 @@ import * as issues from "./issues";
 function authFloored(method: string): boolean {
 	return method === "issues.connect" || method === "issues.repositoryAddress";
 }
+
+test("group connections are version-gated before any credential-bearing delegation", async () => {
+	const params = {
+		projectId: "local-project",
+		input: {
+			instanceUrl: "https://forge.example",
+			projectId: "engineering/platform",
+			scope: "group" as const,
+			token: "disposable-group-protocol-pat",
+		},
+	};
+	const connection = {
+		projectId: params.projectId,
+		instanceUrl: params.input.instanceUrl,
+		remoteProjectId: "7",
+		scope: "group" as const,
+		connected: true,
+	};
+	const connect = spyOn(issues, "issuesConnect").mockResolvedValue(connection);
+	try {
+		await expect(
+			handleRequest("issues.connect", params, {
+				clientKey: "groups",
+				protocolVersion: ISSUES_GROUPS_PROTOCOL_VERSION - 1,
+			}),
+		).rejects.toThrow("Group Issues require a newer protocol version.");
+		expect(connect).not.toHaveBeenCalled();
+		expect(
+			await handleRequest("issues.connect", params, {
+				clientKey: "groups",
+				protocolVersion: ISSUES_GROUPS_PROTOCOL_VERSION,
+			}),
+		).toEqual(connection);
+	} finally {
+		connect.mockRestore();
+	}
+});
 
 test("Issue recovery RPCs are floored at v134 before invoking host actions", async () => {
 	const target = {

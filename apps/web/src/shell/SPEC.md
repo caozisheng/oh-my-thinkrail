@@ -10,6 +10,14 @@ references: [module-desktop, module-contracts, submodule-web-issues, submodule-w
 
 ## Responsibility
 
+Group workspaces reuse `WorkspaceWorkbench` for chats, terminals, files, Issue reads and specs.
+The group name and its Default row enter this workbench directly. New work from a group overview
+uses `activeProjectGroupId` before the ordinary repository fallback; group chat drafts are empty unless
+the user explicitly invoked an action supplying context.
+Their owner is a group context, never a member repository. Git/review/ship surfaces and background
+repository reads are omitted. Group Issue conversations open in this workspace; the group breadcrumb
+returns to Group Home. A group's trust does not grant member repository trust.
+
 The responsive composition root: top-level app chrome, active-project/workspace routing, theme application, global shortcuts, region error isolation, and composition of layout-agnostic panels into one frontend-local desktop workbench frame. A future mobile shell may project the same panels differently; it must not inherit desktop docking accidentally.
 
 ## Boundary

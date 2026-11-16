@@ -27,6 +27,7 @@ export interface ArtifactHostAdapter {
 
 const MALFORMED_MERMAID = "flowchart LR\n A -->";
 const ASK_PROMPT = "Ask the runtime question.";
+const GROUP_PROMPT = "Report the group working directory.";
 const ASK_TOOL_CALL_ID = "artifact-ask";
 const ASK_QUESTION = {
 	questions: [
@@ -276,7 +277,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function connectRpc(baseUrl: string): Promise<WebSocket> {
-	const socket = new WebSocket(`${baseUrl.replace(/^http/, "ws")}/ws`);
+	const socket = new WebSocket(`${baseUrl.replace(/^http/, "ws")}/ws?protocol=136`);
 	await new Promise<void>((resolve, reject) => {
 		socket.addEventListener("open", () => resolve(), { once: true });
 		socket.addEventListener("error", () => reject(new Error("WebSocket connection failed")), {
@@ -624,7 +625,7 @@ export async function runArtifactHostProbes(adapter: ArtifactHostAdapter): Promi
 	const root = mkdtempSync(join(tmpdir(), `thinkrail-${adapter.name}-artifact-`));
 	const homeDir = join(root, "home");
 	const fakeBinDir = join(root, "no-pi-bin");
-	const projectDir = join(root, "project");
+	const projectDir = join(root, "group", "project");
 	const agentDir = join(root, "pi-agent");
 	mkdirSync(homeDir, { recursive: true });
 	mkdirSync(fakeBinDir, { recursive: true });
@@ -655,6 +656,8 @@ const respond = (context) => {
   if (last && last.role === "toolResult") return fauxAssistantMessage("Tool call attempted.");
   if (last && last.role === "user" && JSON.stringify(last.content).includes(${JSON.stringify(EXTENSION_PROMPT)}))
     return fauxAssistantMessage([fauxToolCall(${JSON.stringify(EXTENSION_TOOL)}, {})], { stopReason: "toolUse" });
+  if (last && last.role === "user" && JSON.stringify(last.content).includes(${JSON.stringify(GROUP_PROMPT)}))
+    return fauxAssistantMessage([fauxToolCall("bash", { command: "pwd -P" })], { stopReason: "toolUse" });
   if (last && last.role === "user" && JSON.stringify(last.content).includes(${JSON.stringify(ASK_PROMPT)}))
     return fauxAssistantMessage(
       [fauxToolCall("ask_user_question", ${JSON.stringify(ASK_QUESTION)}, { id: ${JSON.stringify(ASK_TOOL_CALL_ID)} })],
@@ -848,6 +851,56 @@ export default function syntheticExternalExtension(pi) {
 		await assertAskUserQuestionRoundTrip(socket, workspace.id, created.sessionId);
 		await assertInstalledExtensionTool(socket, workspace.id, created.sessionId);
 		await assertRegistryExtensionsLoad({ socket, sessionId: created.sessionId });
+		const group = (await rpc(socket, "project.importGroup", {
+			root: dirname(projectDir),
+			paths: ["project"],
+		})) as { projects: { projectGroup?: { id: string } }[] };
+		const groupId = group.projects[0]?.projectGroup?.id;
+		assert(groupId, "artifact group import has no identity");
+		const groupContext = (await rpc(socket, "project.openGroup", { groupId })) as {
+			workspace: { id: string; kind?: string };
+		};
+		assert(groupContext.workspace.kind === "group", "group borrowed a repository workspace");
+		const groupSession = (await rpc(socket, "session.create", {
+			workspaceId: groupContext.workspace.id,
+			model: externalModel,
+		})) as { sessionId: string };
+		await within(
+			rpc(socket, "session.prompt", { sessionId: groupSession.sessionId, text: GROUP_PROMPT }),
+			10_000,
+			"group prompt",
+		);
+		let cwdConfirmed = false;
+		for (let attempt = 0; attempt < 120; attempt += 1) {
+			const transcript = (await rpc(socket, "session.getMessages", {
+				workspaceId: groupContext.workspace.id,
+				sessionId: groupSession.sessionId,
+			})) as {
+				messages: { role: string; toolName?: string; isError?: boolean; content?: unknown }[];
+			};
+			const result = transcript.messages.find(
+				(message) => message.role === "toolResult" && message.toolName === "bash",
+			);
+			if (result) {
+				assert(!result.isError, "group bash tool failed");
+				const output = JSON.stringify(result.content).replace(/\\\\/g, "/");
+				const expected = resolve(dirname(projectDir)).replaceAll("\\", "/");
+				const bashPath = expected.replace(
+					/^([A-Za-z]):/,
+					(_match, drive: string) => `/${drive.toLowerCase()}`,
+				);
+				assert(
+					output.includes(expected) || output.includes(bashPath),
+					"group session used a member repository cwd",
+				);
+				cwdConfirmed = true;
+				break;
+			}
+			await Bun.sleep(250);
+		}
+		assert(cwdConfirmed, "group session never ran its bash tool");
+		assert(!existsSync(join(dirname(projectDir), ".git")), "group root became a Git repository");
+		await rpc(socket, "session.dispose", { sessionId: groupSession.sessionId });
 		await within(
 			rpc(socket, "session.dispose", { sessionId: created.sessionId }),
 			10_000,

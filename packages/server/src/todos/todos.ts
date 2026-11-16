@@ -178,7 +178,8 @@ export async function listTodos(params: {
 		),
 	};
 	if (plan.summary) wire.summary = plan.summary;
-	if (isChatWorkspace(getWorkspace(params.workspaceId))) return wire;
+	const workspace = getWorkspace(params.workspaceId);
+	if (isChatWorkspace(workspace) || workspace.kind === "group") return wire;
 	const unattributed = await resolveUnattributed(params.workspaceId, root, params.sessionId, plan);
 	if (unattributed.length > 0) wire.unattributed = unattributed;
 	const adoptedCommits = await resolveAdoptedCommits(params.workspaceId, plan, records, pending);

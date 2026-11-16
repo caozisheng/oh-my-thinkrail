@@ -6,6 +6,7 @@ export interface IssueDisclosureIdentity {
 	instanceUrl: string;
 	projectId: string;
 	remoteProjectId: string;
+	scope?: "group";
 }
 
 export const expandedIssueDisclosure = (): IssueDisclosure => ({
@@ -21,6 +22,7 @@ export function issueDisclosureKey(identity: IssueDisclosureIdentity): string {
 		identity.instanceUrl,
 		identity.projectId,
 		identity.remoteProjectId,
+		...(identity.scope ? [identity.scope] : []),
 	])}`;
 }
 

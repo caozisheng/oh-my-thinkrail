@@ -39,9 +39,15 @@ test("group members collapse under one entry at the first member's place, sorted
 	).toEqual(["solo", "group:folder,nested,app,core,zeta", "other"]);
 });
 
-test("a group with a single open member stays a plain row", () => {
+test("a group with a single open member retains its group home", () => {
 	expect(projectRailEntries([project("app", { id: "g", path: "app" })])).toStrictEqual([
-		{ kind: "project", project: project("app", { id: "g", path: "app" }) },
+		{
+			kind: "group",
+			id: "g",
+			name: "group g",
+			root: "/work",
+			projects: [project("app", { id: "g", path: "app" })],
+		},
 	]);
 });
 

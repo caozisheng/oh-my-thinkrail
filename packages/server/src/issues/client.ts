@@ -1,3 +1,4 @@
+import type { IssuePerson } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { logger } from "../log";
 import type {
@@ -33,6 +34,15 @@ export interface GitLabClientOptions {
 }
 export type GitLabProject = IssueProject;
 export type GitLabClient = IssueWorkflowRemote;
+export interface GitLabGroupIssue extends GitLabIssue {
+	projectId: number;
+}
+export interface GitLabGroupClient {
+	group(): Promise<{ id: number; fullPath: string }>;
+	projects(): Promise<GitLabProject[]>;
+	issues(): Promise<GitLabGroupIssue[]>;
+	projectClient(projectId: number): GitLabClient;
+}
 
 const log = logger("issues");
 
@@ -69,6 +79,10 @@ function timestamp(value: unknown): string {
 function nullableTimestamp(value: unknown): string | null {
 	return value == null ? null : timestamp(value);
 }
+function person(value: unknown): IssuePerson {
+	const user = record(value);
+	return { id: id(user.id), name: text(user.name), username: text(user.username) };
+}
 function issue(value: unknown): GitLabIssue {
 	const v = record(value);
 	if (!Array.isArray(v.labels) || (v.state !== "opened" && v.state !== "closed")) invalid();
@@ -94,6 +108,12 @@ function issue(value: unknown): GitLabIssue {
 		state: v.state,
 		labels,
 		...(labelColors.length ? { labelColors } : {}),
+		...(Object.hasOwn(v, "assignees")
+			? { assignees: Array.isArray(v.assignees) ? v.assignees.map(person) : invalid() }
+			: Object.hasOwn(v, "assignee")
+				? { assignees: v.assignee === null ? [] : [person(v.assignee)] }
+				: {}),
+		...(Object.hasOwn(v, "author") ? { author: v.author === null ? null : person(v.author) } : {}),
 		updatedAt: timestamp(v.updated_at),
 		closedAt: nullableTimestamp(v.closed_at),
 	};
@@ -240,7 +260,7 @@ function labelEvent(value: unknown): GitLabLabelEvent {
 		createdAt: timestamp(v.created_at),
 	};
 }
-export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
+function gitLabTransport(options: GitLabClientOptions, scope: "projects" | "groups") {
 	let base: URL;
 	try {
 		base = new URL(options.instanceUrl);
@@ -273,7 +293,7 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 	const maxItems = positive(options.maxItems ?? 10000);
 	if (timeoutMs > 60000 || maxBytes > 10_000_000 || maxPages > 1000 || maxItems > 100000) invalid();
 	const apiRoot = `${base.toString().replace(/\/$/, "")}/api/v4`;
-	const root = `${apiRoot}/projects/${encodeURIComponent(project)}`;
+	const root = `${apiRoot}/${scope}/${encodeURIComponent(project)}`;
 	const fetcher = options.fetch ?? fetch;
 	const token = options.token;
 	const encodedToken = encodeURIComponent(token);
@@ -406,6 +426,43 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 			throw unavailable();
 		}
 	}
+	return { request, list, decoded, apiRoot, timeoutMs, token, encodedToken, project };
+}
+
+function projectMetadata(response: unknown): GitLabProject {
+	const value = record(response);
+	return {
+		id: id(value.id),
+		pathWithNamespace: text(value.path_with_namespace),
+		defaultBranch: nullable(value.default_branch, branchName),
+		httpUrlToRepo: nullable(value.http_url_to_repo, httpCloneUrl),
+		sshUrlToRepo: nullable(value.ssh_url_to_repo, sshCloneUrl),
+	};
+}
+
+export function createGitLabGroupClient(options: GitLabClientOptions): GitLabGroupClient {
+	const { decoded, list, project: group } = gitLabTransport(options, "groups");
+	return {
+		group: () =>
+			decoded("", (response) => {
+				const value = record(response);
+				const groupId = id(value.id);
+				if (/^\d+$/.test(group) && groupId !== Number(group)) invalid();
+				return { id: groupId, fullPath: text(value.full_path) };
+			}),
+		projects: () => list("/projects?include_subgroups=true&with_shared=false", projectMetadata),
+		issues: () =>
+			list("/issues?scope=all&state=all&with_labels_details=true", (response) => ({
+				...issue(response),
+				projectId: id(record(response).project_id),
+			})),
+		projectClient: (projectId) => createGitLabClient({ ...options, project: positive(projectId) }),
+	};
+}
+
+export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
+	const { request, list, decoded, apiRoot, timeoutMs, token, encodedToken, project } =
+		gitLabTransport(options, "projects");
 	return {
 		updateIssue: async (iid, input) => {
 			const path = `/issues/${positive(iid)}`;
@@ -613,16 +670,9 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 		provider: "gitlab" as const,
 		project: () =>
 			decoded("", (response) => {
-				const value = record(response);
-				const projectId = id(value.id);
-				if (/^\d+$/.test(project) && projectId !== Number(project)) invalid();
-				return {
-					id: projectId,
-					pathWithNamespace: text(value.path_with_namespace),
-					defaultBranch: nullable(value.default_branch, branchName),
-					httpUrlToRepo: nullable(value.http_url_to_repo, httpCloneUrl),
-					sshUrlToRepo: nullable(value.ssh_url_to_repo, sshCloneUrl),
-				};
+				const result = projectMetadata(response);
+				if (/^\d+$/.test(project) && result.id !== Number(project)) invalid();
+				return result;
 			}),
 		currentUser: () =>
 			decoded("/user", (value) => ({ id: id(record(value).id) }), undefined, apiRoot),

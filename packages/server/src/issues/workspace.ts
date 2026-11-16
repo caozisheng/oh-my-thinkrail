@@ -18,7 +18,7 @@ export interface WorkspaceHandle {
 	worktreePath: string;
 	branch: string;
 	/** Existing Workspace records omit kind for managed worktrees. */
-	kind?: "default" | "external" | "chat";
+	kind?: "default" | "external" | "chat" | "group";
 }
 
 interface PendingWorkspace {
@@ -118,8 +118,8 @@ export interface IssueWorkspaceOptions {
 		workspaceId?: string,
 	): Awaitable<WorkspaceHandle>;
 	/**
-	 * A shared layout covering at least the primary plus `projectIds` (it may place further group
-	 * members, which can join later), or null to keep per-repository paths.
+	 * A shared layout for the primary and any participants with known places. Participants absent
+	 * from the layout keep per-repository paths; null keeps all per-repository paths.
 	 */
 	layout?(projectIds: readonly string[]): Awaitable<IssueWorkspaceLayout | null>;
 	/** Best-effort freshly fetched base ref for a new member worktree, or undefined for local HEAD. */

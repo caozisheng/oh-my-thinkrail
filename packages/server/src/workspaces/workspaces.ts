@@ -746,6 +746,31 @@ function ensureDefaultWorkspace(project: Project): Workspace {
 	return workspace;
 }
 
+export function ensureGroupWorkspace(project: Project): Workspace {
+	if (project.kind !== "group")
+		throw new CodedError("RESOURCE_UNAVAILABLE", "Not a group context.");
+	const all = loadWorkspaces();
+	const existing = all.find(
+		(workspace) => workspace.projectId === project.id && workspace.kind === "group",
+	);
+	if (existing) return existing;
+	const workspace: Workspace = {
+		id: randomUUID(),
+		projectId: project.id,
+		kind: "group",
+		name: project.name,
+		branch: "",
+		baseBranch: "",
+		worktreePath: project.path,
+		renamed: true,
+		initialTerminalPending: true,
+	};
+	all.push(workspace);
+	saveWorkspaces(all);
+	emit({ kind: "created", workspace });
+	return workspace;
+}
+
 export function completeInitialTerminalReservation(workspaceId: string): Workspace {
 	const all = loadWorkspaces();
 	const workspace = all.find((candidate) => candidate.id === workspaceId);
@@ -1007,7 +1032,7 @@ export function backfillWorkspaceActivity(id: string, at: number): Workspace | n
 
 export function recordWorkspaceHead(id: string): void {
 	const workspace = loadWorkspaces().find((candidate) => candidate.id === id);
-	if (!workspace || isChatWorkspace(workspace)) return;
+	if (!workspace || isChatWorkspace(workspace) || workspace.kind === "group") return;
 	const sha = headShaAt(workspace.worktreePath, { onTimeout: "return" });
 	if (!sha) return;
 	const previous = observedHeadSha.get(id);
@@ -1068,7 +1093,7 @@ export function setWorkspaceReview(
 ): Workspace | null {
 	const all = loadWorkspaces();
 	const ws = all.find((workspace) => workspace.id === id);
-	if (!ws || ws.branch !== branch || isChatWorkspace(ws)) return null;
+	if (!ws || ws.branch !== branch || isChatWorkspace(ws) || ws.kind === "group") return null;
 	const next = review ? reviewSnapshot(review) : undefined;
 	const observed = observedActivityAt.get(id) ?? 0;
 	const activityChanged = observed > (ws.lastActiveAt ?? 0);
@@ -1086,6 +1111,10 @@ export async function listWorkspaces(
 	opts: { includeDiffStats?: boolean } = {},
 ): Promise<Workspace[]> {
 	const project = getProjects().find((p) => p.id === projectId);
+	if (project?.kind === "group") {
+		ensureGroupWorkspace(project);
+		return projectRows(projectId);
+	}
 	if (project && isChatsContainer(project)) return projectRows(projectId);
 	if (project) ensureDefaultWorkspace(project);
 	for (const workspace of loadWorkspaces()) {
@@ -1123,6 +1152,7 @@ export function defaultWorkspaceOf(projectId: string): Workspace | null {
 	if (existing) return existing;
 	const project = getProjects().find((p) => p.id === projectId);
 	if (!project) return null;
+	if (project.kind === "group") return ensureGroupWorkspace(project);
 	try {
 		return ensureDefaultWorkspace(project);
 	} catch (err) {
@@ -1167,7 +1197,8 @@ export function nestedWorkspaces(id: string): Workspace[] {
 }
 
 export async function reclaimWorktree(ws: Workspace): Promise<void> {
-	if (ws.kind === "default" || ws.kind === "external" || isChatWorkspace(ws)) return;
+	if (ws.kind === "default" || ws.kind === "external" || ws.kind === "group" || isChatWorkspace(ws))
+		return;
 	const project = loadProjects().find((p) => p.id === ws.projectId);
 	if (!project) return;
 	if (resolve(ws.worktreePath) === resolve(project.path)) return;

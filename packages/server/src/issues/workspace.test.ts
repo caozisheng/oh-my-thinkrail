@@ -129,6 +129,20 @@ async function fixture() {
 	};
 }
 
+test("a group-source primary layout keeps equal remote IIDs in distinct reusable worktrees", async () => {
+	const f = await fixture();
+	f.options.layout = () => ({ root: f.root, paths: [{ projectId: "local", path: "" }] });
+	const first = await f.coordinator().implementation(ref);
+	const other = { ...ref, projectId: "9" };
+	const second = await f.coordinator().implementation(other);
+	expect(first.workspaceId).not.toBe(second.workspaceId);
+	expect(new Set(f.workspaces.map((workspace) => workspace.worktreePath)).size).toBe(2);
+	for (const workspace of f.workspaces)
+		expect(workspace.worktreePath).toMatch(/issue-42-[a-f0-9]{16}$/);
+	expect((await f.coordinator().implementation(ref)).sessionId).toBe(first.sessionId);
+	expect((await f.coordinator().implementation(other)).sessionId).toBe(second.sessionId);
+});
+
 test("explicit recovery preserves old history and creates a fresh session from the branch commit", async () => {
 	const f = await fixture();
 	const first = await f.coordinator().implementation(ref);

@@ -148,7 +148,7 @@ function parse(value: unknown, action: Action): ParsedAction {
 }
 function trusted(projectId: string) {
 	const project = getProjects().find((p) => p.id === projectId);
-	if (project?.trusted !== true) stop();
+	if (project?.trusted !== true || project.kind !== undefined) stop();
 	return project;
 }
 // Walk every existing ancestor: recursive mkdir must never traverse a symlink/junction.

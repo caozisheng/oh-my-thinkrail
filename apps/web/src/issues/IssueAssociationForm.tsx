@@ -11,6 +11,8 @@ export interface IssueAssociationFormProps {
 	authSupported: boolean;
 	/** False on a host that cannot address GitHub Issue references. */
 	githubSupported?: boolean;
+	groupsSupported?: boolean | undefined;
+	associationScope?: "group" | "project" | undefined;
 	onConnect: (input: IssueConnectionInput) => Promise<ConnectResult>;
 	onError?: ((error: "connect" | null) => void) | undefined;
 	onCancelReconnect?: (() => void) | undefined;
@@ -26,6 +28,8 @@ export function IssueAssociationForm({
 	pending,
 	authSupported,
 	githubSupported = true,
+	groupsSupported = true,
+	associationScope,
 	onConnect,
 	onError,
 	onCancelReconnect,
@@ -40,6 +44,7 @@ export function IssueAssociationForm({
 
 	const {
 		addressNotice,
+		choice,
 		showAdvanced,
 		advancedToggle,
 		instanceValue,
@@ -49,6 +54,7 @@ export function IssueAssociationForm({
 		consentAcknowledged,
 		providerNotice,
 		input,
+		target,
 		canSubmit,
 	} = associationFormState({
 		connection,
@@ -60,20 +66,33 @@ export function IssueAssociationForm({
 		pending,
 		authSupported,
 		githubSupported,
+		groupsSupported,
 	});
+	const scopeMismatch =
+		target !== null &&
+		associationScope !== undefined &&
+		(associationScope === "group") !== (target.scope === "group");
+	const group = choice.status !== "invalid" && choice.scope === "group";
 
 	return (
 		<form
 			className="flex flex-col gap-8"
 			onSubmit={(event) => {
 				event.preventDefault();
+				if (scopeMismatch) return;
 				if (!input) return;
+				const submitting = submitConnection(input, () => setToken(""), onConnect);
 				onError?.(null);
-				void submitConnection(input, () => setToken(""), onConnect)
+				void submitting
 					.then((result) => onError?.(result.ok ? null : result.error))
 					.catch(() => onError?.("connect"));
 			}}
 		>
+			{scopeMismatch && (
+				<p role="alert" className="text-feedback-warning">
+					{t(associationScope === "group" ? "issues.groupAddressRequired" : "issues.groupUseHome")}
+				</p>
+			)}
 			<fieldset disabled={pending || !authSupported} className="flex min-w-0 flex-col gap-8">
 				{connection ? (
 					<>
@@ -87,7 +106,7 @@ export function IssueAssociationForm({
 							/>
 						</label>
 						<label className="flex flex-col gap-4">
-							{t("issues.project")}
+							{t(group ? "issues.group" : "issues.project")}
 							<input
 								className={inputClass}
 								data-testid="issues-reconnect-project"
@@ -147,7 +166,7 @@ export function IssueAssociationForm({
 									/>
 								</label>
 								<label className="flex flex-col gap-4">
-									{t("issues.project")}
+									{t(group ? "issues.group" : "issues.project")}
 									<input
 										className={inputClass}
 										data-testid="issues-project"
@@ -200,8 +219,14 @@ export function IssueAssociationForm({
 						<span className="text-text-muted tr-text-metadata">{t("issues.tokenVault")}</span>
 					)}
 				</label>
+
 				<div className="flex items-center gap-8">
-					<Button type="submit" size="s" data-testid="issues-connect" disabled={!canSubmit}>
+					<Button
+						type="submit"
+						size="s"
+						data-testid="issues-connect"
+						disabled={!canSubmit || scopeMismatch}
+					>
 						{connection ? t("issues.reconnect") : t("issues.connect")}
 					</Button>
 					{connection && onCancelReconnect && (

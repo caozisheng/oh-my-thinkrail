@@ -11,6 +11,10 @@ tags: [testing, playwright, e2e]
 
 ## Responsibility
 
+Group workbench browser coverage uses disposable imported repositories and a plain group folder.
+Only remote Issue reads are wire fixtures; group ownership, sessions, Specs and terminals use the real
+isolated host. Fixture reset removes `group-contexts.json` with the other disposable domain stores.
+
 The real-browser system gate for ThinkRail's host/UI integration: build the shipped web client, boot an
 isolated host, seed real git and persistence fixtures, drive Chromium (and WebKit for the questionnaire
 specs) through the wire, and clean up every machine-global resource it used. The default suite excludes provider-backed `@agent` tests; those remain

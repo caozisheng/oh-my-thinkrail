@@ -23,6 +23,7 @@ import type {
 	ProjectGroupRepositoryStatus,
 	ProjectGroupStatus,
 } from "@thinkrail/contracts";
+import { GROUP_WORKSPACE_PROTOCOL_VERSION } from "@thinkrail/contracts";
 import { useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
 import {
@@ -47,6 +48,7 @@ import {
 	readExpandedIssues,
 	repositoryState,
 } from "./groupHomeModel";
+import { openGroupWorkspace } from "./groupWorkspace";
 import { useOpenProject } from "./useOpenProject";
 import { goToProjectHome, loadProjectWorkspaces } from "./workspaceActions";
 
@@ -65,6 +67,8 @@ async function openIssueWorkspace(projectId: string, workspaceId: string): Promi
  */
 export function ProjectGroupHome({ groupId }: { groupId: string }) {
 	const t = useT();
+	const protocolVersion = useAppStore((s) => s.protocolVersion);
+	const [opening, setOpening] = useState(false);
 	const allProjects = useAppStore((s) => s.projects);
 	const members = allProjects.filter((project) => project.projectGroup?.id === groupId);
 	const group = members[0]?.projectGroup;
@@ -130,6 +134,14 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 				setRemoving(false);
 				toast.error(errorText(err, t("panels.groupHome.removeFailed")));
 			});
+	};
+
+	const openWork = (view: "chat" | "terminal" | "issues" | "specs") => {
+		if (opening) return;
+		setOpening(true);
+		void openGroupWorkspace(groupId, view)
+			.catch((error) => toast.error(errorText(error, t("panels.groupHome.openFailed"))))
+			.finally(() => setOpening(false));
 	};
 
 	const toggleIssue = (key: string) => {
@@ -215,6 +227,37 @@ export function ProjectGroupHome({ groupId }: { groupId: string }) {
 						</Button>
 					</div>
 				</header>
+
+				{(protocolVersion ?? 0) >= GROUP_WORKSPACE_PROTOCOL_VERSION && (
+					<section className="flex flex-col gap-12" aria-label={t("panels.groupHome.workbench")}>
+						<h2 className="tr-title-section text-text-default">
+							{t("panels.groupHome.workbench")}
+						</h2>
+						<p className="text-text-muted tr-text-ui">{t("panels.groupHome.workbenchHint")}</p>
+						<div className="flex flex-wrap gap-8">
+							{(["chat", "issues", "terminal", "specs"] as const).map((view) => (
+								<Button
+									key={view}
+									variant={view === "chat" ? "primary" : "outline"}
+									size="m"
+									data-testid={`group-home-open-${view}`}
+									disabled={opening}
+									onClick={() => openWork(view)}
+								>
+									{t(
+										view === "chat"
+											? "panels.groupHome.newChat"
+											: view === "issues"
+												? "panels.groupHome.issues"
+												: view === "terminal"
+													? "panels.groupHome.terminal"
+													: "panels.groupHome.specs",
+									)}
+								</Button>
+							))}
+						</div>
+					</section>
+				)}
 
 				{fetchResults ? (
 					<FetchResults

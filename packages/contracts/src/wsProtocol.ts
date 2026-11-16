@@ -181,6 +181,9 @@ export type TemplateReadLocation =
 export const PROTOCOL_VERSION = 147;
 export const MATRIX_PROTOCOL_VERSION = 143;
 export const MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION = 144;
+export const ISSUES_GROUPS_PROTOCOL_VERSION = 138;
+export const GROUP_WORKSPACE_PROTOCOL_VERSION = 138;
+export const ISSUES_PEOPLE_PROTOCOL_VERSION = 138;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
@@ -498,6 +501,7 @@ export const WS_METHODS = {
 	projectScanGroup: "project.scanGroup",
 	projectImportGroup: "project.importGroup",
 	projectGroupStatus: "project.groupStatus",
+	projectOpenGroup: "project.openGroup",
 	projectFetchGroup: "project.fetchGroup",
 	projectRemoveGroup: "project.removeGroup",
 	projectHasSpecs: "project.hasSpecs",
@@ -1151,6 +1155,10 @@ export interface WsMethodMap {
 	"project.scanGroup": { params: { path: string }; result: ProjectGroupScan };
 	"project.importGroup": { params: ProjectGroupImportInput; result: ProjectGroupImport };
 	"project.groupStatus": { params: ProjectGroupTarget; result: ProjectGroupStatus };
+	"project.openGroup": {
+		params: ProjectGroupTarget;
+		result: { project: Project; workspace: Workspace };
+	};
 	"project.fetchGroup": { params: ProjectGroupTarget; result: ProjectGroupFetch };
 	"project.removeGroup": { params: ProjectGroupRemoveInput; result: ProjectGroupRemove };
 	"project.hasSpecs": { params: { projectId: string }; result: { hasSpecs: boolean } };

@@ -125,6 +125,13 @@ bootstrap it into one so it can be opened.
   (an open chat could not reload).
 ## Project groups
 
+**Working context (v136).** `openProjectGroupContext(groupId)` materializes one `kind: "group"`
+context in the existing project store, identified by the membership id and rooted at its verified
+folder. It is excluded from repository selection and never carries membership itself. Reopening reuses
+its trust and sessions. A group root that is itself Git still has a separate ordinary repository member;
+opening that repository never returns its group context. Removing a group closes its working context
+without removing its files, workspace or sessions.
+
 A **project group** is several repositories imported together from one folder; it is membership data on
 ordinary project records, not a second registry. `Project.projectGroup` (`{ id, name, root, path }`) is
 written by `setProjectGroupMembership(id, membership | null)`, which persists and publishes the record like
@@ -213,7 +220,7 @@ and truncating first can separate a secret suffix from the URL prefix needed to 
   `setProjectSkillEnabled`, `setProjectGroupEnabled`, `acknowledgeProjectSkills`,
   `approveProjectMcpServer`, `setProjectMcpOverride`, `grantProjectMcpTool`, `revokeProjectMcpTool`,
   `setPiTrustSeed`, `setProjectGroupMembership`, `scanProjectGroup`, `importProjectGroup`,
-  `projectGroupMembers`, `projectGroupProjects`, `removeProjectGroup`, `PROJECT_GROUP_SCAN_DEPTH`,
+  `projectGroupMembers`, `projectGroupProjects`, `openProjectGroupContext`, `removeProjectGroup`, `PROJECT_GROUP_SCAN_DEPTH`,
   `ProjectGroupScanOptions`.
 - **Allowed deps:** `persistence`; the `git` sub-module (shared `git()` runner, which now owns the
   environment its children spawn under — this module passes none); `contracts` (`Project`, `ProjectPathStatus`);
