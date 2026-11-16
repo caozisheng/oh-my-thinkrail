@@ -106,6 +106,8 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 					],
 					fetchedAt: "2026-01-01T00:00:00Z",
 				});
+			} else if (frame.method === "issues.implementationHistory") {
+				reply({ entries: [] });
 			} else if (frame.method === "issues.beginDesign") {
 				designTarget = frame.params;
 				reply(launch);
@@ -158,6 +160,21 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 		await expect(card.getByTestId("issue-action-design")).toBeEnabled();
 		await expect(card.getByTestId("issue-action-implement")).toBeEnabled();
 		await expect(card.getByTestId("issue-repositories")).toBeEnabled();
+		const history = card.getByTestId("issue-history");
+		await expect(history).toHaveAccessibleName("View implementation history");
+		await expect(history).toHaveText("");
+		const geometry = await card.evaluate((element) => ({
+			card: element.getBoundingClientRect().width,
+			title: element.querySelector("a")?.parentElement?.getBoundingClientRect().width ?? 0,
+			overflow: element.scrollWidth - element.clientWidth,
+		}));
+		expect(geometry.title).toBeGreaterThan(geometry.card * 0.45);
+		expect(geometry.overflow).toBeLessThanOrEqual(1);
+		await history.click();
+		await expect(page.getByRole("dialog")).toContainText(
+			"No archived implementation conversations.",
+		);
+		await page.keyboard.press("Escape");
 	}
 	const beforeRemount = listReads;
 	await rail.click();

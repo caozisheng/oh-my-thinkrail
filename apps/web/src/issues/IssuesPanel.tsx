@@ -451,10 +451,10 @@ export function IssuesPanel({
 											data-testid="issue-card"
 											className="flex flex-col gap-4 rounded-sm border border-border-muted p-8"
 										>
-											<div className="flex items-start gap-6">
+											<div className="flex flex-wrap items-start gap-6">
 												<div
 													data-testid="issue-title-leading"
-													className="min-w-0 flex-1 break-words"
+													className="min-w-0 flex-1 basis-240 overflow-wrap-anywhere"
 												>
 													<span>
 														<a
