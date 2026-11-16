@@ -450,7 +450,26 @@ test("a failed reconnect keeps the summaries the tool was reconnecting to", () =
 			issues: [],
 			error: "list",
 		}),
-	).toEqual({ identity, connection: connected, issues: [], pending: false, error: "list" });
+	).toEqual({ identity, connection: connected, issues: [summary], pending: false, error: "list" });
+});
+
+test("failed reads never reuse summaries across a changed tracker", () => {
+	const previous = {
+		identity: "owner",
+		connection: connected,
+		issues: [summary],
+		pending: true,
+		error: null,
+	};
+	for (const connection of [
+		{ ...connected, remoteProjectId: "other" },
+		{ ...connected, scope: "group" as const },
+		{ ...connected, instanceUrl: "https://other.example" },
+	]) {
+		expect(
+			issueSnapshotAfterLoad(previous, "owner", { connection, issues: [], error: "list" }).issues,
+		).toEqual([]);
+	}
 });
 
 test("non-local HTTP renders its risk checkbox unchecked until acknowledged", () => {

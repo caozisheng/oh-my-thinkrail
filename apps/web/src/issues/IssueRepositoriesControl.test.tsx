@@ -130,8 +130,29 @@ test("Issue repository choices use the repository selector and exclude the Chats
 		primaryProjectId,
 		"api-local",
 	]);
+	const owner: Project = {
+		id: "suite",
+		name: "Suite",
+		path: "/suite",
+		slug: "suite",
+		kind: "group",
+		lastOpened: 1,
+	};
+	const memberProjects = projects.map((project) =>
+		project.id === "api-local"
+			? {
+					...project,
+					projectGroup: { id: owner.id, name: owner.name, root: owner.path, path: "api" },
+				}
+			: project,
+	);
+	expect(
+		selectIssueRepositoryProjects({ projects: [...memberProjects, owner] }, owner.id).map(
+			(project) => project.id,
+		),
+	).toEqual(["api-local"]);
 	const source = readFileSync(new URL("./IssuesTool.tsx", import.meta.url), "utf8");
-	expect(source).toContain("useAppStore(useShallow(selectIssueRepositoryProjects))");
+	expect(source).toContain("selectIssueRepositoryProjects(state, projectId)");
 	expect(source).toContain("repositoryProjects={projects}");
 });
 

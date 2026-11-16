@@ -520,14 +520,10 @@ export async function createIssuesService({
 			return resolve(projectId, reference).member.client;
 		},
 		deliveryFor(projectId, reference) {
-			if ("group" in (clients.get(projectId) ?? {}))
-				unavailable("Group connections have no repository delivery.");
 			return resolve(projectId, reference).member.client;
 		},
 
 		workflowFor(projectId, reference) {
-			if ("group" in (clients.get(projectId) ?? {}))
-				unavailable("Group connections have no repository workflow.");
 			if (!isIssueReference(reference)) invalid();
 			if (reference.provider !== "gitlab")
 				throw new CodedError(

@@ -57,3 +57,39 @@ test("drops replies after the owning refresh becomes stale", async () => {
 	);
 	expect(results).toEqual([]);
 });
+
+test("a large group bounds selection reads and stops queued work when the panel closes", async () => {
+	for (const close of [false, true]) {
+		const rows = Array.from({ length: 32 }, () => issues[0]).filter((issue) => issue !== undefined);
+		const releases: (() => void)[] = [];
+		let active = 0;
+		let maximum = 0;
+		let reads = 0;
+		let published = 0;
+		let current = true;
+		const pending = loadIssueRepositories(
+			rows,
+			async () => {
+				reads++;
+				maximum = Math.max(maximum, ++active);
+				await new Promise<void>((resolve) => releases.push(resolve));
+				active--;
+				return { projectIds: [], locked: false };
+			},
+			() => current,
+			() => {
+				published++;
+			},
+		);
+		expect(reads).toBe(8);
+		if (close) current = false;
+		while (active) {
+			for (const release of releases.splice(0)) release();
+			await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		}
+		await pending;
+		expect(maximum).toBe(8);
+		expect(reads).toBe(close ? 8 : 32);
+		expect(published).toBe(close ? 0 : 32);
+	}
+});

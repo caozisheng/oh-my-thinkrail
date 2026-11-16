@@ -44,7 +44,7 @@ import {
 	type WorkflowRemote,
 	type WorkspaceHandle,
 } from "../issues";
-import { getProjects, projectGroupMembers } from "../projects";
+import { getProjects, projectGroupMembers, projectGroupProjects } from "../projects";
 import {
 	createWorkspaceAtPathWithBranch,
 	defaultWorkspaceOf,
@@ -147,7 +147,12 @@ function parse(value: unknown, action: Action): ParsedAction {
 }
 function trusted(projectId: string) {
 	const project = getProjects().find((p) => p.id === projectId);
-	if (project?.trusted !== true || project.kind !== undefined) stop();
+	if (
+		!project ||
+		project.closed ||
+		(project.kind === "group" ? false : project.trusted !== true || project.kind !== undefined)
+	)
+		stop();
 	return project;
 }
 // Walk every existing ancestor: recursive mkdir must never traverse a symlink/junction.
@@ -167,7 +172,11 @@ export function privateDirectory(path: string): void {
  * `reference` and may join on demand. Untrusted members are never offered (joining never grants trust).
  */
 export function groupReferenceCandidates(projectId: string): string[] {
-	return projectGroupMembers(projectId)
+	return (
+		getProjects().find((project) => project.id === projectId)?.kind === "group"
+			? projectGroupProjects(projectId)
+			: projectGroupMembers(projectId)
+	)
 		.filter((project) => project.trusted === true)
 		.slice(0, PROJECT_GROUP_MAX_REPOSITORIES)
 		.map((project) => project.id);
@@ -328,7 +337,13 @@ export function createIssuesActions(
 		function guard() {
 			for (const [id, path] of selectedProjects) {
 				const member = trusted(id);
-				if (member.closed || member.path !== path) stop();
+				if (
+					member.closed ||
+					member.path !== path ||
+					member.kind !== undefined ||
+					(initialProject.kind === "group" && member.projectGroup?.id !== projectId)
+				)
+					stop();
 			}
 			if (
 				trusted(projectId).path !== initialProject.path ||
@@ -363,7 +378,10 @@ export function createIssuesActions(
 		privateDirectory(workspaceDir);
 		guard();
 		const receipts = createIssueWorkflowPersistence(receiptDir);
-		const launches = createIssueWorkspacePersistence(workspaceDir);
+		const launches = createIssueWorkspacePersistence(
+			workspaceDir,
+			initialProject.kind === "group" ? "group" : undefined,
+		);
 		guard();
 		return launches.withLaunch(
 			projectId,
@@ -399,13 +417,24 @@ export function createIssuesActions(
 							: savedIds;
 				for (const id of selectedIds) {
 					const member = trusted(id);
-					if (member.closed) stop();
+					if (
+						member.closed ||
+						member.kind !== undefined ||
+						(initialProject.kind === "group" && member.projectGroup?.id !== projectId)
+					)
+						stop();
 					selectedProjects.set(id, member.path);
 				}
 				function memberProject(id: string) {
 					if (id === projectId) return trusted(id);
 					const member = trusted(id);
-					if (member.closed || selectedProjects.get(id) !== member.path) stop();
+					if (
+						member.closed ||
+						selectedProjects.get(id) !== member.path ||
+						member.kind !== undefined ||
+						(initialProject.kind === "group" && member.projectGroup?.id !== projectId)
+					)
+						stop();
 					return member;
 				}
 				function nameOf(context: Pick<IssueRepositoryContext, "projectId" | "role">): string {
@@ -424,6 +453,7 @@ export function createIssuesActions(
 					);
 				}
 				async function currentCommit(ref: IssueReference) {
+					if (initialProject.kind === "group") stop();
 					const ws = await checked(() => coordinator.ownedImplementation(ref));
 					if (
 						pinned &&
@@ -461,6 +491,7 @@ export function createIssuesActions(
 				let sessionTitle: string | undefined;
 				const coordinator = createIssueWorkspaceCoordinator({
 					projectId,
+					...(initialProject.kind === "group" ? { ownerKind: "group" as const } : {}),
 					waitForArchive: (path) => checked(() => waitForArchive(path)),
 					projectPath: (id) => checked(() => memberProject(id).path),
 					load: (key) => checked(() => ports.load(key)),
@@ -478,7 +509,10 @@ export function createIssuesActions(
 								layoutRoot === undefined ? {} : { layoutRoot },
 							),
 						),
-					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
+					layout: (ids) =>
+						checked(() =>
+							initialProject.kind === "group" ? null : groupWorkspaceLayout(projectId, ids),
+						),
 					baseRef: (id) => checked(() => freshBaseRef(memberProject(id).path)),
 					headCommit: (path) => checked(() => resolveCommitOid(path, "HEAD")),
 					recoveryBase: (id, branch) =>
@@ -534,6 +568,12 @@ export function createIssuesActions(
 							// Persistence-only read: resolving folder truth here would run synchronous git on
 							// every session-context read (design launch, bound issue_context). The record's own
 							// path/branch is what the coordinator verifies against the real project root.
+							if (initialProject.kind === "group" && id === projectId) {
+								const rows = await checked(() => listWorkspaces(id, { includeDiffStats: false }));
+								const ws = rows.find((row) => row.kind === "group");
+								if (!ws) stop();
+								return ws;
+							}
 							const recorded = listWorkspaceRecords(id).find((w) => w.kind === "default");
 							if (recorded)
 								return {

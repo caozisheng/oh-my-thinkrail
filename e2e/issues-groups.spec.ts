@@ -5,6 +5,7 @@ import { expect, test } from "@playwright/test";
 import {
 	ISSUES_GROUPS_PROTOCOL_VERSION,
 	type IssueConnectionInput,
+	type IssueSessionLaunch,
 	type IssueSummary,
 	type ServerWelcome,
 	WS_CHANNELS,
@@ -51,6 +52,9 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 	let connected = false;
 	let projectId = "";
 	let submitted: IssueConnectionInput | undefined;
+	let listReads = 0;
+	let launch: IssueSessionLaunch | undefined;
+	let designTarget: unknown;
 
 	const issues: IssueSummary[] = [7, 9].map((id) => ({
 		reference: { provider: "gitlab", instanceUrl, projectId: String(id), number: 12 },
@@ -80,9 +84,10 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 				submitted = frame.params.input;
 				connected = true;
 				reply({ projectId, instanceUrl, remoteProjectId: "7", scope: "group", connected });
-			} else if (frame.method === "issues.list")
+			} else if (frame.method === "issues.list") {
+				listReads++;
 				reply({ issues, fetchedAt: "2026-01-01T00:00:00Z" });
-			else if (frame.method === "issues.repositories") reply({ projectIds: [], locked: false });
+			} else if (frame.method === "issues.repositories") reply({ projectIds: [], locked: false });
 			else if (frame.method === "issues.detail") {
 				const ref = frame.params.reference;
 				const issue = issues.find((row) => row.reference.projectId === ref.projectId);
@@ -101,6 +106,9 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 					],
 					fetchedAt: "2026-01-01T00:00:00Z",
 				});
+			} else if (frame.method === "issues.beginDesign") {
+				designTarget = frame.params;
+				reply(launch);
 			} else if (frame.method === "issues.disconnect") {
 				connected = false;
 				reply({ ok: true });
@@ -108,7 +116,15 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 		});
 		server.onMessage((message) => browser.send(message));
 	});
-	await openFixtureGroup(page);
+	const { groupId } = await openFixtureGroup(page);
+	const wire = await E2eWire.connect(Number(new URL(page.url()).port));
+	try {
+		const { workspace } = await wire.request("project.openGroup", { groupId });
+		const session = await wire.request("session.create", { workspaceId: workspace.id });
+		launch = { workspaceId: workspace.id, sessionId: session.sessionId };
+	} finally {
+		wire.close();
+	}
 	await page.getByTestId("group-home-open-issues").click();
 	const rail = page.getByTestId("tool-rail-issues");
 	if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
@@ -139,8 +155,18 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 		await card.getByTestId("issue-preview-toggle").click();
 		await expect(card.getByTestId("issue-body")).toContainText(`Body for project ${id}`);
 		await expect(card.getByTestId("issue-body")).toContainText(`Comment for project ${id}`);
-		await expect(card.getByTestId("issue-action-design")).toHaveCount(0);
+		await expect(card.getByTestId("issue-action-design")).toBeEnabled();
+		await expect(card.getByTestId("issue-action-implement")).toBeEnabled();
+		await expect(card.getByTestId("issue-repositories")).toBeEnabled();
 	}
+	const beforeRemount = listReads;
+	await rail.click();
+	await expect(page.getByTestId("issues-state")).toHaveCount(0);
+	await rail.click();
+	await expect(page.getByTestId("issue-card")).toHaveCount(2);
+	expect(listReads).toBe(beforeRemount);
+	await page.getByRole("button", { name: "Refresh issues", exact: true }).click();
+	await expect.poll(() => listReads).toBe(beforeRemount + 1);
 	await page.getByTestId("issues-filter-assignee").fill("@ALICE");
 	await expect(page.getByTestId("issue-card")).toHaveCount(1);
 	await expect(page.getByTestId("issue-card")).toContainText("Group fixture 7");
@@ -153,6 +179,19 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 	await expect(page.getByTestId("issue-card")).toContainText("Group fixture 9");
 	await page.getByTestId("issues-filter-assignee").fill("");
 	await page.getByTestId("issues-filter-author").fill("");
+	await page
+		.getByTestId("issue-card")
+		.filter({ hasText: "Group fixture 9" })
+		.getByTestId("issue-action-design")
+		.click();
+	await expect(page.getByTestId("chat-input")).toHaveValue("");
+	await expect(page.getByTestId("scope-context")).toHaveAttribute("data-context", "group");
+	expect(designTarget).toEqual({
+		projectId: groupId,
+		reference: issues[1]?.reference,
+		locale: "en",
+	});
+	await expect(page).toHaveURL(new RegExp(launch?.sessionId ?? "missing-session"));
 	await page.reload();
 	await expect(
 		page.getByRole("link", { name: "company/platform/project-9#12 Group fixture 9" }),

@@ -943,8 +943,15 @@ export function selectRepoProjects(state: Pick<ProjectContextState, "projects">)
 /** Repositories eligible to associate with an Issue; trust must be granted in the owning project. */
 export function selectIssueRepositoryProjects(
 	state: Pick<ProjectContextState, "projects">,
+	ownerId?: string,
 ): Project[] {
-	return selectRepoProjects(state).filter((project) => project.trusted === true && !project.closed);
+	const group = state.projects.find((project) => project.id === ownerId)?.kind === "group";
+	return selectRepoProjects(state).filter(
+		(project) =>
+			project.trusted === true &&
+			!project.closed &&
+			(!group || project.projectGroup?.id === ownerId),
+	);
 }
 
 export function selectIssueReadPermission(

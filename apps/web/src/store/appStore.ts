@@ -8,6 +8,8 @@ import type {
 	GitDiffScope,
 	HostPlatform,
 	HostUpdateNotice,
+	IssueConnection,
+	IssueSummary,
 	LayoutPreset,
 	LocalLocalesSnapshot,
 	LoginFrame,
@@ -1093,6 +1095,14 @@ interface AppState {
 	hostAppVersion: string | null;
 	hostUpdate: HostUpdateNotice | null;
 	projects: Project[];
+	issueReadsByProject: Record<
+		string,
+		{ identity: string; connection: IssueConnection | null; issues: IssueSummary[] }
+	>;
+	setIssueRead: (
+		projectId: string,
+		value: { identity: string; connection: IssueConnection | null; issues: IssueSummary[] } | null,
+	) => void;
 	recentProjects: Project[];
 	workspaces: Record<string, Workspace[]>;
 	removedWorkspaceIds: Record<string, true>;
@@ -2535,6 +2545,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 	hostAppVersion: null,
 	hostUpdate: null,
 	projects: [],
+	issueReadsByProject: {},
+	setIssueRead: (projectId, value) =>
+		set((state) => ({
+			issueReadsByProject: value
+				? { ...state.issueReadsByProject, [projectId]: value }
+				: omitKey(state.issueReadsByProject, projectId),
+		})),
 	recentProjects: [],
 	workspaces: {},
 	removedWorkspaceIds: nullProto<Record<string, true>>(),

@@ -63,6 +63,7 @@ export interface IssueImplementationHistory {
 	archivedAt: number;
 }
 export interface IssueWorkspaceRecord {
+	ownerKind?: "group";
 	projectId: string;
 	reference: IssueReference;
 	repositoryProjectIds?: string[];
@@ -78,6 +79,7 @@ export interface IssueWorkspaceRecord {
 
 type Awaitable<T> = T | Promise<T>;
 export interface IssueWorkspaceOptions {
+	ownerKind?: "group";
 	/** Local project id, not the provider project id. */
 	projectId: string;
 	projectPath(projectId: string): Awaitable<string>;
@@ -185,11 +187,17 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			number: input.number,
 		};
 		const key = keyFor(projectId, reference);
-		const slot = JSON.stringify([projectId, reference.number]);
+		const slot =
+			options.ownerKind === "group" ? key : JSON.stringify([projectId, reference.number]);
 		const task = (tails.get(slot) ?? Promise.resolve())
 			.catch(() => {})
 			.then(async () => {
-				const record = (await options.load(key)) ?? { projectId, reference };
+				const record = (await options.load(key)) ?? {
+					projectId,
+					reference,
+					...(options.ownerKind ? { ownerKind: options.ownerKind } : {}),
+				};
+				if (record.ownerKind !== options.ownerKind) stop();
 				if (
 					!isIssueReference(record.reference) ||
 					keyFor(record.projectId, record.reference) !== key
@@ -530,7 +538,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	/** The Issue's joined checkouts (primary first) with their recorded worktree paths. */
 	async function joinedPaths(record: IssueWorkspaceRecord) {
 		const rows: { projectId: string; path: string }[] = [];
-		for (const id of [projectId, ...selection(record)])
+		for (const id of [...(options.ownerKind === "group" ? [] : [projectId]), ...selection(record)])
 			rows.push({ projectId: id, path: await worktreePathFor(record, id) });
 		return rows;
 	}
@@ -627,6 +635,19 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		await options.save(key, record);
 	}
 
+	async function groupOwnerWorkspace(): Promise<WorkspaceHandle> {
+		const ws = await options.defaultWorkspace(projectId);
+		if (
+			options.ownerKind !== "group" ||
+			ws.kind !== "group" ||
+			ws.projectId !== projectId ||
+			!samePath(ws.worktreePath, await projectRoot()) ||
+			ws.branch !== ""
+		)
+			stop();
+		return ws;
+	}
+
 	async function prepareImplementation(
 		key: string,
 		record: IssueWorkspaceRecord,
@@ -639,7 +660,29 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				await prepareMember(key, record, id);
 				continue;
 			}
-			primary = await resolveImplementation(key, record, await worktreePathFor(record, projectId));
+			if (options.ownerKind === "group") {
+				const ws = await groupOwnerWorkspace();
+				const old = record.implementation;
+				if (
+					old &&
+					(old.state !== "completed" ||
+						old.workspaceId !== ws.id ||
+						!samePath(old.worktreePath, ws.worktreePath) ||
+						old.branch !== "")
+				)
+					stop();
+				primary = old ?? {
+					state: "completed",
+					workspaceId: ws.id,
+					worktreePath: ws.worktreePath,
+					branch: "",
+				};
+			} else
+				primary = await resolveImplementation(
+					key,
+					record,
+					await worktreePathFor(record, projectId),
+				);
 			record = { ...record, implementation: primary };
 		}
 		if (!primary) stop();
@@ -670,7 +713,10 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		if (record.sessionPending || record.members?.some((row) => row.removing))
 			reason = "pending-operation";
 		if (!record.implementation) reason = "missing-record";
-		for (const id of [projectId, ...selection(record)]) {
+		for (const id of [
+			...(options.ownerKind === "group" ? [] : [projectId]),
+			...selection(record),
+		]) {
 			if (reason) break;
 			const ownership =
 				id === projectId
@@ -725,7 +771,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	return {
 		contexts(reference: IssueReference, stage: "design" | "implementation") {
 			return run(reference, async (_key, record) => {
-				const ids = [projectId, ...selection(record)];
+				const ids = [...(options.ownerKind === "group" ? [] : [projectId]), ...selection(record)];
 				const taken = new Set([...ids, ...(record.members ?? []).map((m) => m.projectId)]);
 				const references = ((await options.references?.()) ?? [])
 					.filter((candidate) => !taken.has(candidate.projectId))
@@ -908,7 +954,12 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		ownedImplementation(reference: IssueReference): Promise<WorkspaceHandle> {
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
-				if (ownership?.state !== "completed" || !ownership.workspaceId) stop();
+				if (
+					options.ownerKind === "group" ||
+					ownership?.state !== "completed" ||
+					!ownership.workspaceId
+				)
+					stop();
 				return verifyImplementation(ownership, await worktreePathFor(record, projectId));
 			});
 		},
@@ -921,7 +972,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					if (
 						!ws.id ||
 						ws.projectId !== projectId ||
-						ws.kind !== "default" ||
+						ws.kind !== (options.ownerKind === "group" ? "group" : "default") ||
 						!samePath(ws.worktreePath, root)
 					)
 						stop();
