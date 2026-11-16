@@ -94,7 +94,9 @@ What ThinkRail does, at product level; the linked spec owns the detail.
   and bottom tool panels, kept local to each window ([[submodule-web-shell-layout]]). The region that holds
   the keyboard carries an accent line, a keyboard move briefly frames the region it lands in, and
   VS Code-style chords move between regions, into the chat input, Projects, Files and the terminal, from
-  one keybinding table that the palette also shows ([[submodule-web-keybindings]]).
+  one keybinding table that the palette also shows ([[submodule-web-keybindings]]). Hint mode, a
+  switchable extension, labels everything clickable so a typed label presses it
+  ([[module-ext-hint-mode]]); sidebar trees search their rows on `S`.
 - **Chats** — concurrent `pi` sessions per workspace, each with its own model, pi-reported token/cost,
   steering and follow-ups mid-run, skill and prompt-template autocomplete, and history search
   ([[submodule-web-chat]], [[submodule-server-agent]]).
@@ -137,8 +139,10 @@ What ThinkRail does, at product level; the linked spec owns the detail.
   extra environment variables, chosen in Settings and applied to the whole host at the next start; one setup
   per host, not per project ([[submodule-server-environment]]).
 - **Agent tools** — web research, structured multiple-choice questions the agent asks in chat instead of
-  guessing, and inline diagrams, comparisons and file previews in chat; a proposed UI change is shown as
-  a rendered before/after mockup through the same renderers and review comments as diff review
+  guessing (with alternatives' previews comparable full screen — one at a time, side by side, or all), and
+  inline diagrams, comparisons and file previews in chat; a proposed UI change is shown as
+  a rendered before/after mockup through the same renderers and review comments as diff review, and the
+  agent's mockups are clickable prototypes whose scripts run sandboxed without network
   ([[submodule-web-chat-tools-web]], [[module-ext-ask-user-question]], [[module-ext-visualize]]).
 - **Pi packages** — install a pi package by source (npm, git or a local folder) from Settings, for the
   user or for a repository, and see everything pi loads: each package's extensions, skills and prompts
