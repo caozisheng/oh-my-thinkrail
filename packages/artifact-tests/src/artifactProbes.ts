@@ -423,6 +423,7 @@ export async function runArtifactHostProbes(adapter: ArtifactHostAdapter): Promi
 	const homeDir = join(root, "home");
 	const fakeBinDir = join(root, "no-pi-bin");
 	const projectDir = join(root, "group", "project");
+	const groupMarker = `group-cwd:${crypto.randomUUID()}`;
 	const agentDir = join(root, "pi-agent");
 	mkdirSync(homeDir, { recursive: true });
 	mkdirSync(fakeBinDir, { recursive: true });
@@ -452,7 +453,7 @@ const respond = (context) => {
   const last = context.messages[context.messages.length - 1];
   if (last && last.role === "toolResult") return fauxAssistantMessage("Tool call attempted.");
   if (last && last.role === "user" && JSON.stringify(last.content).includes(${JSON.stringify(GROUP_PROMPT)}))
-    return fauxAssistantMessage([fauxToolCall("bash", { command: "pwd -P" })], { stopReason: "toolUse" });
+    return fauxAssistantMessage([fauxToolCall("bash", { command: "pwd -P && cat .artifact-group-cwd" })], { stopReason: "toolUse" });
   if (last && last.role === "user" && JSON.stringify(last.content).includes(${JSON.stringify(ASK_PROMPT)}))
     return fauxAssistantMessage(
       [fauxToolCall("ask_user_question", ${JSON.stringify(ASK_QUESTION)}, { id: ${JSON.stringify(ASK_TOOL_CALL_ID)} })],
@@ -642,6 +643,7 @@ export default function syntheticExternalExtension(pi) {
 		);
 		await assertStrictVisualizeValidation(socket, workspace.id, created.sessionId);
 		await assertAskUserQuestionRoundTrip(socket, workspace.id, created.sessionId);
+		writeFileSync(join(dirname(projectDir), ".artifact-group-cwd"), groupMarker);
 		const group = (await rpc(socket, "project.importGroup", {
 			root: dirname(projectDir),
 			paths: ["project"],
@@ -674,15 +676,9 @@ export default function syntheticExternalExtension(pi) {
 			);
 			if (result) {
 				assert(!result.isError, "group bash tool failed");
-				const output = JSON.stringify(result.content).replace(/\\\\/g, "/");
-				const expected = resolve(dirname(projectDir)).replaceAll("\\", "/");
-				const bashPath = expected.replace(
-					/^([A-Za-z]):/,
-					(_match, drive: string) => `/${drive.toLowerCase()}`,
-				);
 				assert(
-					output.includes(expected) || output.includes(bashPath),
-					"group session used a member repository cwd",
+					JSON.stringify(result.content).includes(groupMarker),
+					"group session did not read the group root marker from its working directory",
 				);
 				cwdConfirmed = true;
 				break;

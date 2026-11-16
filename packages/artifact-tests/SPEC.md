@@ -61,7 +61,9 @@ MCP runtime executes inside the artifact), reach an OAuth URL without a provider
 and transcript trash, and shut down. CLI-specific probes also check its exit-only and embedded-cache behavior.
 
 A third scripted turn creates a plain-folder project group and runs `bash` in the group's own session.
-The transcript must report the group root as its cwd, with no Git initialization at that root. The
+The command must read a unique fixture marker relative to its cwd, proving it runs at the group root
+rather than a member repository. Directory identity avoids Windows short/long path spelling differences.
+The root must remain free of Git initialization. The
 provider is the same disposable faux stream, so the probe exercises the real pi runtime without user
 credentials or external provider calls.
 On Windows both smokes first read executables' resources, without running them:
