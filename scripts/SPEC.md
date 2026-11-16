@@ -11,6 +11,11 @@ depends-on: [module-spec-graph]
 
 ## Responsibility
 
+Root `bun test` uses the server's existing isolated-home preload through the root `bunfig.toml`,
+just like tests launched inside the server package. Direct focused tests importing server composition
+must never fall through to the developer's real default data or pi directory. Runtime/build commands
+do not inherit this test-only home.
+
 Repository-wide development orchestration and conformance gates that do not belong to one product package. These scripts validate architecture, specification, and artifact assumptions; they never implement product behavior.
 
 ## Boundary
