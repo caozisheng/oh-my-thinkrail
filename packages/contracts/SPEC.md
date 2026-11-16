@@ -195,6 +195,9 @@ these structural guards do not grant trust or enable an RPC by themselves.
   `InstalledFontsResult`, served by `fonts.list` /
   `fonts.installed` from `FONTS_PROTOCOL_VERSION`, v102, with `USER_FONTS_ROUTE`, `USER_FONT_UPLOAD_HEADER` and
   `USER_FONT_EXTENSIONS` naming the host's `/fonts/` route and its upload guard,
+  **`WORKSPACE_VIEW_ROUTE`** (`/view/`) naming the host's browser view of a workspace file, served from
+  **`BROWSER_VIEW_PROTOCOL_VERSION`** (v122; the UI offers "Open in browser" only from it, and the desktop
+  routes same-origin URLs under it to the OS),
   `THEME_MODES`, `isThemeMode`, `isSystemThemePair`, `normalizeThemePreference`,
   `parsePiPackageInput` (§ pi packages),
   **`isValidTemplateName(name)`** (the one prompt-template name rule — the host's traversal gate in
@@ -213,6 +216,11 @@ these structural guards do not grant trust or enable an RPC by themselves.
   no text has no head and the next user text is tried — a prompt that merely starts with `<Button>` keeps
   its head; only the first 800 units of a line are normalized —
   host and client call the same functions over their user texts so the label never jumps),
+  **`isKeybindingChord(value)`** + `isKeybindingOverrides` + `isModifierKeyCode` + `KEYBINDING_MODIFIERS`
+  (`keybindingChord`: the one chord shape — modifiers in the order `Mod`, `Ctrl`, `Alt`, `Shift`, each at
+  most once, then a `KeyboardEvent.code` that is not a modifier key, joined by `+`, e.g. `Mod+Alt+KeyS`;
+  the host validates `AppConfig.keybindings` with it and the web's grammar parses with it), the types
+  `KeybindingOverrides` / `KeybindingModifier`,
   `LINE_WIDTH_COLUMNS` + **`isLineWidth(value)`** (the shared 40–240 integer contract for synchronized
   chat/file wrap columns), `MAX_HISTORY_LIMIT`, `MAX_HISTORY_QUERY_LENGTH`, `TODO_NUDGE_PREFIX` +
   **`isControlMessage(text)`** (the one shared reading of that marker — the client hides such sends on
@@ -639,7 +647,7 @@ these structural guards do not grant trust or enable an RPC by themselves.
   fileLineWidthBounded, voiceInputEnabled, customLayoutPresets, defaultModel?, defaultEffort?, reviewModel?, reviewEffort?,
   favoriteModels, recentModels, reviewAutoFix, agentReviewEnabled, subagentsEnabled, subagentMaxConcurrent,
   jbcentralQuotaEnabled, jbcentralQuotaRefreshSeconds, disabledExtensions, extensionSettings, otherAgentSkills,
-  onboardingDismissed, interfaceFont, codeFont, codeFontSize, codeLigatures, fontWeightOffset }` — an extensible
+  onboardingDismissed, interfaceFont, codeFont, codeFontSize, codeLigatures, fontWeightOffset, keybindings }` — an extensible
   bag; the five font fields join at v102 and normalize together through `normalizeFontSettings` (host load, web
   store, fonts runtime); the line-width fields join the wire at protocol v61, `terminalWindowsShell` at v62, and
   `voiceInputEnabled` (default `true`) with voice input at v117, and `questionPanelHeight`
@@ -683,7 +691,11 @@ these structural guards do not grant trust or enable an RPC by themselves.
   [[submodule-server-extensions]]); `extensionSettings` (`ExtensionSettingValues`, default `{}`, on the wire from
   `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) maps extension name → setting key → boolean for the settings
   an `ExtensionCatalogEntry` declares — an absent key means the descriptor's `default`, and
-  `settings.update { extensionSettings }` merges per key; `customLayoutPresets` is the bounded
+  `settings.update { extensionSettings }` merges per key; `keybindings` (`KeybindingOverrides`, default `{}`,
+  on the wire from **`KEYBINDINGS_PROTOCOL_VERSION`** = v136) maps a command id — the app's or a web
+  extension's — to the user's chords, replacing its defaults (`[]` unbinds, an absent id keeps them); an
+  update replaces the whole map, unknown ids are kept, and a malformed value is refused with
+  **`KEYBINDINGS_INVALID`** (a client bug Error Tracking tells apart); `customLayoutPresets` is the bounded
   resource-free catalog and is the **only** layout value synchronized by the host; current/default preset
   and group limits are web-local); `analyticsEnabled` is the additional-data preference and host gate,
   default `false`, while `analyticsConsentConfirmed` defaults `false` and records completion of the initial
@@ -1749,7 +1761,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v135. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v136. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1758,4 +1770,4 @@ upstream numbers.
 
 ## Latest upstream capability floors
 
-The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, and Artifacts v135. Upstream original v115–v121 numbers must not gate these features on fork hosts.
+The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135 and keybindings v136. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.

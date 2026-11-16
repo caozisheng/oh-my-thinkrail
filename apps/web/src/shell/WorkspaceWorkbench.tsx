@@ -25,7 +25,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { preloadedLazy } from "../components/preloadedLazy";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { IssuesTool } from "../issues";
-import { keybindingKeys } from "../keybindings";
+import { keybindingKeys, type ResolvedKeybindings } from "../keybindings";
 import { chatDisplayName, type LayoutAttention, layoutResourceIdentity } from "../lib";
 import { ArtifactsPanel } from "../panels/ArtifactsPanel";
 import { DiffPane } from "../panels/DiffPane";
@@ -78,6 +78,7 @@ import {
 	useDeletedChatPlacementReconciliation,
 	useWorkspaceChatCatalogReconciliation,
 } from "./chatReconciliation";
+import { useResolvedKeybindings } from "./keybindingState";
 import {
 	collectAllGroups,
 	findPlacedResource,
@@ -345,15 +346,16 @@ function useTerminalReservation(workspaceId: string): void {
 	}, [connectionGeneration, pendingIntent, status, workspaceId]);
 }
 
-function workbenchChromeShortcuts(): WorkbenchChromeShortcuts {
+function workbenchChromeShortcuts(keybindings: ResolvedKeybindings): WorkbenchChromeShortcuts {
+	const keys = (id: string) => keybindingKeys(keybindings, id);
 	return {
 		hide: {
-			left: keybindingKeys("view.toggleLeft"),
-			right: keybindingKeys("view.toggleRight"),
-			bottom: keybindingKeys("view.toggleBottom"),
+			left: keys("view.toggleLeft"),
+			right: keys("view.toggleRight"),
+			bottom: keys("view.toggleBottom"),
 		},
-		tools: { projects: keybindingKeys("focus.projects"), files: keybindingKeys("view.files") },
-		terminal: keybindingKeys("focus.terminal"),
+		tools: { projects: keys("focus.projects"), files: keys("view.files") },
+		terminal: keys("focus.terminal"),
 	};
 }
 
@@ -406,7 +408,9 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		void ChatView.preload();
 	}, []);
 	const [focusRequest, setFocusRequest] = useState<LayoutTabFocusRequest | null>(null);
-	const [chromeShortcuts] = useState(workbenchChromeShortcuts);
+	const keybindings = useResolvedKeybindings();
+	const [nativeShortcuts] = useState(hasNativeShortcuts);
+	const chromeShortcuts = useMemo(() => workbenchChromeShortcuts(keybindings), [keybindings]);
 	const requestRenameChat = useCallback(
 		(sessionId: string, titleInput: string, currentTitle: string) => {
 			const prepared = prepareChatTitle(titleInput);
@@ -720,7 +724,11 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					className="h-full"
 					viewportClassName="p-panel-inset"
 				>
-					<ProjectTree nativeShortcuts={hasNativeShortcuts()} />
+					<ProjectTree
+						newWorkspaceShortcut={keybindingKeys(keybindings, "workspace.new", {
+							browser: !nativeShortcuts,
+						})}
+					/>
 				</QuietScrollArea>
 			),
 			specs: isChat ? (
@@ -791,6 +799,8 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		isChat,
 		launchIssueSession,
 		trustProject,
+		keybindings,
+		nativeShortcuts,
 		railPlanSessionId,
 		review.failed,
 		specs.failed,

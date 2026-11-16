@@ -173,7 +173,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 135;
+export const PROTOCOL_VERSION = 136;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
@@ -204,6 +204,9 @@ export const FS_MUTATIONS_PROTOCOL_VERSION = 131;
 export const WORKSPACE_PATH_RESOLVE_PROTOCOL_VERSION = 132;
 export const IMAGE_REFS_PROTOCOL_VERSION = 133;
 export const ARTIFACTS_PROTOCOL_VERSION = 135;
+export const KEYBINDINGS_PROTOCOL_VERSION = 136;
+export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
+export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";
 export const GITHUB_STAR_PROTOCOL_VERSION = 103;
 export const ISSUES_IMPLEMENTATION_PROTOCOL_VERSION = 108;
@@ -1766,6 +1769,7 @@ export type WsErrorCode =
 	| "TEXT_SEARCH_TIMEOUT"
 	| "TEXT_SEARCH_FAILED"
 	| "FRAME_TOO_LARGE"
+	| "KEYBINDINGS_INVALID"
 	| SpeechErrorCode;
 
 export interface WsResponse {

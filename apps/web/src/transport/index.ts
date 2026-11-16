@@ -26,6 +26,7 @@ export {
 	supportsExtensionSettings,
 	supportsFonts,
 	supportsHostUpdateRun,
+	supportsKeybindings,
 	supportsPiPackages,
 	supportsPlanReview,
 	supportsPlanSummaryGeneration,
@@ -36,4 +37,5 @@ export {
 	supportsTurnChanges,
 	supportsUserThemes,
 	transportEndpointIdentity,
+	updateKeybindings,
 } from "./wireTransport";

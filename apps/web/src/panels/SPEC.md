@@ -82,8 +82,9 @@ treatment.
   project `+`** — both are `IconButton` ghost `s`, so they render identically and their glyphs
   line up on one vertical axis (both sit at the row's `pr-xs` right edge). The Create workspace `+`'s tooltip
   shows the one `workspace.new` chord that reaches this client as keycaps — `Mod+N` on the desktop, the
-  `Mod+Alt+N` alias in a browser — from `ProjectTree`'s `nativeShortcuts` prop, which the shell sets (see
-  `submodule-web-shell` global chords); the context-menu item stays plain.
+  `Mod+Alt+N` alias in a browser — from `ProjectTree`'s `newWorkspaceShortcut` caps, which the shell
+  injects from the resolved table (see `submodule-web-shell` global chords, *Chords in tooltips*); the
+  context-menu item stays plain.
   Long names truncate before the count/action; there is deliberately **no visible Close or overflow icon**.
   Hover highlights the full row and the highlight remains while its **project context menu** is open.
   Right-click opens that PR-#167-styled menu at the pointer without selecting/navigating; a scroll-cancelled
@@ -328,8 +329,13 @@ treatment.
   reveals only if the active file differs from the persisted `seenActivePath`, and then skips the scroll
   restore so the two cannot fight. Auto-reveal never switches the side tab or the mode. Clicks still open
   the editor. Right-clicking a file or folder row (a touch long-press, or the Context Menu key / Shift+F10 on
-  a focused row) opens its menu: **Copy path** (absolute, through `joinWorkspacePath`) and **Copy relative
-  path** (worktree-relative). A compacted folder copies its deepest path, matching its label, and copying
+  a focused row) opens its menu: **Open in browser** first for an HTML file from a host at
+  `BROWSER_VIEW_PROTOCOL_VERSION` (v122; `OpenInBrowserMenuItem`, also in the Artifacts row menu after
+  Reveal, and `OpenInBrowserButton` in the file tab's toolbar and, through `ResourceHost.OpenInBrowser`, in
+  every framed preview), then **Copy path** (absolute, through `joinWorkspacePath`) and **Copy relative
+  path** (worktree-relative). "Open in browser" opens the host's `/view/` URL with `window.open(…,
+  "noopener,noreferrer")`: a new tab on the web, the system browser on the desktop
+  ([[submodule-server-host]] serves it sandboxed, [[module-desktop]] routes it to the OS). A compacted folder copies its deepest path, matching its label, and copying
   neither opens nor selects the row. The row stays highlighted while its menu is open. From a host at
   `FS_MUTATIONS_PROTOCOL_VERSION` (v131) the menu adds the tree's two mutations, both host-owned and
   watcher-refreshed, never patched into the rows (`fileTreeActions`): **Copy** puts the row's entry — file,
