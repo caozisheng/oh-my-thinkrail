@@ -242,7 +242,7 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 	async function request(
 		path: string,
 		deadline: number,
-		write?: { method: "POST" | "PATCH" | "PUT"; body: Record<string, unknown> },
+		write?: { method: "POST" | "PATCH" | "PUT" | "DELETE"; body: Record<string, unknown> },
 	): Promise<{ value: unknown; next: string | null }> {
 		if (path.includes(token) || path.includes(encodedToken)) invalid();
 		const payload = write && { body: JSON.stringify(write.body) };
@@ -276,6 +276,11 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 				if (response.status === 404)
 					unavailable("Issue repository or Issue is missing or not accessible.");
 				unavailable();
+			}
+			if (write?.method === "DELETE") {
+				await response.body?.cancel();
+				if (response.status !== 204) unavailable();
+				return { value: null, next: null };
 			}
 			const declared = response.headers.get("content-length");
 			if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
@@ -722,6 +727,19 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 				await list(`${base}/issues?state=all&sort=updated&direction=desc`, (value) => issue(value))
 			).filter((entry): entry is IssueRecord => entry !== null),
 		notes: (iid) => list(`${base}/issues/${positive(iid)}/comments`, note),
+		deleteNote: async (iid, noteId) => {
+			positive(iid);
+			positive(noteId);
+			const path = `${base}/issues/comments/${noteId}`;
+			const value = record((await request(path, Date.now() + timeoutMs)).value);
+			const repository = await project();
+			if (
+				value.id !== noteId ||
+				value.issue_url !== `${API_ROOT}/repos/${repository.pathWithNamespace}/issues/${iid}`
+			)
+				invalid();
+			await request(path, Date.now() + timeoutMs, { method: "DELETE", body: {} });
+		},
 		addNote: async (iid, body) =>
 			note(
 				(

@@ -1042,7 +1042,10 @@ re-opened transcripts provider-valid.
     `{ projectId }` (a local project id): it asks the host's optional `joinCandidate`, then the user through
     `ctx.ui.confirm` (refusing without a UI), and only on confirmation calls `joinRepository`; a decline
     returns `{ joined: false }` with an instruction not to change that repository, and a host
-    `ISSUE_REPOSITORY_REFUSED` passes through with its reason. `issue_context` accepts exactly `{}`;
+    `ISSUE_REPOSITORY_REFUSED` passes through with its reason. `issue_delete_note` accepts only a positive
+    safe integer `{ noteId }`, delegates the SDK session identity to the optional host capability, and
+    directly deletes the bound Issue's verified comment without another confirmation card; uncertain
+    writes must not be retried. `issue_context` accepts exactly `{}`;
     `issue_record_summary` accepts `{ operationId, summary, recovery? }`. Both schemas forbid additional
     properties and execute-time validation enforces the same keys. Operation IDs are 1–128 ASCII
     characters, starting with an alphanumeric and otherwise allowing alphanumerics, `.`, `_`, `:`, `-`;

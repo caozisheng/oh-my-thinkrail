@@ -55,6 +55,7 @@ type SummaryResult = { noteId: number; url?: string };
 
 export interface IssueToolHost {
 	context(sessionId: string): Promise<string>;
+	deleteNote?(sessionId: string, noteId: number): Promise<{ noteId: number; deleted: true }>;
 	prepareConfirmation?(
 		sessionId: string,
 		input: {
@@ -154,6 +155,36 @@ function validRecordSummaryParams(value: unknown): value is RecordSummaryParams 
 		params.summary.trim().length > 0 &&
 		new TextEncoder().encode(params.summary).byteLength <= 32_000
 	);
+}
+
+const DeleteNoteSchema = Type.Object(
+	{ noteId: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }) },
+	{ additionalProperties: false },
+);
+export function createIssueDeleteNoteTool(): ToolDefinition<
+	typeof DeleteNoteSchema,
+	{ noteId: number; deleted: true }
+> {
+	return {
+		name: "issue_delete_note",
+		label: "Delete Issue Comment",
+		description:
+			"Delete one explicitly requested comment from this session's bound Issue by noteId. Irreversible, single attempt; never automatically retry a failed or uncertain delete. No other Issue or repository can be selected.",
+		parameters: DeleteNoteSchema,
+		async execute(_id, params, _signal, _update, ctx) {
+			if (
+				!params ||
+				Reflect.ownKeys(params).length !== 1 ||
+				!Object.hasOwn(params, "noteId") ||
+				!Number.isSafeInteger(params.noteId) ||
+				params.noteId < 1
+			)
+				throw invalid();
+			if (!host.deleteNote) throw unavailable();
+			const result = await host.deleteNote(ctx.sessionManager.getSessionId(), params.noteId);
+			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+		},
+	};
 }
 
 export function createIssueContextTool(): ToolDefinition<typeof EmptyParamsSchema, undefined> {
@@ -364,6 +395,7 @@ export function createIssueExecuteConfirmationTool(): ToolDefinition<
 }
 export function issueToolsExtension(pi: ExtensionAPI): void {
 	pi.registerTool(createIssueContextTool());
+	pi.registerTool(createIssueDeleteNoteTool());
 	pi.registerTool(createIssueRecordSummaryTool());
 	pi.registerTool(createIssueJoinRepositoryTool());
 	pi.registerTool(createIssuePrepareConfirmationTool());

@@ -10,6 +10,11 @@ tags: [host, public-surface-checked]
 
 ## Confirmed Issue operations
 
+`issue_delete_note` accepts only a positive comment id and resolves the Issue from the current session's
+persisted binding. The provider reads and verifies comment ownership under that Issue before one DELETE;
+only a confirmed 204 response counts as success. Provider errors are uncertain writes and are not
+retried. This irreversible comment action is intentionally direct and does not create a confirmation card.
+
 `issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
 sessions. Their fixed previews reuse `ask_user_question`; transcript verification admits only the exact
 submitted `Looks right` response. The private `issue-confirmations` journal snapshots bounded payloads,
