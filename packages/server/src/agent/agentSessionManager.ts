@@ -210,6 +210,7 @@ interface Entry {
 	subagentToolsRefreshPending: boolean;
 	reviewToolRefreshPending: boolean;
 	extensionToolsRefreshPending: boolean;
+	issueToolsRecoveryAttempted: boolean;
 	withheldExtensionTools: Set<string>;
 	nudgePromptPending: boolean;
 	lastPublishedState: string | null;
@@ -402,6 +403,12 @@ export function setSessionStatePublisher(fn: (record: SessionStateRecord) => voi
 }
 
 let resolveProjectId: (workspaceId: string) => string | null = () => null;
+let issueToolsRequiredResolver: (sessionId: string) => Promise<boolean> = async () => false;
+export function setIssueToolsRequiredResolver(
+	resolver: ((sessionId: string) => Promise<boolean>) | null,
+): void {
+	issueToolsRequiredResolver = resolver ?? (async () => false);
+}
 export function setSessionProjectResolver(fn: (workspaceId: string) => string | null): void {
 	resolveProjectId = fn;
 }
@@ -807,6 +814,26 @@ function applySpecTools(entry: Entry): void {
 	if (kept.length !== active.length) entry.session.setActiveToolsByName(kept);
 }
 
+async function recoverMissingIssueTools(entry: Entry): Promise<void> {
+	const { session } = entry;
+	try {
+		if (
+			!(await issueToolsRequiredResolver(session.sessionId)) ||
+			entry.disposed ||
+			entry.resourcesClosing ||
+			!["issue_context", "issue_record_summary", "issue_delete_note"].some(
+				(tool) => !session.getToolDefinition(tool),
+			)
+		)
+			return;
+		const disposition = await requestSessionReload(session.sessionId);
+		if (disposition === "deferred") entry.issueToolsRecoveryAttempted = false;
+	} catch {
+		if (!entry.disposed && !entry.resourcesClosing)
+			log.warn(`Issue tool restoration failed for ${session.sessionId}`);
+	}
+}
+
 function applyExtensionTools(entry: Entry, { allowReload = true } = {}): void {
 	entry.extensionToolsRefreshPending = false;
 	const { session } = entry;
@@ -830,6 +857,10 @@ function applyExtensionTools(entry: Entry, { allowReload = true } = {}): void {
 		session.setActiveToolsByName([...kept, ...restored]);
 	}
 	if (!allowReload || entry.reloadRunning) return;
+	if (!disabled.has("issue-tools") && !entry.issueToolsRecoveryAttempted) {
+		entry.issueToolsRecoveryAttempted = true;
+		void recoverMissingIssueTools(entry);
+	}
 	if (
 		enabledExtensionMissing(session, disabled) ||
 		loadsDisabledExtensionSkills(session.resourceLoader.getSkills().skills) ||
@@ -1258,6 +1289,7 @@ async function prepareSessionEntry(
 		subagentToolsRefreshPending: false,
 		reviewToolRefreshPending: false,
 		extensionToolsRefreshPending: false,
+		issueToolsRecoveryAttempted: false,
 		withheldExtensionTools: new Set(),
 		nudgePromptPending: false,
 		lastPublishedState: null,

@@ -736,6 +736,14 @@ test("implementation starts without approval or label writes and reuses the issu
 			readdirSync(join(f.dir, "issue-workflow")).length > 0,
 	).toBe(false);
 }, 60000);
+test("Issue tool requirement probe validates the durable session workspace association", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const launched = await f.host.beginDesign({ ...f.target, locale: "en" });
+	expect(await f.host.sessionRequiresIssueTools(launched.sessionId)).toBe(true);
+	expect(await f.host.sessionRequiresIssueTools("unbound-session")).toBe(false);
+});
+
 test("bound comment deletion uses the session Issue and the provider once", async () => {
 	const f = fixture();
 	await f.host.connect({ projectId: "one", input: f.input });

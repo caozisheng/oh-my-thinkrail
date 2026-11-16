@@ -67,6 +67,7 @@ import {
 	setExtensionSettingsResolver,
 	setExtUiPublisher,
 	setIssueToolHost,
+	setIssueToolsRequiredResolver,
 	setMcpLoginPublisher,
 	setMcpPolicyResolver,
 	setMcpStatusPublisher,
@@ -1071,6 +1072,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	installRequestReviewSeam();
 	setTitleToolHost(titleToolHost);
 	setIssueToolHost(issuesHost.agentSessions);
+	setIssueToolsRequiredResolver((sessionId) => issuesHost.sessionRequiresIssueTools(sessionId));
 	// A bound Issue session's associated repositories carry their own TODO work windows and commits.
 	setSessionMemberWorkspaces(async (workspaceId, sessionId) => {
 		const members = await issuesHost.sessionMemberWorkspaces(sessionId);
@@ -1380,6 +1382,7 @@ function restoreSeamDefaults(): void {
 	setRequestReviewHandler(null);
 	setTitleToolHost(null);
 	setIssueToolHost(null);
+	setIssueToolsRequiredResolver(null);
 	setSettingsPublisher(null);
 	setSessionCreatedPublisher(() => {});
 	setSessionStatePublisher(() => {});

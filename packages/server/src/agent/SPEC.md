@@ -1036,9 +1036,12 @@ re-opened transcripts provider-valid.
     costs one prompt-cache miss per chat, early in it. The write policy and the workspace half of that state are
     not here: the host injects both through `setTitleToolHost({ apply, workspaceNeedsName })`, because naming
     composes `agent` + `workspaces`.
-    The bound Issue tools (`issueTools.ts`) are always registered for top-level sessions by the named
+    The bound Issue tools (`issueTools.ts`) are registered for top-level sessions by the named
     `issue-tools` inline extension in `sharedFactories`, shared by source/dev and bundled CLI/desktop
-    loaders, never by the curated child extension set. `issue_join_repository` accepts exactly
+    loaders, never by the curated child extension set. `IssueSessionStore` association probing runs at
+    registration reconciliation points; if a bound session is missing its core tool definitions and the
+    extension is not intentionally disabled, one gated resource reload is requested per attachment. The
+    probe fails closed and never reconstructs tools or binding from transcript content. `issue_join_repository` accepts exactly
     `{ projectId }` (a local project id): it asks the host's optional `joinCandidate`, then the user through
     `ctx.ui.confirm` (refusing without a UI), and only on confirmation calls `joinRepository`; a decline
     returns `{ joined: false }` with an instruction not to change that repository, and a host

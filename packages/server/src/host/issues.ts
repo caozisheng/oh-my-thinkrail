@@ -1387,6 +1387,17 @@ export function createIssuesHost(
 	 * checkouts, implementation their fixed Issue worktrees; the primary is resolved separately by the
 	 * caller. An unbound session, a fenced launch or any reconciliation failure simply yields none.
 	 */
+	async function sessionRequiresIssueTools(sessionId: string): Promise<boolean> {
+		if (!store) return false;
+		try {
+			const association = await store.get(sessionId);
+			if (!association) return false;
+			const ws = getWorkspace(association.workspaceId);
+			return ws.projectId === association.projectId && ws.kind !== "chat" && ws.kind !== "external";
+		} catch {
+			return false;
+		}
+	}
 	async function sessionMemberWorkspaces(
 		sessionId: string,
 	): Promise<{ workspaceId: string; worktreePath: string }[]> {
@@ -1408,6 +1419,7 @@ export function createIssuesHost(
 	}
 	return {
 		agentSessions,
+		sessionRequiresIssueTools,
 		sessionMemberWorkspaces,
 		workspaceIssueBindings,
 		groupIssueRecords,

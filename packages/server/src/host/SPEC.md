@@ -1653,7 +1653,9 @@ branch SHA. Uncertain writes are observed/reconciled under the original operatio
 `issueSessions.ts` exports `IssueSessionStore`. `createIssuesHost` composes both with the same lazy
 IssuesService, trusted project and managed workspace lookup. The private `<dataDir>/issue-sessions`
 root is provisioned lazily before session creation. Server composition installs context/summary
-callbacks with `setIssueToolHost` after session services are available and clears them on shutdown.
+callbacks with `setIssueToolHost` and the async association probe for missing tool recovery after
+session services are available, and clears both on shutdown. A bound Issue session with missing core
+registry definitions receives one gated resource reload; absent bindings and intentional extension disablement do not trigger it.
 No credential crosses this seam. The new v109 `issues.beginDesign` and
 `issues.beginImplementation` actions require the exact `IssueSessionStartupTarget` (including its
 effective locale) and are gated independently at `ISSUES_SESSION_STARTUP_PROTOCOL_VERSION`.
