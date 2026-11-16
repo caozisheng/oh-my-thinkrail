@@ -643,7 +643,7 @@ export function IssuesPanel({
 															.catch(() => dispatch({ type: "actionFailed", error: "open" }));
 													}}
 												>
-													{t(groupContext ? "issues.discuss" : "issues.open")}
+													{t("issues.open")}
 												</Button>
 											)}
 										</article>

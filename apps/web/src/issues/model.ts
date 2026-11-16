@@ -27,6 +27,7 @@ import {
 	type WsResult,
 } from "@thinkrail/contracts";
 import { canonicalLocale, type MessageKey, resolveLocale } from "@thinkrail/locales";
+import { useAppStore } from "../store";
 import { RequestTimeoutError, wsErrorCode } from "../transport";
 import { resolveIssueRepositoryAddress, suggestIssueRepositoryAddress } from "./repositoryAddress";
 
@@ -558,6 +559,7 @@ export function subscribeIssueAssociation(listener: IssueAssociationListener): (
 }
 
 export function notifyIssueAssociation(projectId: string): void {
+	useAppStore.getState().setIssueRead(projectId, null);
 	for (const listener of associationListeners) listener(projectId);
 }
 
@@ -636,6 +638,14 @@ export function issueSnapshotAfterLoad(
 	identity: string,
 	loaded: IssueSnapshot,
 ): IssueToolSnapshot {
+	if (
+		loaded.error === "list" &&
+		previous?.identity === identity &&
+		previous.connection?.instanceUrl === loaded.connection?.instanceUrl &&
+		previous.connection?.remoteProjectId === loaded.connection?.remoteProjectId &&
+		previous.connection?.scope === loaded.connection?.scope
+	)
+		return { ...previous, connection: loaded.connection, pending: false, error: loaded.error };
 	return loaded.error === "connect"
 		? issueSnapshotUpdate(previous, identity, { error: loaded.error })
 		: issueSnapshotUpdate(previous, identity, {

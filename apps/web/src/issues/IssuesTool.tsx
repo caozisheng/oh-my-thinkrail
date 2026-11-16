@@ -9,6 +9,7 @@ import type {
 import {
 	ISSUES_CONTENT_PROTOCOL_VERSION,
 	ISSUES_DETAIL_PROTOCOL_VERSION,
+	ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION,
 	ISSUES_GROUPS_PROTOCOL_VERSION,
 	ISSUES_PEOPLE_PROTOCOL_VERSION,
 	isIssueWebUrl,
@@ -135,11 +136,16 @@ export function IssuesTool({
 	const authSupported = supportsIssueAuth(version);
 	const githubSupported = supportsIssueGithub(version);
 	const trusted = useAppStore((s) => selectIssueReadPermission(s, projectId));
-	const projects = useAppStore(useShallow(selectIssueRepositoryProjects));
+	const projects = useAppStore(
+		useShallow((state) => selectIssueRepositoryProjects(state, projectId)),
+	);
 	const groupContext = useAppStore(
 		(s) => s.projects.find((p) => p.id === projectId)?.kind === "group",
 	);
-	const repositoriesSupported = !groupContext && supportsIssueRepositories(version);
+	const groupActions =
+		groupContext && version !== null && version >= ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION;
+	const repositoriesSupported =
+		(!groupContext || groupActions) && supportsIssueRepositories(version);
 	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
 		() => ({
@@ -147,9 +153,9 @@ export function IssuesTool({
 			startupSupported: supportsIssueSessionStartup(version),
 			implementationSupported: supportsIssueImplementation(version),
 			trusted,
-			readOnly: groupContext,
+			readOnly: groupContext && !groupActions,
 		}),
-		[version, trusted, groupContext],
+		[version, trusted, groupContext, groupActions],
 	);
 	const [actionState, setActionState] = useState<{
 		identity: string;
@@ -160,7 +166,10 @@ export function IssuesTool({
 	const actionSequence = useRef(0);
 	const actionLock = useRef(false);
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}:${trusted}`;
-	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
+	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(() => {
+		const cached = useAppStore.getState().issueReadsByProject[projectId];
+		return cached?.identity === identity ? { ...cached, pending: false, error: null } : null;
+	});
 	const disclosureIdentity = snapshot?.connection
 		? issueDisclosureKey({
 				endpoint: transportEndpointIdentity(),
@@ -274,6 +283,7 @@ export function IssuesTool({
 	const refresh = useCallback(
 		async (input?: IssueConnectionInput): Promise<ConnectResult> => {
 			if (!supported || status !== "connected") return { ok: false, error: "connect" };
+			if (input) useAppStore.getState().setIssueRead(projectId, null);
 			clearPreview();
 			actionSequence.current++;
 			actionLock.current = false;
@@ -299,6 +309,12 @@ export function IssuesTool({
 			);
 			if (!result || !current()) return { ok: false, error: "connect" };
 			setSnapshot((previous) => issueSnapshotAfterLoad(previous, identity, result));
+			if (!result.error)
+				useAppStore.getState().setIssueRead(projectId, {
+					identity,
+					connection: result.connection,
+					issues: result.issues,
+				});
 			if (!result.error) void loadRepositories(result.issues, current);
 			return result.error === "connect" ? { ok: false, error: "connect" } : { ok: true };
 		},
@@ -327,6 +343,7 @@ export function IssuesTool({
 		);
 		try {
 			await getTransport().request("issues.disconnect", { projectId });
+			useAppStore.getState().setIssueRead(projectId, null);
 		} catch (error) {
 			if (sequence === requestSequence.current)
 				setSnapshot((previous) =>
@@ -339,14 +356,19 @@ export function IssuesTool({
 	}, [projectId, refresh, status, supported, update, clearPreview]);
 
 	useEffect(() => {
-		void refresh();
+		const cached = useAppStore.getState().issueReadsByProject[projectId];
+		if (cached?.identity === identity) {
+			setSnapshot({ ...cached, pending: false, error: null });
+			const sequence = requestSequence.current;
+			void loadRepositories(cached.issues, () => sequence === requestSequence.current);
+		} else void refresh();
 		return () => {
 			requestSequence.current++;
 			previewSequence.current++;
 			actionSequence.current++;
 			actionLock.current = false;
 		};
-	}, [refresh]);
+	}, [refresh, identity, projectId, loadRepositories]);
 
 	const runAction = useCallback(
 		async (issue: IssueSummary, action: IssueActionId): Promise<IssueActionResult> => {
@@ -396,7 +418,7 @@ export function IssuesTool({
 				sequence === actionSequence.current &&
 				useAppStore.getState().connectionGeneration === generation &&
 				useAppStore.getState().status === "connected" &&
-				useAppStore.getState().projects.find((p) => p.id === projectId)?.trusted === true;
+				selectIssueReadPermission(useAppStore.getState(), projectId);
 			const progress: IssueActionProgress = { issue: issueKey(issue), action, phase: "starting" };
 			const { reference } = issue;
 			const transport = getTransport();
@@ -569,7 +591,7 @@ export function IssuesTool({
 							useAppStore.getState().connectionGeneration === generation &&
 							useAppStore.getState().status === "connected" &&
 							useAppStore.getState().protocolVersion === version &&
-							useAppStore.getState().projects.find((row) => row.id === projectId)?.trusted === true;
+							selectIssueReadPermission(useAppStore.getState(), projectId);
 						void getTransport()
 							.request(
 								"issues.recoverImplementation",
@@ -645,7 +667,9 @@ export function IssuesTool({
 				}}
 				onConnect={refresh}
 				onDisconnect={disconnect}
-				historySupported={!groupContext && supportsIssueWorkspaceRecovery(version)}
+				historySupported={
+					(!groupContext || groupActions) && supportsIssueWorkspaceRecovery(version)
+				}
 				onOpenHistory={(issue) => setHistoryIssue({ identity, issue })}
 				onOpenIssue={onOpenIssue}
 				onRunAction={runAction}

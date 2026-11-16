@@ -1517,7 +1517,7 @@ reliable (local storage; network filesystem guarantees are not asserted). This s
 
 ### Durable Issue workspace launches
 
-`issueWorkspacePersistence.ts` exports `createIssueWorkspacePersistence(root)` for an existing private
+`issueWorkspacePersistence.ts` exports `createIssueWorkspacePersistence(root, ownerKind?)` for an existing private
 local directory. `withLaunch(localProjectId, reference, operation, beforeRelease?, failurePolicy?)` acquires and flushes an exclusive
 `wx` fence for `(localProjectId, IID)` before invoking the callback, which must wrap the entire
 process-local Issue workspace coordinator operation. Different remote bindings contend for the same
@@ -1907,3 +1907,15 @@ only the note ID; changed bodies or uncertain writes require reconciliation. Tru
 workspace path and remote identity are checked around asynchronous work. No automatic turn-end
 publication exists: the skill and startup prompt attempt best-effort summary publication without making
 it a work or session-completion gate. Uncertain writes remain fenced independently of session completion.
+
+## Group Issue workflow composition
+
+Group Issue launch uses the existing actions/coordinator/agent-session path, including complete
+body and comments, locale, workflow skill, durable binding, guarded startup and confirmed reports.
+The group owns its sessions; only open trusted member repositories can be associated or joined.
+A group grants no trust to members. Linked repository worktrees retain their own project ownership
+and exact clone checks for delivery. The group folder is not itself a source checkout.
+
+Group launch fences use the full local owner/provider/instance/remote project/IID identity, so
+parallel reads and starts for equal IIDs in different repositories cannot contend. Repository-owned
+fences keep their legacy per-owner/IID scope because the primary checkout path is shared across bindings.

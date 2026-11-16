@@ -114,7 +114,10 @@ In **Group Home → Group Issues**, paste a GitLab group URL such as
 installation prefix), and supply an access token that can read the group. Owned projects and nested subgroups
 are included; each Issue shows its project namespace so equal per-project numbers remain distinct.
 Filter by assignee or author using a display name or username; filters combine and apply to the complete
-loaded list. Preview descriptions/comments or open a group conversation with an Issue as a draft.
+loaded list. From host protocol v137, use the same Issue links, previews, repository association,
+**Design** and **Implement** controls as repository Issues. Bound sessions belong to the group;
+implementation prepares worktrees for linked member repositories. Returning to the panel reuses its
+loaded list; use Refresh Issues to fetch updates.
 Group connections belong to the group; repository Issues forms connect individual repositories.
 
 Repository connections on both providers support listing Issues, reading their descriptions and comments, starting **Design**

@@ -124,7 +124,7 @@ test("a nested group includes owned subgroup projects and keeps equal IIDs disti
 	expect(JSON.stringify([result, f.stored(), service.connection("local")])).not.toContain(token);
 });
 
-test("details use the owning project while group connections refuse repository workflows", async () => {
+test("details and workflow ports use the verified owning project", async () => {
 	const f = fixture();
 	const service = await createIssuesService(f.options);
 	await service.connect("local", input);
@@ -134,8 +134,8 @@ test("details use the owning project while group connections refuse repository w
 	expect(detail.url).toBe(`${instanceUrl}/engineering/platform/sub/library/-/issues/12`);
 	const client = service.remoteFor("local", reference("9"));
 	expect((await client.issue(12)).description).toBe("Body 9");
-	expect(() => service.workflowFor("local", reference("9"))).toThrow("no repository workflow");
-	expect(() => service.deliveryFor("local", reference("9"))).toThrow("no repository delivery");
+	expect(client).toBe(service.workflowFor("local", reference("9")));
+	expect(client).toBe(service.deliveryFor("local", reference("9")));
 	const before = f.requests.length;
 	expect(() => service.remoteFor("local", reference("99"))).toThrow();
 	expect(() =>

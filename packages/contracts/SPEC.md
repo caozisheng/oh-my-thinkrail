@@ -37,6 +37,10 @@ of controller authorization.
 
 ## Issue integration
 
+Protocol v137 enables the existing Issue launch, repository-association and recovery methods for
+group owners. Sessions use the stable group workspace; associated repositories retain their Git
+ownership checks. Issue references always identify the owning remote repository.
+
 Protocol v136 adds GitLab group associations. `IssueConnectionInput.scope` and the persisted/public
 connection's optional `scope` are `"group"` for a group; absence retains the project association.
 `remoteProjectId` remains the verified numeric association target (a group id when scoped to a group),

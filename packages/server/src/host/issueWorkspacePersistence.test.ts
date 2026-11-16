@@ -39,6 +39,56 @@ const failure = {
 	message: "Issue workspace requires reconciliation.",
 };
 
+test("group fences distinguish equal IIDs across projects and still exclude the same Issue", async () => {
+	const f = setup();
+	const store = createIssueWorkspacePersistence(f.dir, "group");
+	const other = { ...ref, projectId: "99" };
+	await store.withLaunch("local", ref, async (first) => {
+		await first.save(key(), { ...record, ownerKind: "group" });
+		await store.withLaunch("local", other, async (second) => {
+			await second.save(key(other), { ...record, reference: other, ownerKind: "group" });
+			expect(readdirSync(f.dir).filter((name) => name.endsWith(".lock"))).toHaveLength(2);
+		});
+		await expect(
+			createIssueWorkspacePersistence(f.dir, "group").withLaunch(
+				"local",
+				ref,
+				async () => {
+					throw new Error("must not enter");
+				},
+				undefined,
+				"release-on-settle",
+			),
+		).rejects.toMatchObject({ code: "ISSUE_LAUNCH_BLOCKED" });
+	});
+	expect(store.list()).toHaveLength(2);
+	expect(readdirSync(f.dir).filter((name) => name.endsWith(".lock"))).toHaveLength(0);
+});
+
+test("a group owner persists its non-Git workspace without relaxing repository ownership", async () => {
+	const f = setup();
+	const row: IssueWorkspaceRecord = {
+		...record,
+		ownerKind: "group",
+		implementation: {
+			state: "completed",
+			workspaceId: "group-home",
+			worktreePath: f.dir,
+			branch: "",
+			session: { id: "implementation-session" },
+		},
+	};
+	await f.store.withLaunch("local", ref, (p) => p.save(key(), row));
+	expect(
+		await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+	).toEqual(row);
+	const other = setup();
+	const { ownerKind: _ownerKind, ...repository } = row;
+	await expect(
+		other.store.withLaunch("local", ref, (p) => p.save(key(), repository)),
+	).rejects.toMatchObject(failure);
+});
+
 test("archived implementation generations survive restart and reject malformed history", async () => {
 	const f = setup();
 	const archived = {

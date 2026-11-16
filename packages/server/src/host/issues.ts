@@ -1541,7 +1541,7 @@ export function createIssuesHost(
 				hasAssociations,
 			};
 			const implementation = row.implementation;
-			if (implementation?.state === "completed")
+			if (implementation?.state === "completed" && row.ownerKind !== "group")
 				bindings.set(implementation.workspaceId, { ...base, role: "primary" });
 			for (const member of row.members ?? [])
 				if (member.ownership?.state === "completed")

@@ -2,13 +2,21 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { designVersion, implementationVersion } from "../issues";
 import { saveProjects } from "../persistence";
-import { setProjectTrust } from "../projects";
-import { listWorkspaceRecords } from "../workspaces";
+import { openProjectGroupContext, setProjectTrust } from "../projects";
+import { ensureGroupWorkspace, listWorkspaceRecords } from "../workspaces";
 import { createIssuesHost } from "./issues";
 
 const dirs: string[] = [];
@@ -24,6 +32,47 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
+test("a group uses the original bound Issue sessions, repository links and implementation worktrees", async () => {
+	const f = fixture("gitlab", true);
+	const owner = await openProjectGroupContext("group-owner");
+	const workspace = ensureGroupWorkspace(owner);
+	await f.host.connect({ projectId: owner.id, input: f.input });
+	await f.host.setRepositories({ ...f.target, projectIds: ["one"] });
+	const design = await f.host.beginDesign({ ...f.target, locale: "en" });
+	expect(design.workspaceId).toBe(workspace.id);
+	expect(f.prompts[0]?.prompt).toContain("/skill:tomato-issue-workflow");
+	expect(f.prompts[0]?.prompt).toContain("https://gitlab.example/group/repo/-/issues/1");
+	expect(f.prompts[0]?.prompt).toContain('"role":"associated"');
+	expect(await f.host.beginDesign({ ...f.target, locale: "en" })).toEqual(design);
+	const implementation = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	expect(implementation.workspaceId).toBe(workspace.id);
+	expect(implementation.sessionId).not.toBe(design.sessionId);
+	expect(f.prompts).toHaveLength(2);
+	const contexts = await f.host.implementationContexts(f.target);
+	expect(contexts).toHaveLength(1);
+	const context = contexts[0];
+	if (!context) throw new Error("Missing associated repository context");
+	expect(contexts[0]?.projectId).toBe("one");
+	expect(contexts[0]?.path).not.toBe(join(f.dir, "member"));
+	expect(git(contexts[0]?.path ?? "", "rev-parse", "--is-inside-work-tree")).toBe("true");
+	expect(existsSync(join(f.dir, ".git"))).toBe(false);
+	expect(await f.host.sessionMemberWorkspaces(implementation.sessionId)).toEqual([
+		{ workspaceId: context.workspaceId, worktreePath: context.path },
+	]);
+	expect(f.host.workspaceIssueBindings().has(workspace.id)).toBe(false);
+	const restarted = createIssuesHost(f.options);
+	expect(await restarted.beginImplementation({ ...f.target, locale: "en" })).toEqual(
+		implementation,
+	);
+	expect(f.prompts).toHaveLength(2);
+	const other = { ...f.target, reference: { ...f.target.reference, projectId: "43" } };
+	const otherDesign = await restarted.beginDesign({ ...other, locale: "en" });
+	expect(otherDesign.workspaceId).toBe(workspace.id);
+	expect(otherDesign.sessionId).not.toBe(design.sessionId);
+	setProjectTrust("one", false);
+	await expect(restarted.beginImplementation({ ...f.target, locale: "en" })).rejects.toThrow();
+});
+
 test("recovery refuses a stale frozen base and reports missing old transcript explicitly", async () => {
 	const f = fixture();
 	await f.host.connect({ projectId: "one", input: f.input });
@@ -235,13 +284,15 @@ test("host prepares selected source repositories before starting one Issue sessi
 	);
 });
 
-function fixture(provider: "gitlab" | "github" = "gitlab") {
+function fixture(provider: "gitlab" | "github" = "gitlab", group = false) {
 	const dir = mkdtempSync(join(tmpdir(), "issue-actions-"));
 	dirs.push(dir);
 	process.env.THINKRAIL_DATA_DIR = dir;
-	git(dir, "init", "-b", "main");
+	const repository = group ? join(dir, "member") : dir;
+	mkdirSync(repository, { recursive: true });
+	git(repository, "init", "-b", "main");
 	git(
-		dir,
+		repository,
 		"-c",
 		"user.name=Test",
 		"-c",
@@ -251,17 +302,30 @@ function fixture(provider: "gitlab" | "github" = "gitlab") {
 		"-m",
 		"initial",
 	);
-	saveProjects([{ id: "one", name: "one", slug: "one", path: dir, lastOpened: 1, trusted: true }]);
+	saveProjects([
+		{
+			id: "one",
+			name: "one",
+			slug: "one",
+			path: repository,
+			lastOpened: 1,
+			trusted: true,
+			...(group
+				? { projectGroup: { id: "group-owner", name: "Suite", root: dir, path: "member" } }
+				: {}),
+		},
+	]);
 	const reference = {
 		provider,
 		instanceUrl: provider === "github" ? "https://github.com" : "https://gitlab.example",
 		projectId: "42",
 		number: 1,
 	};
-	const target = { projectId: "one", reference };
+	const target = { projectId: group ? "group-owner" : "one", reference };
 	const input = {
 		instanceUrl: reference.instanceUrl,
-		projectId: "group/repo",
+		projectId: group ? "group" : "group/repo",
+		...(group ? { scope: "group" as const } : {}),
 		token: "fixture-only-private-token",
 	};
 	let issue = {
@@ -311,7 +375,13 @@ function fixture(provider: "gitlab" | "github" = "gitlab") {
 		if (init?.method !== "PUT" && init?.method !== "POST" && path.includes("/issues/"))
 			await onRead?.();
 		let result: unknown;
-		if (path.endsWith("/issues/1/notes/9")) {
+		if (group && /\/groups\/(group|7)$/.test(path)) result = { id: 7, full_path: "group" };
+		else if (group && path.endsWith("/groups/7/projects"))
+			result = [
+				{ id: 42, path_with_namespace: "group/repo" },
+				{ id: 43, path_with_namespace: "group/other" },
+			];
+		else if (path.endsWith("/issues/1/notes/9")) {
 			if (init?.method === "DELETE") {
 				const index = notes.findIndex((note) => note.id === 9);
 				if (index >= 0) notes.splice(index, 1);
@@ -336,7 +406,11 @@ function fixture(provider: "gitlab" | "github" = "gitlab") {
 					issue = { ...issue, description: body.description, updated_at: time() };
 			}
 			result = issue;
-		} else result = { id: 42, path_with_namespace: "group/repo" };
+		} else
+			result =
+				group && path.endsWith("/projects/43")
+					? { id: 43, path_with_namespace: "group/other" }
+					: { id: 42, path_with_namespace: "group/repo" };
 		if (provider === "github") {
 			if (path.endsWith("/comments")) result = notes;
 			else if (path.endsWith("/issues/1"))

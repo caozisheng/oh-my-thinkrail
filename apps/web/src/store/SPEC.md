@@ -1033,3 +1033,7 @@ has no cache), deleting a chat (`withoutChat`) drops its pane and the pane's val
   (`ConnectionStatus`, **type-only**); `@thinkrail/locales` (default chat/terminal names, settled-reason
   copy and toasts, resolved when created); `zustand`.
 - **Forbidden:** `server`/`shared`/`pi`; importing `panels`, shell runtime (the web-local layout state edge is type-only), or transport runtime.
+
+Issue read snapshots are credential-free host projections, keyed by local owner and connection
+generation. The store owns their install/invalidate operations. Panel remounts reuse valid snapshots;
+explicit refresh and association changes replace them. No disk persistence or token storage exists.

@@ -129,6 +129,49 @@ async function fixture() {
 	};
 }
 
+test("a non-Git group keeps Issue sessions while recovering only an associated checkout", async () => {
+	const f = await fixture();
+	f.options.ownerKind = "group";
+	await mkdir(join(f.root, "api"));
+	f.options.projectPath = (id) => (id === "api" ? join(f.root, "api") : f.root);
+	f.options.defaultWorkspace = (id) => ({
+		id: id === "local" ? "group-home" : "api-home",
+		projectId: id,
+		worktreePath: id === "local" ? f.root : join(f.root, "api"),
+		branch: id === "local" ? "" : "main",
+		kind: id === "local" ? "group" : "default",
+	});
+	f.options.listGitWorktrees = (id) => {
+		expect(id).not.toBe("local");
+		return f.trees.filter((tree) =>
+			f.workspaces.some((ws) => ws.projectId === id && ws.worktreePath === tree.path),
+		);
+	};
+	await f.coordinator().setRepositories(ref, ["api"]);
+	const first = await f.coordinator().implementation(ref);
+	expect(first.workspaceId).toBe("group-home");
+	expect(f.workspaces).toHaveLength(1);
+	const api = required(f.workspaces[0]);
+	expect(api.projectId).toBe("api");
+	await rm(api.worktreePath, { recursive: true });
+	f.workspaces.length = 0;
+	f.trees.length = 0;
+	f.options.recoveryBase = () => ({ commit: "a".repeat(40), source: "previous-branch" });
+	const diagnosis = await f.coordinator().implementationRecovery(ref);
+	expect(diagnosis.status).toBe("available");
+	expect(diagnosis.members.map((row) => row.projectId)).toEqual(["api"]);
+	const recovered = await f.coordinator().recoverImplementation(ref, {
+		projectId: "local",
+		reference: ref,
+		locale: "en",
+		snapshot: diagnosis.snapshot,
+		restart: false,
+	});
+	expect(recovered).toEqual(first);
+	expect((await f.coordinator().contexts(ref, "implementation"))[0]?.path).toBe(api.worktreePath);
+	await expect(f.coordinator().ownedImplementation(ref)).rejects.toThrow();
+});
+
 test("a group-source primary layout keeps equal remote IIDs in distinct reusable worktrees", async () => {
 	const f = await fixture();
 	f.options.layout = () => ({ root: f.root, paths: [{ projectId: "local", path: "" }] });

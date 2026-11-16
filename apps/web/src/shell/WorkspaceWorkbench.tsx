@@ -3,7 +3,7 @@ import {
 	RiChatNewLine as MessageSquarePlus,
 	RiTerminalBoxLine as SquareTerminal,
 } from "@remixicon/react";
-import type { IssueReference, IssueSessionLaunch } from "@thinkrail/contracts";
+import type { IssueSessionLaunch } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { t, useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
@@ -44,7 +44,6 @@ import { ArtifactsPanel } from "../panels/ArtifactsPanel";
 import { DiffPane } from "../panels/DiffPane";
 import { FilePane } from "../panels/FilePane";
 import { FilesPanel } from "../panels/FilesPanel";
-import { discussGroupIssue } from "../panels/groupWorkspace";
 import { openIssueSession } from "../panels/issueSession";
 import { startChatInTab } from "../panels/openChat";
 import { fileComparisonTab, openFileInTab } from "../panels/openTabs";
@@ -800,13 +799,6 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		},
 		[projectId],
 	);
-	const openGroupIssue = useCallback(
-		(reference: IssueReference) => {
-			if (projectId === undefined) return;
-			return discussGroupIssue(workspaceId, projectId, reference);
-		},
-		[projectId, workspaceId],
-	);
 	const toolBodies = useMemo<Record<LayoutToolId, ReactNode>>(() => {
 		const bodies: Record<LayoutToolId, ReactNode> = {
 			projects: (
@@ -837,7 +829,6 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					key={projectId}
 					projectId={projectId}
 					onLaunchSession={launchIssueSession}
-					{...(isGroup ? { onOpenIssue: openGroupIssue } : {})}
 					onTrustProject={trustProject}
 				/>
 			) : null,
@@ -893,7 +884,6 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		chatActions,
 		isChat,
 		isGroup,
-		openGroupIssue,
 		launchIssueSession,
 		trustProject,
 		keybindings,

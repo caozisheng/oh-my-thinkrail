@@ -1,5 +1,3 @@
-import type { IssueReference } from "@thinkrail/contracts";
-import { t } from "@thinkrail/locales/react";
 import { useAppStore } from "../store";
 import { getTransport } from "../transport";
 import { startChatInTab } from "./openChat";
@@ -27,19 +25,4 @@ export async function openGroupWorkspace(
 	} else if (view !== "default") {
 		store.enqueueLayoutIntent({ kind: "reveal-tool", workspaceId: workspace.id, tool: view });
 	}
-}
-
-export async function discussGroupIssue(
-	workspaceId: string,
-	groupId: string,
-	reference: IssueReference,
-) {
-	const detail = await getTransport().request("issues.detail", { projectId: groupId, reference });
-	await startChatInTab(workspaceId, {
-		draft: t("panels.groupHome.issueDraft", {
-			title: detail.title,
-			url: detail.url,
-			description: detail.description,
-		}),
-	});
 }
