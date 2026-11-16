@@ -220,7 +220,8 @@ them. For v134 recovery, implementation first performs a read-only diagnosis. An
 
 The two controls sit **on the issue title row, right-aligned** in a separate trailing group; the preview,
 associated-repository and implementation-history icon buttons sit immediately after the title in its
-left-side group. The lock indicator remains beside the title. The two stage controls are icon-only
+left-side group. The title group reserves a readable width and stage controls wrap below it when space
+is insufficient. History uses an icon-only button with a localized accessible name and tooltip. The lock indicator remains beside the title. The two stage controls are icon-only
 `IconButton`s (quill = run design, code box = run implementation) inside their own `TooltipProvider`; each keeps its action name as
 `aria-label`, a blocked one names its reason in the same tooltip plus `data-reason`, and a completed one is
 rendered with the shared `soft-primary` button variant and `data-done`. A pending action disables every control. Its own card immediately shows a localized, live status with a reduced-motion-aware spinner: starting design/implementation during the RPC, then opening chat while awaiting shell navigation. No percentage, cancellation or automatic retry is implied. Progress and failures are local to the issue and current project/connection request; refresh, disconnect and identity changes invalidate old continuations, including navigation after workspace loading. Navigation failure is distinct from host launch failure; without a navigation callback, a valid launch simply ends waiting. Dispatch goes through the one
