@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { join, normalize } from "node:path";
 import type {
 	HostPlatform,
@@ -68,6 +69,7 @@ import {
 	setExtensionSettingsResolver,
 	setExtUiPublisher,
 	setIssueToolHost,
+	setIssueToolsRequiredResolver,
 	setMcpLoginPublisher,
 	setMcpPolicyResolver,
 	setMcpStatusPublisher,
@@ -131,7 +133,7 @@ import { ignoredPaths } from "../git";
 import { forgetImageSession, resetImages, serveImage, setImageSource } from "../images";
 import { watchLocalLocales } from "../locales";
 import { logger, observeLoggedErrors } from "../log";
-import { loadWorkspaces } from "../persistence";
+import { dataDir, loadWorkspaces } from "../persistence";
 import {
 	getProjects,
 	grantProjectMcpTool,
@@ -378,6 +380,14 @@ function sameHostUpdateRelease(
 }
 
 export async function createServer(options: CreateServerOptions = {}): Promise<RunningServer> {
+	const isolationToken = process.env.THINKRAIL_E2E_ISOLATION;
+	const isolationIdentity = isolationToken
+		? createHash("sha256")
+				.update(
+					JSON.stringify([isolationToken, dataDir(), homedir(), process.env.PI_CODING_AGENT_DIR]),
+				)
+				.digest("hex")
+		: undefined;
 	applyGitCeiling();
 	try {
 		ensureChatsContainer();
@@ -487,7 +497,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 					: new Response("ws upgrade failed", { status: 400 });
 			}
 			if (url.pathname === "/health") {
-				return new Response("ok");
+				return new Response("ok", {
+					headers: isolationIdentity ? { "x-thinkrail-e2e-isolation": isolationIdentity } : {},
+				});
 			}
 			if (url.pathname.startsWith(IMAGES_ROUTE)) {
 				return req.method === "GET" || req.method === "HEAD"
@@ -1081,6 +1093,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	installRequestReviewSeam();
 	setTitleToolHost(titleToolHost);
 	setIssueToolHost(issuesHost.agentSessions);
+	setIssueToolsRequiredResolver((sessionId) => issuesHost.sessionRequiresIssueTools(sessionId));
 	// A bound Issue session's associated repositories carry their own TODO work windows and commits.
 	setSessionMemberWorkspaces(async (workspaceId, sessionId) => {
 		const members = await issuesHost.sessionMemberWorkspaces(sessionId);
@@ -1390,6 +1403,7 @@ function restoreSeamDefaults(): void {
 	setRequestReviewHandler(null);
 	setTitleToolHost(null);
 	setIssueToolHost(null);
+	setIssueToolsRequiredResolver(null);
 	setSettingsPublisher(null);
 	setSessionCreatedPublisher(() => {});
 	setSessionStatePublisher(() => {});

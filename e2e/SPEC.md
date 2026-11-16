@@ -497,6 +497,22 @@ caret line.
 
 ## Isolation contract
 
+Before startup, reset or cleanup, `fixtures/isolation.ts` validates the exact worktree/lane-owned
+absolute roots beneath the system temporary directory. Caller HOME and data overrides are captured
+before isolation and cannot become cleanup targets or descendants of one. Every existing component
+beneath the temporary directory, including Windows junctions and nested reset targets, must be free
+of symlink redirection; failed validation stops before filesystem, git or wire mutations. Setup failure
+cleanup and repeated teardown use the same guard. This policy belongs to the harness, not persistence.
+All host adapters use its environment builder after inherited variables; workflow workers apply it
+before loading server or pi modules, including an explicit data directory override.
+
+Each runner propagates a fresh process-family token. Hosts launched with that test-only token attach
+an opaque digest of the token and effective data/home/agent directories to health responses; ordinary
+health remains unchanged and exposes no paths. The harness verifies this identity before resetting local
+state or opening its setup wire. A healthy unrelated host, stale run or mismatched effective directory
+cannot authorize destructive setup/reset requests. The token is readiness evidence, not authentication
+for production APIs. Same-worktree invocations must still remain sequential.
+
 The no-agent setup seeds a test-owned empty `models.json` and never reads or copies developer
 `auth.json` or `models.json`; provider scenarios use synthetic fixtures, and the separately authorized
 real-Central mode keeps its opaque-artifact-only credential contract above. Ambient credential environment

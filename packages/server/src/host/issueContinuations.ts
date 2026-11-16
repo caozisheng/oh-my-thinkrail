@@ -202,10 +202,19 @@ function snapshot(input: unknown): string {
 		);
 	}
 }
-function unavailable(): never {
-	throw new CodedError(
-		"RESOURCE_UNAVAILABLE",
-		"This Issue continuation is unavailable. Prepare a fresh request and review its current state.",
+type UnavailableReason =
+	| "disabled"
+	| "missing"
+	| "session-mismatch"
+	| "operation-mismatch"
+	| "expired";
+function unavailable(reason: UnavailableReason): never {
+	throw Object.assign(
+		new CodedError(
+			"RESOURCE_UNAVAILABLE",
+			`Issue continuation unavailable [${reason}]. Inspect the original operation before preparing a fresh request; never resend an uncertain write.`,
+		),
+		{ reason },
 	);
 }
 
@@ -316,18 +325,22 @@ export function createIssueContinuations(options: IssueContinuationOptions) {
 			continuationId: string,
 			toolCallId: string,
 		): Promise<unknown> {
-			if (!enabled()) unavailable();
-			prune();
+			if (!enabled()) unavailable("disabled");
 			const entry = entries.get(continuationId);
-			if (!entry || entry.sessionId !== sessionId || entry.operationId !== operationId)
-				unavailable();
+			if (!entry) unavailable("missing");
+			if (entry.sessionId !== sessionId) unavailable("session-mismatch");
+			if (entry.operationId !== operationId) unavailable("operation-mismatch");
+			if ((!entry.result || entry.finished) && entry.expiresAt <= Date.now()) {
+				entries.delete(continuationId);
+				unavailable("expired");
+			}
 			await options.verify(sessionId, toolCallId, structuredClone(entry.questions));
-			if (
-				!enabled() ||
-				entries.get(continuationId) !== entry ||
-				(!entry.result && entry.expiresAt <= Date.now())
-			)
-				unavailable();
+			if (!enabled()) unavailable("disabled");
+			if (entries.get(continuationId) !== entry) unavailable("missing");
+			if (!entry.result && entry.expiresAt <= Date.now()) {
+				entries.delete(continuationId);
+				unavailable("expired");
+			}
 			if (!entry.result) {
 				entry.result = Promise.resolve()
 					.then(() =>

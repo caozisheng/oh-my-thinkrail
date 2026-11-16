@@ -123,6 +123,13 @@ permission to merge. Provider input/read types are exported through the barrel.
 
 ## Provider write and MR contract
 
+The optional `IssueRemote.deleteNote(iid, noteId)` capability deletes an ordinary comment only after
+reading that exact resource under the requested Issue. GitHub checks the comment's exact repository
+Issue API URL; GitLab scopes both requests to `/issues/:iid/notes/:noteId` and rejects system notes.
+Both require matching comment ids and a 204 DELETE response, make no retry, and retain bounded
+request deadlines and static error handling. Optionality permits read-only/injected ports to omit the
+capability; the host fails closed when absent. These primitives do not authorize actual deletion.
+
 `IssueDeliveryRemote extends IssueRemote` adds partial issue updates, single-attempt Issue close, exact-source-branch
 MR/PR listing and MR/PR creation using the shared `IssueMergeRequest` model. `IssueWorkflowRemote`
 extends that delivery port with GitLab-only approval evidence and merge operations. `GitHubClient`

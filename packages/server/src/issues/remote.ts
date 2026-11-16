@@ -96,6 +96,7 @@ export interface IssueRemote {
 	issues(): Promise<IssueRecord[]>;
 	notes(iid: number): Promise<IssueNote[]>;
 	addNote(iid: number, body: string): Promise<IssueNote>;
+	deleteNote?(iid: number, noteId: number): Promise<void>;
 }
 
 /** Provider-neutral delivery primitives; obtaining this port does not authorize a workflow. */

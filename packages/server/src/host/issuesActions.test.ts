@@ -244,7 +244,14 @@ function fixture(provider: "gitlab" | "github" = "gitlab") {
 		if (init?.method !== "PUT" && init?.method !== "POST" && path.includes("/issues/"))
 			await onRead?.();
 		let result: unknown;
-		if (path.endsWith("/resource_label_events")) result = events;
+		if (path.endsWith("/issues/1/notes/9")) {
+			if (init?.method === "DELETE") {
+				const index = notes.findIndex((note) => note.id === 9);
+				if (index >= 0) notes.splice(index, 1);
+				return new Response(null, { status: 204 });
+			}
+			result = notes.find((note) => note.id === 9);
+		} else if (path.endsWith("/resource_label_events")) result = events;
 		else if (path.endsWith("/user")) result = { id: 8 };
 		else if (path.includes("/members/all/")) result = { id: 8, access_level: 30 };
 		else if (path.endsWith("/notes")) {
@@ -729,6 +736,28 @@ test("implementation starts without approval or label writes and reuses the issu
 			readdirSync(join(f.dir, "issue-workflow")).length > 0,
 	).toBe(false);
 }, 60000);
+test("Issue tool requirement probe validates the durable session workspace association", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const launched = await f.host.beginDesign({ ...f.target, locale: "en" });
+	expect(await f.host.sessionRequiresIssueTools(launched.sessionId)).toBe(true);
+	expect(await f.host.sessionRequiresIssueTools("unbound-session")).toBe(false);
+});
+
+test("bound comment deletion uses the session Issue and the provider once", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const launched = await f.host.beginDesign({ ...f.target, locale: "en" });
+	f.notes.push({ id: 9, body: "comment", created_at: "2026-01-01T00:00:00Z" });
+	if (!f.host.agentSessions.deleteNote) throw new Error("deleteNote unavailable");
+	await expect(f.host.agentSessions.deleteNote(launched.sessionId, 9)).resolves.toEqual({
+		noteId: 9,
+		deleted: true,
+	});
+	expect(f.notes.map((note) => note.id)).not.toContain(9);
+	await expect(f.host.agentSessions.deleteNote("unbound", 9)).rejects.toThrow();
+});
+
 test("bound tools read fresh complete context and durably deduplicate caller operations", async () => {
 	const f = fixture();
 	await f.host.connect({ projectId: "one", input: f.input });
