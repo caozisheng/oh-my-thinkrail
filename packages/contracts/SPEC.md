@@ -1950,3 +1950,12 @@ upstream numbers.
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138, server fallback repair v139, and subagent catalog v140. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
 
 Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
+
+## Workspace capability boundary
+
+The public `workspaceCapabilities` projection and `isRepositoryProject` /
+`isRepositoryWorkspace` predicates own which domain kinds permit repository operations.
+They are pure, shared by host and web, and never grant trust or remote authorization.
+Managed, Default and external workspaces support Git, Specs and Issues; group workspaces
+support Specs and Issues without Git; projectless chats support neither. Creation, protocol
+compatibility and presentation still explicitly recognize group identity at their boundaries.

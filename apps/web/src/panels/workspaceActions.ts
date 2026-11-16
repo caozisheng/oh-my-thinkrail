@@ -1,5 +1,6 @@
 import {
 	type EditorInfo,
+	isRepositoryWorkspace,
 	PROJECT_ORDER_PROTOCOL_VERSION,
 	PROJECT_RENAME_PROTOCOL_VERSION,
 	type Project,
@@ -53,8 +54,7 @@ export function canSettleWorkspace(protocolVersion: number | null, workspace: Wo
 	return (
 		supportsWorkspaceSettling(protocolVersion) &&
 		workspace.kind !== "default" &&
-		workspace.kind !== "chat" &&
-		workspace.kind !== "group"
+		isRepositoryWorkspace(workspace)
 	);
 }
 

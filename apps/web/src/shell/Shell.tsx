@@ -4,6 +4,7 @@ import {
 	RiSearchLine,
 	RiSettings3Line as Settings,
 } from "@remixicon/react";
+import { isRepositoryWorkspace } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { useT } from "@thinkrail/locales/react";
 import { IconButton } from "@thinkrail/ui/button";
@@ -136,7 +137,9 @@ function ShellLayout() {
 		noteOpenReview,
 		refreshBranchStatus,
 	} = useBranchStatus(
-		activeChat || activeWorkspace?.kind === "group" ? null : activeWorkspace,
+		activeChat || (activeWorkspace && !isRepositoryWorkspace(activeWorkspace))
+			? null
+			: activeWorkspace,
 		status,
 		{ pollChecks: true },
 	);

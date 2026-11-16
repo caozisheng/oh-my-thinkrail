@@ -589,3 +589,15 @@ GitLab group bindings belong to the group context and keep each Issue's real pro
   an existing terminal's stdio (the `update`/`uninstall` CLI subcommands, the build script), shell
   probes that are no-ops on win32 (`shellEnv`), and the file-manager reveal (`explorer.exe` honors the
   hide flag by opening its folder window invisibly).
+
+### Group extension boundaries
+
+Group identity is an additive domain kind, not a repository and not a second engine. Shared host/web
+consumers query contracts' workspace capabilities instead of maintaining their own lists of non-Git
+kinds. Group document storage, group workspace creation and group welcome rendering have private
+adapters in their owning modules. Issue owners supply placement policy to the existing coordinator;
+session startup, journaling, associated worktrees and approval behavior remain shared.
+
+Upstream synchronization still touches the domain kind/protocol declarations, facade composition and
+navigation entry points. Keep these hooks small; do not duplicate upstream chat, terminal or workspace
+algorithms to avoid textual conflicts. Pure helpers in contracts grant no trust or authorization.

@@ -31,6 +31,7 @@ import {
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	isControlMessage,
+	isRepositoryWorkspace,
 	isSpeechModel,
 	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
@@ -1226,7 +1227,7 @@ const handlers: WsHandlers = {
 		void ensureWatch(p.workspaceId);
 		const nodes = readDir(p.workspaceId, p.path);
 		const workspace = getWorkspace(p.workspaceId);
-		if (isChatWorkspace(workspace) || workspace.kind === "group") return nodes;
+		if (!isRepositoryWorkspace(workspace)) return nodes;
 		const ignored = await ignoredPaths(
 			workspace.worktreePath,
 			nodes.map((node) => node.path),

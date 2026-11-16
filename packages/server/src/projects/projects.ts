@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import {
 	compareProjectRank,
+	isRepositoryProject,
 	type McpProjectOverride,
 	type McpToolGrant,
 	type Project,
@@ -203,7 +204,7 @@ export function listProjects(): Project[] {
 
 function openRepositories(projects: Project[]): Project[] {
 	return projects
-		.filter((project) => project.closed !== true && project.kind === undefined)
+		.filter((project) => project.closed !== true && isRepositoryProject(project))
 		.sort(compareProjectRank);
 }
 

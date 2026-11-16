@@ -1919,3 +1919,10 @@ and exact clone checks for delivery. The group folder is not itself a source che
 Group launch fences use the full local owner/provider/instance/remote project/IID identity, so
 parallel reads and starts for equal IIDs in different repositories cannot contend. Repository-owned
 fences keep their legacy per-owner/IID scope because the primary checkout path is shared across bindings.
+
+## Issue owner boundary
+
+`issueOwner.ts` owns local owner admission, trusted member eligibility and reference candidates.
+Actions recheck that policy around asynchronous work, then pass the owner kind and workspace
+resolver to the shared coordinator. The policy does not create sessions, select repositories,
+grant trust or change the existing approval/join behavior.

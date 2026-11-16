@@ -495,3 +495,10 @@ user-attached worktrees as external; this recovery seam is not a general adoptio
 - **Allowed deps:** `projects` (repo lookup), `git` (the runner), `persistence`, `log`; `contracts`;
   `@thinkrail/shared/artifactsDir` (the scratch-dir seeding), `@thinkrail/shared/codedError`; Node.
 - **Forbidden:** `host`; reaching into another feature's internals (use its barrel).
+
+## Group creation adapter
+
+`group.ts` owns stable non-Git group workspace materialization. The shared workspace facade
+delegates that one creation path and supplies its existing lifecycle publisher; there is no
+second publisher, registry or session runtime. Repository guards elsewhere consume the contracts'
+repository-capability predicate. Explicit group checks remain only at creation/selection boundaries.

@@ -46,6 +46,7 @@ import {
 	saveAcquisitionIn,
 } from "./attribution";
 import { type AcquisitionRecord, isRecord } from "./attributionProtocol";
+import { createGroupContextStore } from "./groupContexts";
 import { claimAppInstalledIn, ensureInstallationIn, type InstallationRecord } from "./installation";
 
 export {
@@ -546,47 +547,10 @@ export function isChatWorkspace(workspace: Pick<Workspace, "kind">): boolean {
 	return workspace.kind === "chat";
 }
 
-type GroupContexts = { version: 1; projects: Project[]; workspaces: Workspace[] };
-
-function groupContexts(): GroupContexts {
-	let raw: unknown;
-	try {
-		raw = JSON.parse(readFileSync(join(dataDir(), "group-contexts.json"), "utf8"));
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT")
-			return { version: 1, projects: [], workspaces: [] };
-		throw error;
-	}
-	if (
-		!isRecord(raw) ||
-		raw.version !== 1 ||
-		!Array.isArray(raw.projects) ||
-		!Array.isArray(raw.workspaces) ||
-		!raw.projects.every(
-			(project) =>
-				isRecord(project) &&
-				project.kind === "group" &&
-				typeof project.id === "string" &&
-				isAbsolutePath(project.path) &&
-				typeof project.name === "string" &&
-				typeof project.slug === "string" &&
-				Number.isFinite(project.lastOpened),
-		) ||
-		!raw.workspaces.every(
-			(workspace) =>
-				isRecord(workspace) &&
-				workspace.kind === "group" &&
-				typeof workspace.id === "string" &&
-				typeof workspace.projectId === "string" &&
-				isAbsolutePath(workspace.worktreePath) &&
-				typeof workspace.name === "string" &&
-				workspace.branch === "" &&
-				workspace.baseBranch === "",
-		)
-	)
-		throw new Error("Unsupported or malformed group contexts store.");
-	return raw as GroupContexts;
-}
+const groupStore = createGroupContextStore(
+	() => readFileSync(join(dataDir(), "group-contexts.json"), "utf8"),
+	(value) => writeJsonAtomic("group-contexts.json", value),
+);
 
 export function loadProjects(): Project[] {
 	const repositories = readJson<Project[]>("projects.json", [], Array.isArray).map((project) => ({
@@ -594,18 +558,15 @@ export function loadProjects(): Project[] {
 		path: storedDirectory(project.path),
 	}));
 	const { container } = loadChats();
-	return [...repositories, ...(container ? [container] : []), ...groupContexts().projects];
+	return [...repositories, ...(container ? [container] : []), ...groupStore.projects()];
 }
 
 /** Partitions on save: repository projects to `projects.json`, the Chats container to `chats.json`. */
 export function saveProjects(projects: Project[]): void {
-	const groups = groupContexts();
-	const contexts = projects.filter((project) => project.kind === "group");
-	if (contexts.length > 0 || groups.projects.length > 0)
-		writeJsonAtomic("group-contexts.json", { ...groups, projects: contexts });
+	const repositoryProjects = groupStore.partitionProjects(projects);
 	writeJsonAtomic(
 		"projects.json",
-		projects.filter((project) => project.kind === undefined),
+		repositoryProjects.filter((project) => !isChatsContainer(project)),
 	);
 	const container = projects.find(isChatsContainer) ?? null;
 	const stored = writableChats();
@@ -620,18 +581,15 @@ export function loadWorkspaces(): Workspace[] {
 			worktreePath: storedDirectory(workspace.worktreePath),
 		}),
 	);
-	return [...repositories, ...loadChats().chats, ...groupContexts().workspaces];
+	return [...repositories, ...loadChats().chats, ...groupStore.workspaces()];
 }
 
 /** Partitions on save: repository workspaces to `workspaces.json`, chat workspaces to `chats.json`. */
 export function saveWorkspaces(workspaces: Workspace[]): void {
-	const groups = groupContexts();
-	const contexts = workspaces.filter((workspace) => workspace.kind === "group");
-	if (contexts.length > 0 || groups.workspaces.length > 0)
-		writeJsonAtomic("group-contexts.json", { ...groups, workspaces: contexts });
+	const repositoryWorkspaces = groupStore.partitionWorkspaces(workspaces);
 	writeJsonAtomic(
 		"workspaces.json",
-		workspaces.filter((workspace) => !isChatWorkspace(workspace) && workspace.kind !== "group"),
+		repositoryWorkspaces.filter((workspace) => !isChatWorkspace(workspace)),
 	);
 	const chats = workspaces.filter(isChatWorkspace);
 	const stored = writableChats();
