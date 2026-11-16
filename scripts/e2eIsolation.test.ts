@@ -7,6 +7,7 @@ import {
 	assertE2eHost,
 	assertE2ePath,
 	assertE2eTree,
+	assertNoE2eHost,
 	e2eHostEnvironment,
 } from "../e2e/fixtures/isolation";
 import { E2E_BINARY_CACHE, E2E_DATA_DIR } from "../e2e/fixtures/paths";
@@ -93,6 +94,17 @@ test("an ordinary healthy host grants no reset authority", async () => {
 	} finally {
 		server.stop(true);
 	}
+});
+
+test("prelaunch rejects an occupied endpoint and permits a refused one", async () => {
+	const server = Bun.serve({ port: 0, fetch: () => new Response("stale host") });
+	const port = Number(server.port);
+	try {
+		await expect(assertNoE2eHost(port)).rejects.toThrow("E2E isolation");
+	} finally {
+		server.stop(true);
+	}
+	await expect(assertNoE2eHost(1)).resolves.toBeUndefined();
 });
 
 test("host environment overrides both homes, data and tool paths", () => {
