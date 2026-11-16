@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { artifactHostEnvironment } from "../e2e/artifactPlaywright";
 import {
 	assertE2eHost,
 	assertE2ePath,
@@ -9,7 +10,7 @@ import {
 	assertNoE2eHost,
 	e2eHostEnvironment,
 } from "../e2e/fixtures/isolation";
-import { E2E_DATA_DIR } from "../e2e/fixtures/paths";
+import { E2E_BINARY_CACHE, E2E_DATA_DIR } from "../e2e/fixtures/paths";
 
 test("unsafe cleanup targets are rejected", () => {
 	for (const path of [
@@ -35,6 +36,21 @@ test("junction redirection fails before deleting a fake production sentinel", ()
 		expect(() => assertE2eTree()).toThrow("E2E isolation");
 		expect(() => assertE2ePath(join(link, "projects.json"))).toThrow("E2E isolation");
 		expect(readFileSync(join(fake, "projects.json"), "utf8")).toBe("do not touch");
+	} finally {
+		rmSync(link, { recursive: true, force: true });
+		rmSync(fake, { recursive: true, force: true });
+	}
+});
+
+test("artifact startup rejects nested cache junctions before returning an environment", () => {
+	const fake = mkdtempSync(join(tmpdir(), "thinkrail-isolation-cache-"));
+	const link = join(E2E_BINARY_CACHE, `redirect-${process.pid}`);
+	mkdirSync(E2E_BINARY_CACHE, { recursive: true });
+	writeFileSync(join(fake, "sentinel"), "untouched cache");
+	try {
+		symlinkSync(fake, link, process.platform === "win32" ? "junction" : "dir");
+		expect(() => artifactHostEnvironment(E2E_BINARY_CACHE)).toThrow("E2E isolation");
+		expect(readFileSync(join(fake, "sentinel"), "utf8")).toBe("untouched cache");
 	} finally {
 		rmSync(link, { recursive: true, force: true });
 		rmSync(fake, { recursive: true, force: true });
