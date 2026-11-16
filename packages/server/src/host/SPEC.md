@@ -1243,7 +1243,7 @@ no stage actions, generic credential framework, or agent/session injection.
 `issues.repositoryAddress({ projectId })` also sits at the v105 Issues auth floor with
 `issues.connect`, because it prefills the form that will carry a token. The call takes no path:
 the exact-key request guard accepts only `projectId`, and the host resolves the registered project
-through `getProjects`, requiring membership and `trusted === true` like connect/list. It then runs the
+through `getProjects`, requiring membership and the shared Issue trust predicate. It then runs the
 existing bounded local `git` read `originUrls(project.path)`: no fetch, no `ls-remote`, no credential
 helper, no network. The host answers the configured `origin` fetch URL only when the project has a
 single remote named `origin` and the value is already a credential-free canonical HTTP(S) address
@@ -1737,3 +1737,9 @@ fences keep their legacy per-owner/IID scope because the primary checkout path i
 Actions recheck that policy around asynchronous work, then pass the owner kind and workspace
 resolver to the shared coordinator. The policy does not create sessions, select repositories,
 grant trust or change the existing approval/join behavior.
+
+## Shared Issue repository admission
+
+`issueOwner.ts` uses contracts' shared candidate predicate for selection, joining and agent reference
+scope. Issue session/context reads use the same trust predicate. The host rechecks these rules around
+asynchronous work; native pi resources, alias skills and MCP keep their independent admission rules.

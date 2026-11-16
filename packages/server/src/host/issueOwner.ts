@@ -1,5 +1,5 @@
 import {
-	isRepositoryProject,
+	isIssueRepositoryCandidate,
 	PROJECT_GROUP_MAX_REPOSITORIES,
 	type Project,
 } from "@thinkrail/contracts";
@@ -18,19 +18,15 @@ export function readIssueOwner(projectId: string): Project {
 	if (
 		!project ||
 		project.closed ||
-		(project.kind !== "group" && (!isRepositoryProject(project) || project.trusted !== true))
+		(project.kind !== "group" && !isIssueRepositoryCandidate(project))
 	)
 		unavailable();
 	return project;
 }
 
 export function readIssueRepository(owner: Project, projectId: string): Project {
-	const project = readIssueOwner(projectId);
-	if (
-		!isRepositoryProject(project) ||
-		(owner.kind === "group" && project.projectGroup?.id !== owner.id)
-	)
-		unavailable();
+	const project = getProjects().find((project) => project.id === projectId);
+	if (!project || !isIssueRepositoryCandidate(project, owner)) unavailable();
 	return project;
 }
 
@@ -39,7 +35,7 @@ export function issueReferenceCandidates(projectId: string): string[] {
 	return (
 		owner?.kind === "group" ? projectGroupProjects(projectId) : projectGroupMembers(projectId)
 	)
-		.filter((project) => project.trusted === true)
+		.filter((project) => isIssueRepositoryCandidate(project, owner))
 		.slice(0, PROJECT_GROUP_MAX_REPOSITORIES)
 		.map((project) => project.id);
 }

@@ -21,7 +21,7 @@ sessions and isolated Git worktrees.
 Issues integration is experimental and covers GitLab and GitHub repositories. The provider follows the
 repository address — only `github.com` is GitHub, every other host is GitLab. Connections use access tokens. It includes:
 
-- HTTP(S) project association from the Issues panel or after opening or cloning a repository. Configure the source address and token first, then trust the project to load Issues. Only open, trusted repositories are offered for linking; operation-lock contention appears beside the Issue title without granting unlock authority.
+- HTTP(S) project association from the Issues panel or after opening or cloning a repository. Configure the source address and token first, then trust the project to load Issues. Existing project-resource or skill trust is recognized, without another grant. Only open, trusted repositories are offered for linking; operation-lock contention appears beside the Issue title without granting unlock authority.
 - Personal access tokens stored in the host's OS credential vault, with explicit consent for non-local
   HTTP connections and no plaintext storage fallback.
 - An issue list with **Design** and **Implement** actions. Sessions use the Issue title; implementation

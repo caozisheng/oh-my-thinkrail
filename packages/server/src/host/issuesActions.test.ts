@@ -14,10 +14,11 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { designVersion, implementationVersion } from "../issues";
-import { saveProjects } from "../persistence";
+import { loadProjects, saveProjects } from "../persistence";
 import { openProjectGroupContext, setProjectTrust } from "../projects";
 import { ensureGroupWorkspace, listWorkspaceRecords } from "../workspaces";
 import { createIssuesHost } from "./issues";
+import { groupReferenceCandidates } from "./issuesActions";
 
 const dirs: string[] = [];
 const previous = process.env.THINKRAIL_DATA_DIR;
@@ -32,45 +33,101 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
-test("a group uses the original bound Issue sessions, repository links and implementation worktrees", async () => {
+for (const grant of ["legacy", "resources"] as const)
+	test(`a group uses bound Issue sessions and member worktrees with ${grant} trust`, async () => {
+		const f = fixture("gitlab", true);
+		if (grant === "resources") {
+			saveProjects(
+				loadProjects().map((project) => {
+					const { trusted: _trusted, ...rest } = project;
+					return { ...rest, piResourceTrust: "granted" as const };
+				}),
+			);
+		}
+
+		const owner = await openProjectGroupContext("group-owner");
+		const workspace = ensureGroupWorkspace(owner);
+		expect(groupReferenceCandidates(owner.id)).toContain("one");
+		await f.host.connect({ projectId: owner.id, input: f.input });
+		await f.host.setRepositories({ ...f.target, projectIds: ["one"] });
+		const design = await f.host.beginDesign({ ...f.target, locale: "en" });
+		expect(design.workspaceId).toBe(workspace.id);
+		expect(f.prompts[0]?.prompt).toContain("/skill:tomato-issue-workflow");
+		expect(f.prompts[0]?.prompt).toContain("https://gitlab.example/group/repo/-/issues/1");
+		expect(f.prompts[0]?.prompt).toContain('"role":"associated"');
+		expect(await f.host.beginDesign({ ...f.target, locale: "en" })).toEqual(design);
+		const implementation = await f.host.beginImplementation({ ...f.target, locale: "en" });
+		expect(implementation.workspaceId).toBe(workspace.id);
+		expect(implementation.sessionId).not.toBe(design.sessionId);
+		expect(f.prompts).toHaveLength(2);
+		const contexts = await f.host.implementationContexts(f.target);
+		expect(contexts).toHaveLength(1);
+		const context = contexts[0];
+		if (!context) throw new Error("Missing associated repository context");
+		expect(contexts[0]?.projectId).toBe("one");
+		expect(contexts[0]?.path).not.toBe(join(f.dir, "member"));
+		expect(git(contexts[0]?.path ?? "", "rev-parse", "--is-inside-work-tree")).toBe("true");
+		expect(existsSync(join(f.dir, ".git"))).toBe(false);
+		expect(await f.host.sessionMemberWorkspaces(implementation.sessionId)).toEqual([
+			{ workspaceId: context.workspaceId, worktreePath: context.path },
+		]);
+		expect(f.host.workspaceIssueBindings().has(workspace.id)).toBe(false);
+		const restarted = createIssuesHost(f.options);
+		expect(await restarted.beginImplementation({ ...f.target, locale: "en" })).toEqual(
+			implementation,
+		);
+		expect(f.prompts).toHaveLength(2);
+		const other = { ...f.target, reference: { ...f.target.reference, projectId: "43" } };
+		const otherDesign = await restarted.beginDesign({ ...other, locale: "en" });
+		expect(otherDesign.workspaceId).toBe(workspace.id);
+		expect(otherDesign.sessionId).not.toBe(design.sessionId);
+		setProjectTrust("one", false);
+		expect(groupReferenceCandidates(owner.id)).not.toContain("one");
+		await expect(restarted.beginImplementation({ ...f.target, locale: "en" })).rejects.toThrow();
+	});
+
+test("resource-only trust admits single-repository Issue sessions without enabling aliases", async () => {
+	const f = fixture();
+	saveProjects(
+		loadProjects().map((project) => {
+			const { trusted: _trusted, ...rest } = project;
+			return { ...rest, piResourceTrust: "granted" as const };
+		}),
+	);
+	await f.host.connect({ projectId: "one", input: f.input });
+	const launch = await f.host.beginDesign({ ...f.target, locale: "en" });
+	expect(await f.host.agentSessions.context(launch.sessionId)).toContain(
+		"https://gitlab.example/group/repo/-/issues/1",
+	);
+	expect(loadProjects()[0]?.trusted).toBeUndefined();
+	expect(loadProjects()[0]?.piResourceTrust).toBe("granted");
+	setProjectTrust("one", false);
+	await expect(f.host.agentSessions.context(launch.sessionId)).rejects.toThrow();
+	await expect(f.host.beginDesign({ ...f.target, locale: "en" })).rejects.toThrow();
+});
+
+test("resource trust revocation during a group launch rejects pending work", async () => {
 	const f = fixture("gitlab", true);
 	const owner = await openProjectGroupContext("group-owner");
-	const workspace = ensureGroupWorkspace(owner);
+	ensureGroupWorkspace(owner);
+	saveProjects(
+		loadProjects().map((project) => {
+			if (project.id !== "one") return project;
+			const { trusted: _trusted, ...rest } = project;
+			return { ...rest, piResourceTrust: "granted" as const };
+		}),
+	);
 	await f.host.connect({ projectId: owner.id, input: f.input });
 	await f.host.setRepositories({ ...f.target, projectIds: ["one"] });
-	const design = await f.host.beginDesign({ ...f.target, locale: "en" });
-	expect(design.workspaceId).toBe(workspace.id);
-	expect(f.prompts[0]?.prompt).toContain("/skill:tomato-issue-workflow");
-	expect(f.prompts[0]?.prompt).toContain("https://gitlab.example/group/repo/-/issues/1");
-	expect(f.prompts[0]?.prompt).toContain('"role":"associated"');
-	expect(await f.host.beginDesign({ ...f.target, locale: "en" })).toEqual(design);
-	const implementation = await f.host.beginImplementation({ ...f.target, locale: "en" });
-	expect(implementation.workspaceId).toBe(workspace.id);
-	expect(implementation.sessionId).not.toBe(design.sessionId);
-	expect(f.prompts).toHaveLength(2);
-	const contexts = await f.host.implementationContexts(f.target);
-	expect(contexts).toHaveLength(1);
-	const context = contexts[0];
-	if (!context) throw new Error("Missing associated repository context");
-	expect(contexts[0]?.projectId).toBe("one");
-	expect(contexts[0]?.path).not.toBe(join(f.dir, "member"));
-	expect(git(contexts[0]?.path ?? "", "rev-parse", "--is-inside-work-tree")).toBe("true");
-	expect(existsSync(join(f.dir, ".git"))).toBe(false);
-	expect(await f.host.sessionMemberWorkspaces(implementation.sessionId)).toEqual([
-		{ workspaceId: context.workspaceId, worktreePath: context.path },
-	]);
-	expect(f.host.workspaceIssueBindings().has(workspace.id)).toBe(false);
-	const restarted = createIssuesHost(f.options);
-	expect(await restarted.beginImplementation({ ...f.target, locale: "en" })).toEqual(
-		implementation,
+	f.onRead = () => {
+		setProjectTrust("one", false);
+	};
+	await expect(f.host.beginImplementation({ ...f.target, locale: "en" })).rejects.toThrow();
+	expect(f.created).toBe(0);
+	expect(f.prompts).toHaveLength(0);
+	expect(listWorkspaceRecords("one").filter((workspace) => workspace.kind === undefined)).toEqual(
+		[],
 	);
-	expect(f.prompts).toHaveLength(2);
-	const other = { ...f.target, reference: { ...f.target.reference, projectId: "43" } };
-	const otherDesign = await restarted.beginDesign({ ...other, locale: "en" });
-	expect(otherDesign.workspaceId).toBe(workspace.id);
-	expect(otherDesign.sessionId).not.toBe(design.sessionId);
-	setProjectTrust("one", false);
-	await expect(restarted.beginImplementation({ ...f.target, locale: "en" })).rejects.toThrow();
 });
 
 test("recovery refuses a stale frozen base and reports missing old transcript explicitly", async () => {

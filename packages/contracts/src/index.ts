@@ -93,6 +93,7 @@ export type * from "./issues";
 export {
 	canonicalIssueInstanceUrl,
 	hasIssueHttpConsent,
+	hasIssueProjectTrust,
 	isIssueApprovalResult,
 	isIssueConnectionInput,
 	isIssueDesignApproval,
@@ -104,6 +105,7 @@ export {
 	isIssueReference,
 	isIssueRepositories,
 	isIssueRepositoriesInput,
+	isIssueRepositoryCandidate,
 	isIssueRepositoryJoinInput,
 	isIssueSessionLaunch,
 	isIssueSessionStartupTarget,

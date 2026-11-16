@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -7,12 +7,13 @@ import {
 	type IssueConnectionInput,
 	type IssueSessionLaunch,
 	type IssueSummary,
+	type Project,
 	type ServerWelcome,
 	WS_CHANNELS,
 } from "@thinkrail/contracts";
 import { enterDefaultWorkspace, openFixtureProject, pressPlatformShortcut } from "./fixtures/app";
 import { gitAs } from "./fixtures/git";
-import { E2E_PLAIN_DIR } from "./fixtures/paths";
+import { E2E_DATA_DIR, E2E_PLAIN_DIR } from "./fixtures/paths";
 import { E2eWire } from "./fixtures/wire";
 
 async function openFixtureGroup(page: Page) {
@@ -55,6 +56,7 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 	let listReads = 0;
 	let launch: IssueSessionLaunch | undefined;
 	let designTarget: unknown;
+	const selections = new Map<string, string[]>();
 
 	const issues: IssueSummary[] = [7, 9].map((id) => ({
 		reference: { provider: "gitlab", instanceUrl, projectId: String(id), number: 12 },
@@ -87,8 +89,15 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 			} else if (frame.method === "issues.list") {
 				listReads++;
 				reply({ issues, fetchedAt: "2026-01-01T00:00:00Z" });
-			} else if (frame.method === "issues.repositories") reply({ projectIds: [], locked: false });
-			else if (frame.method === "issues.detail") {
+			} else if (frame.method === "issues.repositories")
+				reply({
+					projectIds: selections.get(JSON.stringify(frame.params.reference)) ?? [],
+					locked: false,
+				});
+			else if (frame.method === "issues.setRepositories") {
+				selections.set(JSON.stringify(frame.params.reference), frame.params.projectIds);
+				reply({ projectIds: frame.params.projectIds, locked: false });
+			} else if (frame.method === "issues.detail") {
 				const ref = frame.params.reference;
 				const issue = issues.find((row) => row.reference.projectId === ref.projectId);
 				reply({
@@ -119,6 +128,26 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 		server.onMessage((message) => browser.send(message));
 	});
 	const { groupId } = await openFixtureGroup(page);
+	const projectsFile = join(E2E_DATA_DIR, "projects.json");
+	const projects: Project[] = JSON.parse(readFileSync(projectsFile, "utf8"));
+	const members = projects.filter((project) => project.projectGroup?.id === groupId);
+	writeFileSync(
+		projectsFile,
+		JSON.stringify(
+			projects.map((project) => {
+				if (project.projectGroup?.id !== groupId) return project;
+				const { trusted: _trusted, ...rest } = project;
+				return { ...rest, piResourceTrust: "granted" };
+			}),
+		),
+	);
+	await page.reload();
+	await page
+		.locator(`[data-testid="project-group"][data-group="${groupId}"]`)
+		.getByTestId("project-group-overview")
+		.click();
+	await expect(page.getByTestId("project-group-home-title")).toHaveText("Fixture group");
+
 	const wire = await E2eWire.connect(Number(new URL(page.url()).port));
 	try {
 		const { workspace } = await wire.request("project.openGroup", { groupId });
@@ -175,6 +204,18 @@ test("a group owns its tracker, previews and combined people filters", async ({ 
 			"No archived implementation conversations.",
 		);
 		await page.keyboard.press("Escape");
+	}
+	const linkedCard = page.getByTestId("issue-card").first();
+	await linkedCard.getByTestId("issue-repositories").click();
+	await expect(page.getByTestId("issue-repository-option")).toHaveCount(members.length);
+	const option = page.getByTestId("issue-repository-option").first();
+	await option.click();
+	await expect(option).toHaveAttribute("aria-selected", "true");
+	await page.keyboard.press("Escape");
+	const persisted: Project[] = JSON.parse(readFileSync(projectsFile, "utf8"));
+	for (const member of persisted.filter((project) => project.projectGroup?.id === groupId)) {
+		expect(member.trusted).toBeUndefined();
+		expect(member.piResourceTrust).toBe("granted");
 	}
 	const beforeRemount = listReads;
 	await rail.click();
