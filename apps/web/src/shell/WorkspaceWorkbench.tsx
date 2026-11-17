@@ -96,8 +96,8 @@ import {
 import { releaseClosedTab } from "./closedTab";
 import { ExtensionPanelBody, useExtensionChatPane } from "./ExtensionPanelBody";
 import { useChatActions, useChatTabActions, useLeftRailFooter } from "./extensionEntryPoints";
-import { useResolvedKeybindings } from "./keybindingState";
 import { GroupWorkspaceWelcome } from "./GroupWorkspaceWelcome";
+import { useResolvedKeybindings } from "./keybindingState";
 import {
 	collectAllGroups,
 	findPlacedResource,

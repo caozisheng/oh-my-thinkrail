@@ -11,7 +11,7 @@ tags: [wire]
 
 ## Responsibility
 
-From v136 a project group has its own working context: `Project.kind: "group"` with the membership
+From v138 a project group has its own working context: `Project.kind: "group"` with the membership
 group id, and one `Workspace.kind: "group"` rooted at the group folder. These are owners, never member
 repositories. `project.openGroup` materializes/reuses that context without selecting a primary repository.
 Group Issues connections use the group owner id and require group scope; repository owners reject
@@ -37,17 +37,17 @@ of controller authorization.
 
 ## Issue integration
 
-Protocol v137 enables the existing Issue launch, repository-association and recovery methods for
+Protocol v139 enables the existing Issue launch, repository-association and recovery methods for
 group owners. Sessions use the stable group workspace; associated repositories retain their Git
 ownership checks. Issue references always identify the owning remote repository.
 
-Protocol v136 adds GitLab group associations. `IssueConnectionInput.scope` and the persisted/public
+Protocol v138 adds GitLab group associations. `IssueConnectionInput.scope` and the persisted/public
 connection's optional `scope` are `"group"` for a group; absence retains the project association.
 `remoteProjectId` remains the verified numeric association target (a group id when scoped to a group),
 never an Issue reference's project id. Group summaries carry `projectPath` and always reference the
 actual owning project. A group id and a project id may coincide without sharing an identity.
 
-At the same v136 floor, summaries optionally include `assignees: IssuePerson[]` and
+At the same v138 floor, summaries optionally include `assignees: IssuePerson[]` and
 `author: IssuePerson | null`. `IssuePerson` projects only numeric id, display name and username;
 emails, avatars, profile URLs and credentials do not cross this surface. Absent fields remain unknown
 for older hosts/provider responses; an empty assignee array means unassigned.

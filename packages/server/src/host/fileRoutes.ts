@@ -1,7 +1,6 @@
 import { statSync } from "node:fs";
 import { extname } from "node:path";
-import { WORKSPACE_VIEW_ROUTE } from "@thinkrail/contracts";
-import { isRepositoryWorkspace } from "@thinkrail/contracts";
+import { isRepositoryWorkspace, WORKSPACE_VIEW_ROUTE } from "@thinkrail/contracts";
 import { CONTENT_SNIFF_BYTES, classifyBytes, mimeFromPath, resolveWorktreeFile } from "../fs";
 import { readBlobSizeAtAsync, readBlobStreamAtAsync } from "../git";
 import { loadWorkspaces } from "../persistence";

@@ -1,7 +1,7 @@
 import type { WsMethodName, WsParams, WsRequest, WsResult } from "@thinkrail/contracts";
+import { PROTOCOL_VERSION } from "@thinkrail/contracts";
 import { assertE2eHost } from "./isolation";
 import { E2E_DATA_DIR, E2E_PORT, E2E_RESTART_DATA_DIR, E2E_RESTART_PORT } from "./paths";
-import { PROTOCOL_VERSION } from "@thinkrail/contracts";
 
 export class E2eWireTransientError extends Error {}
 

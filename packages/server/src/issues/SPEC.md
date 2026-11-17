@@ -528,7 +528,7 @@ Workspace handles admit the shared `chat` kind as input, but every ownership/def
 rejects it. Repository-owned Issue work requires a real project checkout; group owners use their
 explicit non-Git workspace. Projectless chats cannot be Issue targets.
 
-## Group-owned Issue workflows (v137)
+## Group-owned Issue workflows (v139)
 
 The existing workspace coordinator, launch journal, Issue session association and startup prompt also
 serve group owners. `ownerKind: "group"` marks their records explicitly: design and implementation
