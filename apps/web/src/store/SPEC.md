@@ -831,9 +831,15 @@ session-only, dropped in `applyWorkspaceRemoved` with its workspace.
 The Artifacts tool's slices are per workspace: **`artifactsByWorkspace`** (`setWorkspaceArtifacts`, the
 host's `artifacts.list` snapshot), **`artifactsTickByWorkspace`** (`noteArtifactsChanged`, bumped by the
 `workspace.artifactsChanged` nudge and read through `selectArtifactsTick`) and **`artifactsSeenByWorkspace`**
-(`markArtifactsSeen`, a watermark that only moves forward; the first snapshot of a workspace seeds it), all
-dropped in `applyWorkspaceRemoved`, plus the app-wide **`artifactsShowIgnored`** toggle; the seen watermarks
-and the toggle hydrate from per-client preferences (`hydrateArtifactsPreferences`).
+(`markArtifactsSeen`, a watermark that only moves forward; the first snapshot of a workspace seeds it) and
+**`artifactsTreeExpandedByWorkspace`** (`setArtifactsTreeExpanded(workspaceId, paths, expanded)`,
+`collapseAllArtifacts`; the Tree view's open folders), all dropped in `applyWorkspaceRemoved`, plus the
+app-wide **`artifactsShowIgnored`** toggle, **`artifactsView`** (`setArtifactsView`, `"list" | "tree" |
+"smart"`, `null` until the user picks one) and **`artifactsSmart`** (`setArtifactsSmart`, the Settings switch
+for the Smart view, on by default); the seen watermarks, the open folders (Smart's group and chip ids
+included), the toggle, the view and the switch hydrate from per-client preferences
+(`hydrateArtifactsPreferences`). **`selectArtifactsView`** resolves the view the panel shows (an explicit
+choice, else Smart when it is switched on and **`supportsArtifactRoles`** holds, else List).
 **`pasteIntoComposer(sessionId, text)`** (Artifacts' Mention in chat) applies the same composer edit an
 extension's `pasteToEditor` request does, so both paste at the caret the same way.
 **`selectActiveFilePath`** is the path of the active file or diff tab, else `null`.

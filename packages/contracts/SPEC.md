@@ -532,11 +532,19 @@ these structural guards do not grant trust or enable an RPC by themselves.
   with `ENTRY_EXISTS` instead of renaming, for a folder into itself, and with `MOVE_ACROSS_DEVICES` when
   source and destination are on different file systems),
   the **Artifacts** tool's wire from the same version: `artifacts.list` (`{ workspaceId }` →
-  **`WorkspaceArtifactsSnapshot`**: `dir` (the artifacts folder, `.thinkrail/context`), `artifacts`
+  **`WorkspaceArtifactsSnapshot`**: `dir` (the artifacts folder, `.thinkrail/context`; agents write mockups to
+  its **`WORKSPACE_MOCKUP_DIR`**, `.thinkrail/context/mockups`, the one name the host's mockup check and the
+  browser UI's interactive-HTML glob share), `artifacts`
   (**`WorkspaceArtifact`**: worktree-relative `path`, `state: "live" | "deleted"` — deleted means gone from
   disk but restorable from the host's kept copy — `size`, `changedAt` (for a deleted row, when the host saw
   it gone, so a new deletion of the same path carries a new value), `firstSeenAt`, the writing chat's
-  optional `sessionId`) and `outputs` (**`WorkspaceIgnoredOutput`** rows — an ignored file or folder an
+  optional `sessionId`, and from **`ARTIFACT_ROLES_PROTOCOL_VERSION`** (v124) the host's **`role`**
+  (`ArtifactRole`: `"result" | "working"`), its **`reason`** (`ArtifactRoleReason`: `picked`, `shown`,
+  `linked`, `document` for a result; `working-folder`, `script`, `data`, `unshown` for a working file)
+  and **`rounds`** (`ArtifactRound[]`: the chat rounds, `{ sessionId, startedAt }`, that created or
+  changed it, oldest first and bounded; `startedAt` is the round's prompt timestamp, or the run start for a
+  run no prompt opened) — absent from an older host, so a client that needs them checks the
+  version rather than reading absence as "working") and `outputs` (**`WorkspaceIgnoredOutput`** rows — an ignored file or folder an
   agent run produced, with its live `files` count and `filesTruncated` — or `null` where there is no git),
   `artifacts.restore` / `artifacts.discard` (`{ workspaceId, path }` → ack; a deleted row only, otherwise
   `ARTIFACT_UNKNOWN`; restore refuses a path that exists again with `ENTRY_EXISTS`; discard sends the kept
@@ -652,7 +660,7 @@ these structural guards do not grant trust or enable an RPC by themselves.
   store, fonts runtime); the line-width fields join the wire at protocol v61, `terminalWindowsShell` at v62, and
   `voiceInputEnabled` (default `true`) with voice input at v117, and `questionPanelHeight`
   (**`QUESTION_PANEL_PROTOCOL_VERSION`** = v124; whole percents `QUESTION_PANEL_HEIGHT_PERCENT` 40–100,
-  default 60, `isQuestionPanelHeight`) caps the chat's interaction dock; a client of an older host hides
+  default 70, `isQuestionPanelHeight`) caps the chat's interaction dock; a client of an older host hides
   the setting and uses the default. `onboardingDismissed` (v94, default `false`)
   records that the user finished or skipped the cold-start onboarding wizard, so it never returns.
   `otherAgentSkills` (**`OTHER_AGENT_SKILLS_PROTOCOL_VERSION`** = v118, default `false`) is the host-wide
@@ -1295,7 +1303,10 @@ plain-text diagnostic excerpt and truncation flag, and the same optional `delive
 subagent completion (`wake` | `run` | `appended` — how the result reached the agent; absent in
 transcripts written before it, which keep the old round rules). The guards do not validate it; the
 shared `completionDelivery(details)` reader returns the marker or `undefined`, so an unknown value
-reads as absent everywhere. The conversation may render that historical notice,
+reads as absent everywhere. **`opensChatRound(message)`** is the message-level twin of the chat's
+turn-level `opensRound` ([[submodule-web-chat]]): a user prompt other than a control message, a
+`todo-review-fix`, a continuation request, a handoff, or a completion not delivered as `run`. The host
+uses it to cut artifact round markers where the chat cuts rounds; a web test pins the two together. The conversation may render that historical notice,
 but must never infer current resource authority from it; logs and controls still use scoped reads.
 
 Every read/control validates workspace membership and parent lineage, not merely a syntactically
@@ -1761,7 +1772,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v136. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v137. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1770,4 +1781,4 @@ upstream numbers.
 
 ## Latest upstream capability floors
 
-The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135 and keybindings v136. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
+The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.

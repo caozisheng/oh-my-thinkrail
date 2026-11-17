@@ -97,7 +97,7 @@ import type {
 	WorkspaceArtifactsSnapshot,
 	WorkspacePathMatch,
 } from "./domain";
-import { isDelegationRunDetails } from "./domain";
+import { isControlMessage, isDelegationRunDetails } from "./domain";
 import type {
 	IssueApprovalResult,
 	IssueConnection,
@@ -173,7 +173,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 136;
+export const PROTOCOL_VERSION = 137;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
@@ -205,6 +205,7 @@ export const WORKSPACE_PATH_RESOLVE_PROTOCOL_VERSION = 132;
 export const IMAGE_REFS_PROTOCOL_VERSION = 133;
 export const ARTIFACTS_PROTOCOL_VERSION = 135;
 export const KEYBINDINGS_PROTOCOL_VERSION = 136;
+export const ARTIFACT_ROLES_PROTOCOL_VERSION = 137;
 export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
 export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";
@@ -844,6 +845,36 @@ export function isBackgroundCommandCompletionMessage(
 		return false;
 	if (d.errorMessage !== undefined && typeof d.errorMessage !== "string") return false;
 	return !!d.output && typeof d.output.text === "string" && typeof d.output.truncated === "boolean";
+}
+
+function plainText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((block: unknown) =>
+			block &&
+			typeof block === "object" &&
+			"type" in block &&
+			block.type === "text" &&
+			"text" in block &&
+			typeof block.text === "string"
+				? block.text
+				: "",
+		)
+		.join("");
+}
+
+export function opensChatRound(message: unknown): boolean {
+	if (!message || typeof message !== "object") return false;
+	const { role, content } = message as { role?: unknown; content?: unknown };
+	if (role === "user") return !isControlMessage(plainText(content));
+	if (isBackgroundCommandCompletionMessage(message) || isSubagentCompletionMessage(message))
+		return completionDelivery(message.details) !== "run";
+	return (
+		isTodoReviewFixMessage(message) ||
+		isContinueInWorkspaceRequestMessage(message) ||
+		isChatHandoffMessage(message)
+	);
 }
 
 export function customMessageText(content: WireCustomMessage["content"]): string {
