@@ -204,9 +204,7 @@ test("receipt mismatch never offers a continuation for the same rejected authori
 
 test("deterministic and unknown errors are not turned into retry cards", async () => {
 	const service = host();
-	for (const error of [
-		new CodedError("RANGE_INVALID", "SECRET"),
-	]) {
+	for (const error of [new CodedError("RANGE_INVALID", "SECRET")]) {
 		let attempts = 0;
 		try {
 			await service.run("session", "operation", "prepare", {}, async () => {
@@ -226,9 +224,9 @@ test("deterministic and unknown errors are not turned into retry cards", async (
 test("missing continuations explain phase-specific recovery without authorizing a resend", async () => {
 	for (const phase of ["prepare", "execute"] as const) {
 		const first = host();
-		const blocked = await first.run("session", "operation", phase, {}, async () => {
+		const blocked = (await first.run("session", "operation", phase, {}, async () => {
 			throw refusal();
-		}) as IssueContinuationBlocked;
+		})) as IssueContinuationBlocked;
 		const recreated = host();
 		try {
 			await recreated.execute("session", "operation", blocked.continuationId, "receipt");
@@ -263,20 +261,19 @@ test("a deterministic continued refusal ends without another card", async () => 
 test("unknown errors fail closed without offering a continuation", async () => {
 	for (const error of [new CodedError("RESOURCE_UNAVAILABLE", "SECRET"), new Error("SECRET")]) {
 		let attempts = 0;
-		await expect(host().run("s", "op", "execute", {}, async () => {
-			attempts++;
-			throw error;
-		})).rejects.toMatchObject({ code: "RESOURCE_UNAVAILABLE" });
+		await expect(
+			host().run("s", "op", "execute", {}, async () => {
+				attempts++;
+				throw error;
+			}),
+		).rejects.toMatchObject({ code: "RESOURCE_UNAVAILABLE" });
 		expect(attempts).toBe(1);
 	}
 });
 
 test("sanitizes every thrown failure and recognized code without echoing messages", async () => {
 	const service = host();
-	for (const error of [
-		new CodedError("ISSUE_CONFIRMATION_BLOCKED", "SECRET"),
-		refusal(),
-	]) {
+	for (const error of [new CodedError("ISSUE_CONFIRMATION_BLOCKED", "SECRET"), refusal()]) {
 		const blocked = await card(service, async () => {
 			throw error;
 		});
@@ -308,10 +305,12 @@ test("offers cards only for structured, allow-listed refusal codes", async () =>
 		expect(blocked.continuationId).toBeString();
 		expect(JSON.stringify(blocked)).not.toContain("SECRET");
 	}
-	await expect(card(host(), async () => ({
-		status: "blocked",
-		reason: { code: "UNKNOWN", message: "SECRET" },
-	}))).rejects.toMatchObject({ code: "RESOURCE_UNAVAILABLE" });
+	await expect(
+		card(host(), async () => ({
+			status: "blocked",
+			reason: { code: "UNKNOWN", message: "SECRET" },
+		})),
+	).rejects.toMatchObject({ code: "RESOURCE_UNAVAILABLE" });
 });
 
 test("another refusal produces a separately approved card, without automatically retrying", async () => {
@@ -321,14 +320,15 @@ test("another refusal produces a separately approved card, without automatically
 		calls++;
 		throw refusal();
 	});
-	await expect(service.execute(
-		"session",
-		"operation",
-		first.continuationId,
-		"receipt",
-	)).rejects.toMatchObject({ code: "ISSUE_DELIVERY_REFUSED" });
+	await expect(
+		service.execute("session", "operation", first.continuationId, "receipt"),
+	).rejects.toMatchObject({ code: "ISSUE_DELIVERY_REFUSED" });
 	expect(calls).toBe(2);
-	expect(await service.execute("session", "operation", first.continuationId, "receipt").catch((error) => error)).toMatchObject({
+	expect(
+		await service
+			.execute("session", "operation", first.continuationId, "receipt")
+			.catch((error) => error),
+	).toMatchObject({
 		code: "ISSUE_DELIVERY_REFUSED",
 	});
 	expect(calls).toBe(2);
@@ -519,7 +519,11 @@ test("does not extract host tags from arbitrary errors, structured message field
 		new CodedError("RESOURCE_UNAVAILABLE", text),
 		Object.assign(new CodedError("RESOURCE_UNAVAILABLE", "safe"), { reason: text }),
 	]) {
-		const result = await service.run("s", "op", "execute", {}, async () => { throw error; }).catch((failure) => failure);
+		const result = await service
+			.run("s", "op", "execute", {}, async () => {
+				throw error;
+			})
+			.catch((failure) => failure);
 		expect(result).toMatchObject({ code: "RESOURCE_UNAVAILABLE" });
 		expect(JSON.stringify(result)).not.toContain("SECRET");
 	}

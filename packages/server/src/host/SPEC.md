@@ -22,9 +22,11 @@ reserves exclusive immutable intents before mutation, and makes completed receip
 inspection reports missing/prepared/uncertain/completed status. Deterministic preflight happens before
 intent reservation; after reservation, uncertain mutation stays fenced and requires remote inspection and
 explicit user-directed recovery.
-Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live provider
-identity. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP clone
-URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
+
+Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live
+provider identity. Auxiliary-repository delivery ports remain scoped to the bound Issue IID rather than a
+placeholder IID. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP
+clone URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
 creates drafts only. A matching existing request at an older SHA is updated in place after its card is
 confirmed; an exact-head request is reused without modification. Merged/closed requests are historical,
 not active candidates: they neither cause ambiguity nor prevent another Draft request for the same

@@ -88,6 +88,7 @@ beforeEach(async () => {
 		ports.save(JSON.stringify(["repo", "gitlab", reference.instanceUrl, "42", 7]), {
 			projectId: "repo",
 			reference,
+			design: { workspaceId: "design-workspace", sessionId: "design-session" },
 			implementation: {
 				state: "completed",
 				workspaceId: "workspace",
@@ -101,16 +102,60 @@ beforeEach(async () => {
 		credentials,
 		fetch: (async (url) => {
 			const address = String(url);
-			if (address.includes("/issues?")) return new Response("[]");
-			if (address.endsWith("/issues/1"))
+			if (address.includes("/api/v4/issues/7"))
 				return new Response(
 					JSON.stringify({
-						iid: 1,
+						iid: 7,
 						title: "Fixture",
 						description: "",
 						state: "opened",
 						labels: [],
 						updated_at: "2026-01-01T00:00:00Z",
+					}),
+				);
+			if (address.includes("/issues?")) return new Response("[]");
+			if (address.includes("/api/v4/projects/42/merge_requests/7"))
+				return new Response(
+					JSON.stringify({
+						id: 7,
+						iid: 7,
+						web_url: "https://gitlab.example/sub/group/repo/-/merge_requests/7",
+						state: "opened",
+						source_branch: snapshot.branch,
+						target_branch: "main",
+						sha: snapshot.sha,
+						merge_status: "cannot_be_merged",
+						detailed_merge_status: "not_approved",
+						draft: true,
+						title: "Draft: Fixture",
+						commit: { id: snapshot.sha },
+						source_project_id: 42,
+						target_project_id: 42,
+						last_commit: { id: snapshot.sha },
+						pipelines: [],
+					}),
+				);
+			if (address.includes("/api/v4/projects/42/repository/branches/main"))
+				return new Response(JSON.stringify({ name: "main", commit: { id: snapshot.sha } }));
+			if (address.includes("/merge_requests/7"))
+				return new Response(
+					JSON.stringify({
+						id: 7,
+						iid: 7,
+						web_url: "https://gitlab.example/sub/group/repo/-/merge_requests/7",
+						state: "opened",
+						source_branch: snapshot.branch,
+						target_branch: "main",
+						sha: snapshot.sha,
+						merge_status: "cannot_be_merged",
+						detailed_merge_status: "not_approved",
+						draft: false,
+						title: "Fixture",
+						commit: { id: snapshot.sha },
+						source_project_id: 42,
+						target_project_id: 42,
+						last_commit: { id: snapshot.sha },
+						pipelines: [],
 					}),
 				);
 			return new Response(JSON.stringify({ id: 42, path_with_namespace: "group/repo" }));
@@ -164,18 +209,26 @@ test("host composition records and reads delivery state without a confirmation",
 	});
 });
 
-test("MR ready and merge action names reach the composed host routes", async () => {
+test("MR ready and merge are reached through the composed host routes", async () => {
 	const prepare = host.agentSessions.prepareConfirmation;
 	if (!prepare) throw new Error("Issue confirmation tool is unavailable");
-	for (const action of ["ready-mr", "merge-mr"] as const) {
-		const result = await prepare("session", {
-			operationId: action,
-			action,
+	const ready = await prepare("session", {
+		operationId: "ready-mr",
+		action: "ready-mr",
+		projectId: "repo",
+		mergeRequestId: 7,
+		targetBranch: "main",
+		expectedSha: snapshot.sha,
+	});
+	expect(ready).toMatchObject({ digest: expect.any(String) });
+	await expect(
+		prepare("session", {
+			operationId: "merge-mr",
+			action: "merge-mr",
 			projectId: "repo",
 			mergeRequestId: 7,
 			targetBranch: "main",
 			expectedSha: snapshot.sha,
-		});
-		expect(result).toMatchObject({ status: expect.any(String) });
-	}
+		}),
+	).resolves.toMatchObject({ status: "blocked" });
 });

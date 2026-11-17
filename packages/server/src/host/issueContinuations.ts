@@ -46,7 +46,9 @@ const messages = {
 	ISSUE_CONFIRMATION_BLOCKED:
 		"Issue confirmation was blocked. Inspect the original operation before continuing.",
 } as const;
-const retryableCodes = new Set(Object.keys(messages));
+const retryableCodes = new Set<keyof typeof messages>(
+	Object.keys(messages) as (keyof typeof messages)[],
+);
 function nonRetryableError(error: unknown): CodedError {
 	if (error instanceof CodedError && error.code === "RANGE_INVALID")
 		return new CodedError(
@@ -112,7 +114,7 @@ const knownReasonTags = new Set([
 	"unsafe_directory",
 	"updated-request-not-observed",
 ]);
-function reason(error: unknown): IssueContinuationBlocked["reason"] {
+function reason(error: unknown): IssueContinuationBlocked["reason"] | null {
 	let code: unknown;
 	let text: unknown;
 	if (error instanceof CodedError) {
@@ -139,9 +141,10 @@ function reason(error: unknown): IssueContinuationBlocked["reason"] {
 			tag = match[0];
 		}
 	}
-	if (typeof code !== "string" || !retryableCodes.has(code)) return null;
-	const guidance = messages[code as keyof typeof messages];
-	return { code: code as keyof typeof messages, message: tag ? `${tag} ${guidance}` : guidance };
+	if (typeof code !== "string" || !retryableCodes.has(code as keyof typeof messages)) return null;
+	const retryableCode = code as keyof typeof messages;
+	const guidance = messages[retryableCode];
+	return { code: retryableCode, message: tag ? `${tag} ${guidance}` : guidance };
 }
 function isBlocked(value: unknown): boolean {
 	return (
@@ -319,7 +322,7 @@ export function createIssueContinuations(options: IssueContinuationOptions) {
 			const refusal = reason(failure);
 			if (!refusal) throw nonRetryableError(failure);
 			throw new CodedError(
-				refusal.code,
+				refusal.code as keyof typeof messages,
 				`${refusal.message} The approved continuation was used; inspect the operation and correct its prerequisites before preparing again.`,
 			);
 		}
