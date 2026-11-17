@@ -79,8 +79,8 @@ import {
 	useDeletedChatPlacementReconciliation,
 	useWorkspaceChatCatalogReconciliation,
 } from "./chatReconciliation";
-import { useResolvedKeybindings } from "./keybindingState";
 import { GroupWorkspaceWelcome } from "./GroupWorkspaceWelcome";
+import { useResolvedKeybindings } from "./keybindingState";
 import {
 	collectAllGroups,
 	findPlacedResource,

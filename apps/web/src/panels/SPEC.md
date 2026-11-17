@@ -616,7 +616,7 @@ default expanded) and persisted beside project expansion by `projectExpansion`; 
 keys from earlier builds are ignored. A collapsed header shows the attention dot when any member
 needs attention.
 
-**Group start (`+`) on hosts before v136.** The group header ends with the same ghost `+` as a repository row; it opens
+**Group start (`+`) on hosts before v138.** The group header ends with the same ghost `+` as a repository row; it opens
 `ProjectGroupStartDialog`, the project start screen's three `WelcomeCard`s and copy scoped to the
 group. **Start building** is the highlighted card and the group's main path, *start an Issue*: it
 switches the dialog to a primary-repository picker (group members by relative path; default the first
@@ -664,7 +664,7 @@ per-repository result list and a status refresh), **Refresh**, and **Remove grou
 dialog offering *Ungroup* or *Ungroup and close* (`project.removeGroup`), stating that nothing on disk
 changes.
 
-**Group workbench (v136).** Each group has a Default workspace row before its repository members.
+**Group workbench (v138).** Each group has a Default workspace row before its repository members.
 Clicking the group name or Default enters that stable group workspace directly in `WorkspaceWorkbench`;
 no overview/button landing is required. The group's plus, workbench New conversation and global new-work
 shortcut all create a blank chat in the group workspace, without a member-repository fallback or generated

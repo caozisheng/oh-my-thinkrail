@@ -290,7 +290,7 @@ test("an older host blocks group credentials while project association remains a
 		.getByTestId("issues-address")
 		.fill("https://gitlab.com/groups/company/platform/-/issues");
 	await page.getByTestId("issues-token").fill("disposable-group-browser-pat");
-	await expect(page.getByTestId("issues-provider-notice")).toContainText("v136");
+	await expect(page.getByTestId("issues-provider-notice")).toContainText("v138");
 	await expect(page.getByTestId("issues-connect")).toBeDisabled();
 	expect(submitted).toBe(false);
 	await page.getByTestId("issues-address").fill("https://gitlab.com/company/platform.git");
