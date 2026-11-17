@@ -135,6 +135,14 @@ export interface IssueWorkspaceOptions {
 		stage: "design" | "implementation",
 		workspaceId: string,
 	): Awaitable<string | undefined>;
+	/** Restore the durable Issue association for a verified existing session. */
+	bindSession?(
+		stage: "design" | "implementation",
+		workspaceId: string,
+		sessionId: string,
+	): Awaitable<void>;
+	/** Startup launches only: legacy launches intentionally do not create Issue bindings. */
+	restoreSessionBinding?: true;
 }
 
 // Different remote bindings can contend for the same numeric path in a local project.
@@ -646,7 +654,14 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		const ownership = primary;
 		const { workspaceId, session } = ownership;
 		const status = await sessionStatus(workspaceId, session?.id);
-		if (session && status) return { workspaceId, sessionId: session.id };
+		if (session && status) {
+			if (options.restoreSessionBinding && options.boundSession && options.bindSession) {
+				const bound = await options.boundSession("implementation", workspaceId);
+				if (bound && bound !== session.id) stop();
+				if (!bound) await options.bindSession("implementation", workspaceId, session.id);
+			}
+			return { workspaceId, sessionId: session.id };
+		}
 		await options.save(key, {
 			...record,
 			implementation: ownership,
@@ -690,6 +705,19 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			if (!missing) {
 				try {
 					await verifyImplementation(ownership, path, id);
+					if (
+						options.restoreSessionBinding &&
+						id === projectId &&
+						ownership.session?.id &&
+						options.boundSession
+					) {
+						const bound = await options.boundSession("implementation", ownership.workspaceId);
+						if (bound && bound !== ownership.session.id) {
+							reason = "resources-remain";
+							break;
+						}
+						if (!bound) reason = "session-binding-missing";
+					}
 					continue;
 				} catch {
 					reason = "resources-remain";
@@ -712,7 +740,8 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			.update(JSON.stringify({ record, members, requiresRestart }))
 			.digest("hex");
 		return {
-			status: reason ? "unavailable" : "available",
+			status:
+				reason === "session-binding-missing" ? "available" : reason ? "unavailable" : "available",
 			reason,
 			generation,
 			members,
@@ -928,8 +957,14 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 					const workspaceId = ws.id;
 					const existing =
 						record.design?.workspaceId === workspaceId ? record.design.sessionId : undefined;
-					if (existing && (await sessionStatus(workspaceId, existing)))
+					if (existing && (await sessionStatus(workspaceId, existing))) {
+						if (options.restoreSessionBinding && options.boundSession && options.bindSession) {
+							const bound = await options.boundSession("design", workspaceId);
+							if (bound && bound !== existing) stop();
+							if (!bound) await options.bindSession("design", workspaceId, existing);
+						}
 						return { workspaceId, sessionId: existing };
+					}
 					await options.save(key, {
 						...record,
 						design: { workspaceId, ...(existing ? { sessionId: existing } : {}) },

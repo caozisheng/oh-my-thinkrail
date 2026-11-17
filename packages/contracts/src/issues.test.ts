@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import {
 	canonicalIssueInstanceUrl,
 	hasIssueHttpConsent,
+	type IssueImplementationRecovery,
 	isIssueApprovalResult,
 	isIssueConnectionInput,
 	isIssueDesignApproval,
 	isIssueDesignPublicationInput,
+	isIssueImplementationRecovery,
 	isIssueImplementationTarget,
 	isIssuePublication,
 	isIssueReference,
@@ -281,6 +283,19 @@ test("design descriptions are independently bounded by UTF-8 bytes", () => {
 		for (const text of [null, 1, "a".repeat(262145), `${"😀".repeat(65536)}a`, "é".repeat(131073)])
 			expect(isIssueDesignPublicationInput({ ...designInput, [key]: text })).toBe(false);
 	}
+});
+
+test("session-binding recovery diagnoses are valid and credential-free", () => {
+	const diagnosis: IssueImplementationRecovery = {
+		status: "available",
+		reason: "session-binding-missing",
+		baseCommit: null,
+		members: [],
+		generation: 0,
+		snapshot: "a".repeat(64),
+		requiresRestart: false,
+	};
+	expect(isIssueImplementationRecovery(diagnosis)).toBe(true);
 });
 
 test("session, publication and approval results are exact and credential-free", () => {

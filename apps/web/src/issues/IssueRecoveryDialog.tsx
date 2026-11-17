@@ -32,7 +32,9 @@ export function IssueRecoveryDialog({
 				? t("issues.recovery.reason.not-completed")
 				: diagnosis.reason === "pending-operation"
 					? t("issues.recovery.reason.pending-operation")
-					: t("issues.recovery.reason.resources-remain");
+					: diagnosis.reason === "session-binding-missing"
+						? t("issues.recovery.reason.session-binding-missing")
+						: t("issues.recovery.reason.resources-remain");
 	return (
 		<Dialog
 			open

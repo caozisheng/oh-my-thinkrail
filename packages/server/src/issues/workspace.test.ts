@@ -32,6 +32,7 @@ async function fixture() {
 	const trees: { path: string; branch: string | null; prunable?: boolean }[] = [];
 	const sessions = new Map<string, "idle" | "busy">();
 	const bound = new Map<string, string>();
+	const rebound: string[] = [];
 	const events: string[] = [];
 	const createdNames: string[] = [];
 	let failSave = 0;
@@ -80,6 +81,10 @@ async function fixture() {
 		}),
 		sessionExists: async (sessionId) => sessions.get(sessionId) ?? false,
 		boundSession: async (stage, workspaceId) => bound.get(`${stage}:${workspaceId}`),
+		bindSession: async (stage, workspaceId, sessionId) => {
+			rebound.push(`${stage}:${workspaceId}:${sessionId}`);
+			bound.set(`${stage}:${workspaceId}`, sessionId);
+		},
 		createSession: async (workspaceId) => {
 			events.push(`session:${workspaceId}`);
 			if (failSession) throw new Error("secret session error");
@@ -95,6 +100,7 @@ async function fixture() {
 		trees,
 		sessions,
 		bound,
+		rebound,
 		events,
 		createdNames,
 		options,
@@ -535,6 +541,28 @@ test("missing recorded implementation session is replaced", async () => {
 	const replacement = await f.coordinator().implementation(ref);
 	expect(replacement.sessionId).not.toBe(launch.sessionId);
 	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(2);
+});
+
+test("healthy implementation re-entry restores a missing Issue session binding", async () => {
+	const f = await fixture();
+	f.options.restoreSessionBinding = true;
+	const launch = await f.coordinator().implementation(ref);
+	f.bound.clear();
+	f.rebound.length = 0;
+	const resumed = await f.coordinator().implementation(ref);
+	expect(resumed).toEqual(launch);
+	expect(f.rebound).toEqual([`implementation:${launch.workspaceId}:${launch.sessionId}`]);
+	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(1);
+});
+
+test("healthy implementation refuses a conflicting Issue session binding", async () => {
+	const f = await fixture();
+	f.options.restoreSessionBinding = true;
+	const launch = await f.coordinator().implementation(ref);
+	f.bound.set(`implementation:${launch.workspaceId}`, "other-session");
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow("reconciliation");
+	expect(f.rebound).toEqual([]);
+	expect(f.events.filter((event) => event.startsWith("session:"))).toHaveLength(1);
 });
 
 for (const field of ["projectId", "branch", "worktreePath", "kind"] as const) {

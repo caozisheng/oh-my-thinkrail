@@ -454,6 +454,25 @@ for (const stage of ["design", "implementation"] as const) {
 	});
 }
 
+test("implementation re-entry restores a missing Issue association without creating a second session", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const first = await f.host.beginImplementation({ ...f.target, locale: "zh-CN" });
+	const bindingPath = join(
+		f.dir,
+		"issue-sessions",
+		createHash("sha256").update(first.sessionId).digest("hex"),
+	);
+	rmSync(bindingPath, { recursive: true, force: true });
+	const resumed = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	expect(resumed).toEqual(first);
+	expect(f.created).toBe(1);
+	expect(f.prompts).toHaveLength(1);
+	await expect(f.host.agentSessions.context(first.sessionId)).resolves.toContain(
+		"Session stage: implementation",
+	);
+});
+
 test("design begin binds and prompts a Default session once without a worktree", async () => {
 	const f = fixture();
 	await f.host.connect({ projectId: "one", input: f.input });
@@ -851,10 +870,7 @@ for (const stage of ["design", "implementation"] as const) {
 		expect(existsSync(join(f.dir, "issue-sessions"))).toBe(false);
 		const restored = createIssuesHost(f.options);
 		expect(
-			await (stage === "design" ? restored.beginDesign : restored.beginImplementation)({
-				...f.target,
-				locale: "en",
-			}),
+			await (stage === "design" ? restored.launchDesign : restored.startImplementation)(f.target),
 		).toEqual(first);
 		expect(f.prompts).toHaveLength(0);
 		await expect(restored.agentSessions.context(first.sessionId)).rejects.toThrow();

@@ -460,6 +460,7 @@ export function createIssuesActions(
 				let preparedPrompt: string | undefined;
 				let sessionTitle: string | undefined;
 				const coordinator = createIssueWorkspaceCoordinator({
+					...(startup ? { restoreSessionBinding: true as const } : {}),
 					projectId,
 					waitForArchive: (path) => checked(() => waitForArchive(path)),
 					projectPath: (id) => checked(() => memberProject(id).path),
@@ -528,6 +529,18 @@ export function createIssuesActions(
 								agentSessions.findAssociation({ projectId, reference, stage, workspaceId }),
 							);
 							return found?.sessionId;
+						}),
+					bindSession: (stage, workspaceId, sessionId) =>
+						checked(async () => {
+							if (!agentSessions || !startup) return;
+							await agentSessions.bind({
+								sessionId,
+								workspaceId,
+								projectId,
+								reference,
+								stage,
+								locale: startup.locale,
+							});
 						}),
 					defaultWorkspace: (id) =>
 						checked(async () => {
