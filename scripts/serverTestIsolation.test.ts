@@ -26,10 +26,9 @@ for (const cwd of [root, join(root, "packages/server")]) {
 				`
 import { test } from "bun:test";
 import { writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dataDir, saveProjects, saveWorkspaces } from ${JSON.stringify(persistence)};
 test("writes registry fixtures", () => {
-	writeFileSync(${JSON.stringify(output)}, JSON.stringify({ data: dataDir(), home: homedir(), userprofile: process.env.USERPROFILE, agent: process.env.PI_CODING_AGENT_DIR }));
+	writeFileSync(${JSON.stringify(output)}, JSON.stringify({ data: dataDir(), home: process.env.HOME, userprofile: process.env.USERPROFILE, agent: process.env.PI_CODING_AGENT_DIR }));
 	saveProjects([{ id: "fixture", name: "fixture", slug: "fixture", path: ${JSON.stringify(fake)}, lastOpened: 1 }]);
 	saveWorkspaces([]);
 });
