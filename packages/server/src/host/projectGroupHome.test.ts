@@ -1,9 +1,25 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Project } from "@thinkrail/contracts";
+import { loadProjects, loadWorkspaces, saveProjects } from "../persistence";
+import {
+	openProject,
+	openProjectGroupContext,
+	removeProjectGroup,
+	setProjectTrust,
+} from "../projects";
+import { assertNotChatWorkspace, ensureGroupWorkspace, listWorkspaces } from "../workspaces";
 import type { GroupIssueRecord } from "./issues";
 import {
 	fetchProjectGroup,
@@ -55,6 +71,52 @@ afterEach(() => {
 	rmSync(dataDir, { recursive: true, force: true });
 	if (savedDataDir === undefined) delete process.env.THINKRAIL_DATA_DIR;
 	else process.env.THINKRAIL_DATA_DIR = savedDataDir;
+});
+
+test("a plain group owns a persistent workspace, independent trust and no git repository", async () => {
+	repo("app");
+	saveProjects([member("app", "app")]);
+	const context = await openProjectGroupContext("g1");
+	expect(context).toMatchObject({ id: "g1", kind: "group", path: suite, trusted: false });
+	expect(context.projectGroup).toBeUndefined();
+	const workspace = ensureGroupWorkspace(context);
+	expect(workspace).toMatchObject({
+		projectId: "g1",
+		kind: "group",
+		worktreePath: suite,
+		branch: "",
+		baseBranch: "",
+	});
+	expect(existsSync(join(suite, ".git"))).toBe(false);
+	expect(() => assertNotChatWorkspace(workspace, "diffed")).toThrow("group workspace");
+	setProjectTrust(context.id, true);
+	expect(loadProjects().find((project) => project.id === "app")?.trusted).not.toBe(true);
+	expect((await openProjectGroupContext("g1")).trusted).toBe(true);
+	expect(await listWorkspaces(context.id)).toEqual([workspace]);
+	expect(loadWorkspaces().find((candidate) => candidate.id === workspace.id)).toEqual(workspace);
+	expect(readFileSync(join(dataDir, "projects.json"), "utf8")).not.toContain('"kind": "group"');
+	expect(readFileSync(join(dataDir, "workspaces.json"), "utf8")).not.toContain(workspace.id);
+	removeProjectGroup({ groupId: "g1", close: false });
+	expect(loadWorkspaces().find((candidate) => candidate.id === workspace.id)).toEqual(workspace);
+	expect(loadProjects().find((project) => project.id === "g1")?.closed).toBe(true);
+});
+
+test("a git group root keeps a separate ordinary repository member", async () => {
+	repo("");
+	saveProjects([member("root", "")]);
+	const context = await openProjectGroupContext("g1");
+	expect(openProject(suite).id).toBe("root");
+	expect(ensureGroupWorkspace(context).kind).toBe("group");
+	expect((await listWorkspaces("root"))[0]?.kind).toBe("default");
+});
+
+test("a newer group context store is preserved and refuses writes", () => {
+	mkdirSync(dataDir, { recursive: true });
+	const file = join(dataDir, "group-contexts.json");
+	const future = '{"version":99,"projects":[],"workspaces":[]}';
+	writeFileSync(file, future);
+	expect(() => saveProjects([])).toThrow("group contexts store");
+	expect(readFileSync(file, "utf8")).toBe(future);
 });
 
 test("porcelain v2 branch headers parse into branch, upstream divergence and dirtiness", () => {

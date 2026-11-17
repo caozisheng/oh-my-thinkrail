@@ -68,7 +68,7 @@ export interface Project {
 	/** Open projects list highest rank first; absent reads as `lastOpened`. */
 	rank?: number;
 	/** The one built-in container of chats without a project: not a repository, never git, never closed. */
-	kind?: "chats";
+	kind?: "chats" | "group";
 	closed?: true;
 	trusted?: boolean;
 	acknowledgedSkills?: string[];
@@ -293,7 +293,7 @@ export interface Workspace {
 	id: string;
 	projectId: string;
 	/** `chat`: a projectless chat's own folder in the Chats container — never a git checkout, `branch`/`baseBranch` are "". */
-	kind?: "default" | "external" | "chat";
+	kind?: "default" | "external" | "chat" | "group";
 	name: string;
 	branch: string;
 	worktreePath: string;

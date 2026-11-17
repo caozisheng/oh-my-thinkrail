@@ -99,6 +99,26 @@ test("repository candidates exclude closed, untrusted and Chats projects", () =>
 	expect(selectIssueRepositoryProjects({ projects }).map((project) => project.id)).toEqual(["p1"]);
 });
 
+test("resource-only grants are visible to Issue selectors in repository and group contexts", () => {
+	const member: Project = {
+		...projectOne,
+		piResourceTrust: "granted",
+		projectGroup: { id: "suite", name: "Suite", root: "/suite", path: "app" },
+	};
+	const owner: Project = { ...projectTwo, id: "suite", kind: "group" };
+	const outside: Project = { ...projectTwo, piResourceTrust: "granted" };
+	expect(
+		selectIssueRepositoryProjects({ projects: [member, outside, owner] }).map(
+			(project) => project.id,
+		),
+	).toEqual([member.id, outside.id]);
+	expect(
+		selectIssueRepositoryProjects({ projects: [member, outside, owner] }, owner.id).map(
+			(project) => project.id,
+		),
+	).toEqual([member.id]);
+});
+
 test("connection generations reject stale or disconnected read settlements", () => {
 	expect(isConnectedGeneration({ status: "connected", connectionGeneration: 4 }, 4)).toBe(true);
 	expect(isConnectedGeneration({ status: "connected", connectionGeneration: 5 }, 4)).toBe(false);

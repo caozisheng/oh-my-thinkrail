@@ -4,6 +4,7 @@ import {
 	RiTerminalBoxLine as SquareTerminal,
 } from "@remixicon/react";
 import type { IssueSessionLaunch } from "@thinkrail/contracts";
+import { workspaceCapabilities } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
 import { t, useT } from "@thinkrail/locales/react";
 import { Button, IconButton } from "@thinkrail/ui/button";
@@ -78,6 +79,7 @@ import {
 	useDeletedChatPlacementReconciliation,
 	useWorkspaceChatCatalogReconciliation,
 } from "./chatReconciliation";
+import { GroupWorkspaceWelcome } from "./GroupWorkspaceWelcome";
 import { useResolvedKeybindings } from "./keybindingState";
 import {
 	collectAllGroups,
@@ -143,14 +145,14 @@ const RESTORING_LABEL = {
 } satisfies Record<string, MessageKey>;
 
 /** A chat without a project has no repository: git- and spec-backed bodies say so instead of asking the host. */
-function ChatUnavailable() {
+function ChatUnavailable({ group = false }: { group?: boolean }) {
 	const t = useT();
 	return (
 		<div
 			data-testid="chat-tool-unavailable"
 			className="flex h-full items-center justify-center p-16 text-center text-text-subtle tr-text-ui"
 		>
-			{t("panels.chats.notAvailable")}
+			{t(group ? "panels.groupHome.repositoryRequired" : "panels.chats.notAvailable")}
 		</div>
 	);
 }
@@ -391,6 +393,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	const deletedSessions = useAppStore((state) => state.deletedSessionsByWorkspace[workspaceId]);
 	const terminalClose = useTerminalClose();
 	const isChat = workspace != null && isChatWorkspace(workspace);
+	const capabilities = workspaceCapabilities(workspace ?? {});
 	const chatTitle = useAppStore((state) =>
 		isChat
 			? chatDisplayName(
@@ -400,8 +403,8 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				)
 			: "",
 	);
-	const repositoryId = isChat ? null : workspaceId;
-	const specs = useWorkspaceSpecs(repositoryId);
+	const repositoryId = capabilities.git ? workspaceId : null;
+	const specs = useWorkspaceSpecs(capabilities.specs ? workspaceId : null);
 	const artifacts = useWorkspaceArtifacts(workspaceId);
 	const artifactsUnseen = useAppStore((state) => selectArtifactsUnseen(state, workspaceId));
 	const review = useWorkspaceReview(repositoryId);
@@ -750,14 +753,14 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					/>
 				</QuietScrollArea>
 			),
-			specs: isChat ? (
+			specs: !capabilities.specs ? (
 				<ChatUnavailable />
 			) : (
 				<QuietScrollArea className="h-full" viewportClassName="p-panel-inset">
 					<SpecsPanel workspaceId={workspaceId} failed={specs.failed} onRetry={specs.reload} />
 				</QuietScrollArea>
 			),
-			issues: isChat ? (
+			issues: !capabilities.issues ? (
 				<ChatUnavailable />
 			) : projectId !== undefined ? (
 				<IssuesTool
@@ -776,7 +779,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 					onRetry={artifacts.reload}
 				/>
 			),
-			review: isChat ? (
+			review: !capabilities.git ? (
 				<ChatUnavailable />
 			) : (
 				<ReviewPanel key={workspaceId} workspaceId={workspaceId} failed={review.failed} />
@@ -815,7 +818,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 	}, [
 		artifacts.failed,
 		artifacts.reload,
-		isChat,
+		capabilities,
 		launchIssueSession,
 		trustProject,
 		keybindings,
@@ -959,6 +962,21 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 		],
 	);
 
+	const renderContextEmptyCenter = useCallback(
+		(groupId: string): ReactNode =>
+			workspace?.kind === "group" ? (
+				<GroupWorkspaceWelcome
+					workspace={workspace}
+					name={contextProject?.name ?? workspaceName(t, workspace)}
+					starting={chatStarting}
+					onStart={() => startChat(groupId)}
+				/>
+			) : (
+				renderEmptyCenter(groupId)
+			),
+		[workspace, contextProject, t, chatStarting, startChat, renderEmptyCenter],
+	);
+
 	const renderCenterActions = useCallback(
 		(groupId: string): ReactNode => (
 			<>
@@ -1014,7 +1032,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				renderTabBody={renderTabBody}
 				renderTabAdornment={renderTabAdornment}
 				renderToolBody={renderToolBody}
-				renderEmptyCenter={renderEmptyCenter}
+				renderEmptyCenter={renderContextEmptyCenter}
 				renderCenterActions={renderCenterActions}
 				onCommit={commit}
 				onAttentionChange={changeAttention}

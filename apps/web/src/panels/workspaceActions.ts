@@ -1,5 +1,6 @@
 import {
 	type EditorInfo,
+	isRepositoryWorkspace,
 	PROJECT_ORDER_PROTOCOL_VERSION,
 	PROJECT_RENAME_PROTOCOL_VERSION,
 	type Project,
@@ -44,7 +45,8 @@ export function canRenameWorkspace(protocolVersion: number | null, workspace: Wo
 		protocolVersion !== null &&
 		protocolVersion >= WORKSPACE_RENAME_PROTOCOL_VERSION &&
 		workspace.kind !== "default" &&
-		workspace.kind !== "external"
+		workspace.kind !== "external" &&
+		workspace.kind !== "group"
 	);
 }
 
@@ -52,7 +54,7 @@ export function canSettleWorkspace(protocolVersion: number | null, workspace: Wo
 	return (
 		supportsWorkspaceSettling(protocolVersion) &&
 		workspace.kind !== "default" &&
-		workspace.kind !== "chat"
+		isRepositoryWorkspace(workspace)
 	);
 }
 

@@ -46,6 +46,7 @@ import {
 	saveAcquisitionIn,
 } from "./attribution";
 import { type AcquisitionRecord, isRecord } from "./attributionProtocol";
+import { createGroupContextStore } from "./groupContexts";
 import { claimAppInstalledIn, ensureInstallationIn, type InstallationRecord } from "./installation";
 
 export {
@@ -536,20 +537,26 @@ export function isChatWorkspace(workspace: Pick<Workspace, "kind">): boolean {
 	return workspace.kind === "chat";
 }
 
+const groupStore = createGroupContextStore(
+	() => readFileSync(join(dataDir(), "group-contexts.json"), "utf8"),
+	(value) => writeJsonAtomic("group-contexts.json", value),
+);
+
 export function loadProjects(): Project[] {
 	const repositories = readJson<Project[]>("projects.json", [], Array.isArray).map((project) => ({
 		...project,
 		path: storedDirectory(project.path),
 	}));
 	const { container } = loadChats();
-	return container ? [...repositories, container] : repositories;
+	return [...repositories, ...(container ? [container] : []), ...groupStore.projects()];
 }
 
 /** Partitions on save: repository projects to `projects.json`, the Chats container to `chats.json`. */
 export function saveProjects(projects: Project[]): void {
+	const repositoryProjects = groupStore.partitionProjects(projects);
 	writeJsonAtomic(
 		"projects.json",
-		projects.filter((project) => !isChatsContainer(project)),
+		repositoryProjects.filter((project) => !isChatsContainer(project)),
 	);
 	const container = projects.find(isChatsContainer) ?? null;
 	const stored = writableChats();
@@ -564,14 +571,15 @@ export function loadWorkspaces(): Workspace[] {
 			worktreePath: storedDirectory(workspace.worktreePath),
 		}),
 	);
-	return [...repositories, ...loadChats().chats];
+	return [...repositories, ...loadChats().chats, ...groupStore.workspaces()];
 }
 
 /** Partitions on save: repository workspaces to `workspaces.json`, chat workspaces to `chats.json`. */
 export function saveWorkspaces(workspaces: Workspace[]): void {
+	const repositoryWorkspaces = groupStore.partitionWorkspaces(workspaces);
 	writeJsonAtomic(
 		"workspaces.json",
-		workspaces.filter((workspace) => !isChatWorkspace(workspace)),
+		repositoryWorkspaces.filter((workspace) => !isChatWorkspace(workspace)),
 	);
 	const chats = workspaces.filter(isChatWorkspace);
 	const stored = writableChats();

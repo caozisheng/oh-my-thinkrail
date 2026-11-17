@@ -4,6 +4,32 @@ import { createGitLabClient, type GitLabClient, type GitLabClientOptions } from 
 const token = "delivery-fixture-secret";
 const project = { id: 42, path_with_namespace: "group/repo" };
 const options = { instanceUrl: "https://gitlab.example/sub/", project: 42, token };
+
+test("GitLab people projection supports multiple assignees and legacy singular assignments", async () => {
+	const person = { id: 1, name: "张三", username: "alice", email: "private@example.test" };
+	const payload = {
+		iid: 7,
+		title: "Task",
+		description: "",
+		state: "opened",
+		labels: [],
+		updated_at: "2026-01-01T00:00:00Z",
+	};
+	for (const assignment of [{ assignees: [person] }, { assignee: person }]) {
+		const row = await client({ ...payload, ...assignment, author: person }).issue(7);
+		expect(row.assignees).toEqual([{ id: 1, name: "张三", username: "alice" }]);
+		expect(row.author).toEqual(row.assignees?.[0]);
+		expect(JSON.stringify(row)).not.toContain("private@example.test");
+	}
+	expect(
+		(await client({ ...payload, assignees: [], assignee: person }).issue(7)).assignees,
+	).toEqual([]);
+	expect((await client(payload).issue(7)).assignees).toBeUndefined();
+	expect(await client({ ...payload, assignee: null, author: null }).issue(7)).toMatchObject({
+		assignees: [],
+		author: null,
+	});
+});
 function client(value: unknown, extra: Partial<GitLabClientOptions> = {}): GitLabClient {
 	return createGitLabClient({ ...options, fetch: async () => Response.json(value), ...extra });
 }

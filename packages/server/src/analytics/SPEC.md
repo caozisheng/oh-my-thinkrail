@@ -8,7 +8,10 @@ depends-on: [module-contracts]
 tags: [analytics, privacy]
 ---
 
-## Responsibility and boundary
+## Responsibility
+
+The closed `workspace_kind` run classifier also admits `group` for a group working context; it
+contains no folder, group name or member metadata. and boundary
 
 Host-only product analytics and error reports shared by CLI/source/desktop, delivered personless to
 PostHog EU. The module owns the closed event vocabulary, catalog bucketing, installation identity usage,

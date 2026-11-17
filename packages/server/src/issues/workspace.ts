@@ -11,6 +11,7 @@ import {
 	isIssueRepositoriesInput,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
+import { createWorkspaceOwner } from "./workspaceOwner";
 
 export interface WorkspaceHandle {
 	id: string;
@@ -18,7 +19,7 @@ export interface WorkspaceHandle {
 	worktreePath: string;
 	branch: string;
 	/** Existing Workspace records omit kind for managed worktrees. */
-	kind?: "default" | "external" | "chat";
+	kind?: "default" | "external" | "chat" | "group";
 }
 
 interface PendingWorkspace {
@@ -63,6 +64,7 @@ export interface IssueImplementationHistory {
 	archivedAt: number;
 }
 export interface IssueWorkspaceRecord {
+	ownerKind?: "group";
 	projectId: string;
 	reference: IssueReference;
 	repositoryProjectIds?: string[];
@@ -78,6 +80,7 @@ export interface IssueWorkspaceRecord {
 
 type Awaitable<T> = T | Promise<T>;
 export interface IssueWorkspaceOptions {
+	ownerKind?: "group";
 	/** Local project id, not the provider project id. */
 	projectId: string;
 	projectPath(projectId: string): Awaitable<string>;
@@ -106,8 +109,8 @@ export interface IssueWorkspaceOptions {
 		baseRef?: string,
 	): Awaitable<WorkspaceHandle>;
 	/**
-	 * A shared layout covering at least the primary plus `projectIds` (it may place further group
-	 * members, which can join later), or null to keep per-repository paths.
+	 * A shared layout for the primary and any participants with known places. Participants absent
+	 * from the layout keep per-repository paths; null keeps all per-repository paths.
 	 */
 	layout?(projectIds: readonly string[]): Awaitable<IssueWorkspaceLayout | null>;
 	/** Best-effort freshly fetched base ref for a new member worktree, or undefined for local HEAD. */
@@ -170,6 +173,13 @@ async function directoryAt(path: string): Promise<boolean> {
 
 export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) {
 	const { projectId } = options;
+	const owner = createWorkspaceOwner({
+		kind: options.ownerKind,
+		projectId,
+		root: () => projectRoot(),
+		defaultWorkspace: () => options.defaultWorkspace(projectId),
+		refuse: stop,
+	});
 
 	async function run<T>(
 		input: IssueReference,
@@ -185,11 +195,16 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			number: input.number,
 		};
 		const key = keyFor(projectId, reference);
-		const slot = JSON.stringify([projectId, reference.number]);
+		const slot = owner.lockKey(key, reference.number);
 		const task = (tails.get(slot) ?? Promise.resolve())
 			.catch(() => {})
 			.then(async () => {
-				const record = (await options.load(key)) ?? { projectId, reference };
+				const record = (await options.load(key)) ?? {
+					projectId,
+					reference,
+					...(options.ownerKind ? { ownerKind: options.ownerKind } : {}),
+				};
+				if (record.ownerKind !== options.ownerKind) stop();
 				if (
 					!isIssueReference(record.reference) ||
 					keyFor(record.projectId, record.reference) !== key
@@ -530,7 +545,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	/** The Issue's joined checkouts (primary first) with their recorded worktree paths. */
 	async function joinedPaths(record: IssueWorkspaceRecord) {
 		const rows: { projectId: string; path: string }[] = [];
-		for (const id of [projectId, ...selection(record)])
+		for (const id of [...owner.primaryRepositoryIds, ...selection(record)])
 			rows.push({ projectId: id, path: await worktreePathFor(record, id) });
 		return rows;
 	}
@@ -639,7 +654,9 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				await prepareMember(key, record, id);
 				continue;
 			}
-			primary = await resolveImplementation(key, record, await worktreePathFor(record, projectId));
+			primary = await owner.implementation(record, async () =>
+				resolveImplementation(key, record, await worktreePathFor(record, projectId)),
+			);
 			record = { ...record, implementation: primary };
 		}
 		if (!primary) stop();
@@ -670,7 +687,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		if (record.sessionPending || record.members?.some((row) => row.removing))
 			reason = "pending-operation";
 		if (!record.implementation) reason = "missing-record";
-		for (const id of [projectId, ...selection(record)]) {
+		for (const id of [...owner.primaryRepositoryIds, ...selection(record)]) {
 			if (reason) break;
 			const ownership =
 				id === projectId
@@ -725,7 +742,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	return {
 		contexts(reference: IssueReference, stage: "design" | "implementation") {
 			return run(reference, async (_key, record) => {
-				const ids = [projectId, ...selection(record)];
+				const ids = [...owner.primaryRepositoryIds, ...selection(record)];
 				const taken = new Set([...ids, ...(record.members ?? []).map((m) => m.projectId)]);
 				const references = ((await options.references?.()) ?? [])
 					.filter((candidate) => !taken.has(candidate.projectId))
@@ -908,7 +925,12 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		ownedImplementation(reference: IssueReference): Promise<WorkspaceHandle> {
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
-				if (ownership?.state !== "completed" || !ownership.workspaceId) stop();
+				if (
+					owner.primaryRepositoryIds.length === 0 ||
+					ownership?.state !== "completed" ||
+					!ownership.workspaceId
+				)
+					stop();
 				return verifyImplementation(ownership, await worktreePathFor(record, projectId));
 			});
 		},
@@ -916,15 +938,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(
 				reference,
 				async (key, record) => {
-					const root = await projectRoot();
-					const ws = await options.defaultWorkspace(projectId);
-					if (
-						!ws.id ||
-						ws.projectId !== projectId ||
-						ws.kind !== "default" ||
-						!samePath(ws.worktreePath, root)
-					)
-						stop();
+					const ws = await owner.defaultWorkspace();
 					const workspaceId = ws.id;
 					const existing =
 						record.design?.workspaceId === workspaceId ? record.design.sessionId : undefined;

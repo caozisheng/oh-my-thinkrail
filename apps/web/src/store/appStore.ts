@@ -8,6 +8,8 @@ import type {
 	GitDiffScope,
 	HostPlatform,
 	HostUpdateNotice,
+	IssueConnection,
+	IssueSummary,
 	LayoutPreset,
 	LocalLocalesSnapshot,
 	LoginFrame,
@@ -1093,6 +1095,14 @@ interface AppState {
 	hostAppVersion: string | null;
 	hostUpdate: HostUpdateNotice | null;
 	projects: Project[];
+	issueReadsByProject: Record<
+		string,
+		{ identity: string; connection: IssueConnection | null; issues: IssueSummary[] }
+	>;
+	setIssueRead: (
+		projectId: string,
+		value: { identity: string; connection: IssueConnection | null; issues: IssueSummary[] } | null,
+	) => void;
 	recentProjects: Project[];
 	workspaces: Record<string, Workspace[]>;
 	removedWorkspaceIds: Record<string, true>;
@@ -1291,6 +1301,7 @@ interface AppState {
 	hydrateCollapsedRailNodes: (keys: readonly string[]) => void;
 	selectMain: () => void;
 	activateWorkspace: (workspace: Pick<Workspace, "id" | "projectId">) => void;
+	activateGroupWorkspace: (project: Project, workspace: Workspace) => void;
 	activateWorkspaceFromRoute: (
 		workspace: Pick<Workspace, "id" | "projectId">,
 		sessionId?: string,
@@ -2534,6 +2545,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 	hostAppVersion: null,
 	hostUpdate: null,
 	projects: [],
+	issueReadsByProject: {},
+	setIssueRead: (projectId, value) =>
+		set((state) => ({
+			issueReadsByProject: value
+				? { ...state.issueReadsByProject, [projectId]: value }
+				: omitKey(state.issueReadsByProject, projectId),
+		})),
 	recentProjects: [],
 	workspaces: {},
 	removedWorkspaceIds: nullProto<Record<string, true>>(),
@@ -3098,6 +3116,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 		if (refusesEntry(get(), workspace.id)) return;
 		set((state) => workspaceActivationPatch(state, workspace));
 	},
+	activateGroupWorkspace: (project, workspace) =>
+		set((state) => {
+			if (
+				project.kind !== "group" ||
+				workspace.kind !== "group" ||
+				workspace.projectId !== project.id ||
+				refusesEntry(state, workspace.id)
+			)
+				return {};
+			const projects = sortOpenProjects(upsertProject(state.projects, project));
+			const rows = state.workspaces[project.id] ?? [];
+			const workspaces = {
+				...state.workspaces,
+				[project.id]: [...rows.filter((row) => row.id !== workspace.id), workspace],
+			};
+			return {
+				projects,
+				workspaces,
+				recentProjects: sortRecentProjects(upsertProject(state.recentProjects, project)),
+				...workspaceActivationPatch({ ...state, workspaces }, workspace),
+			};
+		}),
 	activateWorkspaceFromRoute: (workspace, sessionId) =>
 		set((state) => {
 			if (refusesEntry(state, workspace.id)) return {};

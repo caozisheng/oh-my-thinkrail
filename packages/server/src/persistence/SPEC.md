@@ -9,6 +9,12 @@ depends-on: [module-contracts]
 
 ## Responsibility
 
+Group owner records (`Project.kind: "group"`) and their `Workspace.kind: "group"` records partition
+into `group-contexts.json` (version 1), alongside the existing stores. Reads merge these contexts into
+the domain lists; writes preserve the other half of that document. Repository JSON never contains
+them, so an older host cannot mistake a group folder for a repository. Malformed or newer group stores
+fail closed on writes, preserving the original file.
+
 Durable host state—projects, workspaces, cross-frontend app config, terminal catalogs, session completion receipts, installation identity, and server-only acquisition state—as JSON under the data dir, plus the one way a feature watches a user-filled data folder (`locales`, `themes`, `fonts`). Current workbench frame and workspace placement are frontend-local and have no host persistence.
 
 ## Boundary
@@ -103,3 +109,11 @@ kept); it accepts only the current bounded
 `customLayoutPresets` catalog as synchronized layout data. Current/default preset ids, group limits, and
 chat message order are not config fields; retired config shapes are stripped rather than upgraded or
 preserved as extensions. Historical `layouts/` files remain untouched and inert.
+
+## Group store adapter
+
+`groupContexts.ts` privately owns the version-1 group document validation and partitioning.
+The persistence facade supplies lazy data-dir reads and its existing atomic writer, and only
+composes the returned lists with repository/Chats stores. No filesystem format or migration changes.
+Group saves preserve the document's other half; malformed or newer stores refuse partitioning
+before any ordinary project/workspace write. No feature module imports this private adapter.

@@ -56,6 +56,25 @@ provider issue URL. Browser image requests carry no PAT and use no proxy; privat
 
 ## Behavior
 
+A group's authenticated Issue reads do not execute local folder resources and require no repository
+trust grant. Group conversation resource trust remains independent. Repository Issue reads retain
+their existing trust requirement; closed group owners cannot read their saved remote association.
+
+At v138 the group workbench association form accepts GitLab `groups/<namespace>/-/issues` and group-home URLs,
+including nested groups and an explicitly confirmed instance installation prefix. Group scope is derived
+from the address, never from a fixed host/group name. Earlier hosts cannot receive group submissions. Repository entry points reject group addresses; the group
+workbench requires them. Group lists share the repository controls from v139; v138 group hosts retain reads only.
+The existing form, HTTP consent and token clearing rules apply unchanged. Group cards show the owning
+project namespace alongside the per-project Issue number; previews and actions use the full reference.
+Connection/disclosure identity includes scope, so equal group and project ids cannot reuse panel state.
+
+At v138 the group workbench connected, trusted list has separate assignee and author text filters. Matching is
+case-insensitive substring matching against display name or username, accepting an optional leading
+`@`; multiple assignees match by any member, and the two filters combine with AND. Filtering precedes
+stage grouping/counts, preserves complete loaded data and preview/action identities, and sends no RPC.
+The panel shows visible/total counts, an explicit no-match state and a clear action. Filters survive
+refresh but reset when project/instance/association scope or target changes; earlier hosts omit them.
+
 Host protocol v103 gates the read/connection RPCs (`issues.connection`, `issues.list`,
 `issues.disconnect`); connection and credential configuration remain available while the local project is untrusted, but `issues.list`, preview, stage actions and repository-selection reads/writes remain gated until the shell reports a successful trust grant. Trust revocation hides loaded issue content and invalidates in-flight replies. `issues.connect` — the only token-bearing call — is gated at the v105 Issues auth
 protocol and `supportsIssueAuth` is that floor. On a v103/v104 host the panel still reads and displays
@@ -122,7 +141,7 @@ its single connect error through `onError` as the `ISSUE_ERROR_KEY.connect` key.
 encodes the trigger: opening, initializing or cloning an existing repository prompts; a project created
 in this app does not, because it has no remote to associate yet.
 
-The form takes one HTTP/HTTPS repository address and derives the association from it with
+The form takes one HTTP/HTTPS repository or GitLab group address and derives the association from it with
 `resolveIssueConnectionAddress` (`repositoryAddress.ts`). The address may arrive prefilled from the
 host-read `origin` hint (`issues.repositoryAddress`, v105); a prefill is never an association, never
 grants HTTP consent, and never skips the confirmation described below. The standard gitlab.com root
@@ -197,11 +216,12 @@ offer none at all. Each control carries its own host floor: design needs the v10
 (`supportsIssueImplementation`), and a missing floor leaves that control visible and disabled with
 `needs-newer-host` instead of hiding it. MR creation and merge are not implemented in the
 product and therefore appear nowhere: no control, menu entry, label or disabled placeholder is invented for
-them. For v134 recovery, implementation first performs a read-only diagnosis. An eligible wholly missing generation opens a localized confirmation showing member checkout evidence and exact commit starts; a missing prior branch requires a second explicit restart confirmation. Cancel performs no mutation. Execution submits the frozen snapshot and locale, then navigates to the newly returned session. A separate read-only history dialog requests the recorded generation list and renders transcript availability by session id; unavailable transcripts are explicit and never represented as an empty conversation.
+them. For v134 recovery, implementation first performs a read-only diagnosis. An eligible missing checkout opens a localized confirmation showing member checkout evidence and exact commit starts; a missing prior branch requires a second explicit restart confirmation. Cancel performs no mutation. Execution submits the frozen snapshot and locale, then navigates to the newly returned session. A separate read-only history dialog requests the recorded generation list and renders transcript availability by session id; unavailable transcripts are explicit and never represented as an empty conversation.
 
 The two controls sit **on the issue title row, right-aligned** in a separate trailing group; the preview,
 associated-repository and implementation-history icon buttons sit immediately after the title in its
-left-side group. The lock indicator remains beside the title. The two stage controls are icon-only
+left-side group. The title group reserves a readable width and stage controls wrap below it when space
+is insufficient. History uses an icon-only button with a localized accessible name and tooltip. The lock indicator remains beside the title. The two stage controls are icon-only
 `IconButton`s (quill = run design, code box = run implementation) inside their own `TooltipProvider`; each keeps its action name as
 `aria-label`, a blocked one names its reason in the same tooltip plus `data-reason`, and a completed one is
 rendered with the shared `soft-primary` button variant and `data-done`. A pending action disables every control. Its own card immediately shows a localized, live status with a reduced-motion-aware spinner: starting design/implementation during the RPC, then opening chat while awaiting shell navigation. No percentage, cancellation or automatic retry is implied. Progress and failures are local to the issue and current project/connection request; refresh, disconnect and identity changes invalidate old continuations, including navigation after workspace loading. Navigation failure is distinct from host launch failure; without a navigation callback, a valid launch simply ends waiting. Dispatch goes through the one
@@ -327,3 +347,25 @@ toast and opens nothing.
 
 Layout tests pin catalog/default rail placement. Existing color/spacing/typography adoption guards
 cover this module.
+
+## Shared Issue workflows and retained reads
+
+From v139 group and repository panels share title links, previews, repository links, Design/Implement
+and history. Group actions use the original host launch methods and open the returned bound session;
+there is no separate Discuss action or pasted Issue-body draft. Group repository choices are trusted
+open members. Read permission and execution permission remain distinct.
+Successful connection/list snapshots live in the app store per owner and connection generation.
+Remounting a panel restores its list immediately without another Issue list request; repository
+selection metadata remains a local host read, with at most eight reads in flight; stale panel requests
+stop dispatching queued reads. Explicit refresh, association
+changes, disconnect and host reconnect invalidate or replace the snapshot; credentials are never
+cached. Failed refreshes retain the previous list with an error instead of showing false emptiness.
+
+A healthy implementation resumes through the coordinator after diagnosis; resources-remain alone
+does not block reopening. The coordinator still refuses ambiguous ownership or incomplete resources.
+
+## Shared Issue repository admission
+
+Issue selectors use the shared admission predicates in contracts. Candidate visibility and owner
+read permission therefore agree with the host. Effective permission changes invalidate retained reads
+and in-flight replies; selecting a candidate never writes project trust.

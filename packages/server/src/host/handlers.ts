@@ -16,12 +16,14 @@ import type {
 } from "@thinkrail/contracts";
 import {
 	BRANCH_STATUS_PROTOCOL_VERSION,
+	GROUP_WORKSPACE_PROTOCOL_VERSION,
 	ISSUES_ACTIONS_PROTOCOL_VERSION,
 	ISSUES_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_AUTH_PROTOCOL_VERSION,
 	ISSUES_CONTENT_PROTOCOL_VERSION,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_DETAIL_PROTOCOL_VERSION,
+	ISSUES_GROUPS_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
@@ -29,6 +31,7 @@ import {
 	ISSUES_SESSION_STARTUP_PROTOCOL_VERSION,
 	ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION,
 	isControlMessage,
+	isRepositoryWorkspace,
 	isSpeechModel,
 	PROJECT_GROUP_HOME_PROTOCOL_VERSION,
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
@@ -199,6 +202,7 @@ import {
 	listProjects,
 	moveProject,
 	openProject,
+	openProjectGroupContext,
 	removeProjectGroup,
 	renameProject,
 	scanProjectGroup,
@@ -267,6 +271,7 @@ import {
 	type CreationHandoff,
 	createWorkspace,
 	dismissWorkspaceCreation,
+	ensureGroupWorkspace,
 	forgetWorkspace,
 	getWorkspace,
 	isChatsContainer,
@@ -916,13 +921,24 @@ const handlers: WsHandlers = {
 	"project.groupStatus": withProjectGroupHomeProtocol((params) =>
 		projectGroupStatus(params, issuesHost.groupIssueRecords),
 	),
+	"project.openGroup": async (params, ctx) => {
+		if (ctx.protocolVersion !== undefined && ctx.protocolVersion < GROUP_WORKSPACE_PROTOCOL_VERSION)
+			throw new CodedError("RESOURCE_UNAVAILABLE", "Group workspaces need a newer client.");
+		const project = await openProjectGroupContext(params.groupId);
+		const workspace = ensureGroupWorkspace(project);
+		return { project, workspace: { ...workspace, ...provisionInitialTerminal(workspace) } };
+	},
 	"project.fetchGroup": withProjectGroupHomeProtocol((params) => fetchProjectGroup(params)),
 	"project.removeGroup": withProjectGroupHomeProtocol((params) => removeProjectGroup(params)),
 	"project.list": (_params, ctx) =>
 		observeSetupRead(
 			() =>
 				listProjects().filter(
-					(project) => seesChats(ctx.protocolVersion) || !isChatsContainer(project),
+					(project) =>
+						(seesChats(ctx.protocolVersion) || !isChatsContainer(project)) &&
+						(project.kind !== "group" ||
+							ctx.protocolVersion === undefined ||
+							ctx.protocolVersion >= GROUP_WORKSPACE_PROTOCOL_VERSION),
 				),
 			(projects) => ({
 				project_present: projects.some((project) => !isChatsContainer(project)) ? "yes" : "no",
@@ -948,7 +964,9 @@ const handlers: WsHandlers = {
 		return moveProject(params.id, params.targetId, params.placement);
 	},
 	"project.setTrust": async (p) => {
-		const project = repositoryProject(p.id);
+		const project = listProjects().find((candidate) => candidate.id === p.id);
+		if (!project) throw new Error(`Unknown project: ${p.id}`);
+		if (project.kind !== "group") assertNotChatsContainer(project);
 		const acknowledged =
 			p.trusted && project.trusted !== true
 				? await listProjectAliasSkillNames(project.path)
@@ -1179,7 +1197,7 @@ const handlers: WsHandlers = {
 		void ensureWatch(p.workspaceId);
 		const nodes = readDir(p.workspaceId, p.path);
 		const workspace = getWorkspace(p.workspaceId);
-		if (isChatWorkspace(workspace)) return nodes;
+		if (!isRepositoryWorkspace(workspace)) return nodes;
 		const ignored = await ignoredPaths(
 			workspace.worktreePath,
 			nodes.map((node) => node.path),
@@ -1476,7 +1494,18 @@ const handlers: WsHandlers = {
 	"issues.approveDesign": withIssuesApprovalProtocol((p) => issuesApproveDesign(p)),
 	"issues.approveImplementation": withIssuesApprovalProtocol((p) => issuesApproveImplementation(p)),
 	"issues.connection": withIssuesProtocol((p) => issuesConnection(p)),
-	"issues.connect": withIssuesAuthProtocol((p) => issuesConnect(p)),
+	"issues.connect": (p, ctx) => {
+		if (
+			p?.input?.scope === "group" &&
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < ISSUES_GROUPS_PROTOCOL_VERSION
+		)
+			throw new CodedError(
+				"RESOURCE_UNAVAILABLE",
+				"Group Issues require a newer protocol version.",
+			);
+		return withIssuesAuthProtocol(issuesConnect)(p, ctx);
+	},
 	"issues.designApproval": withIssuesDesignApprovalProtocol((p, protocolVersion) =>
 		issuesDesignApproval(p, protocolVersion),
 	),
@@ -1714,9 +1743,13 @@ const handlers: WsHandlers = {
 	},
 	"session.stateList": async (_params, ctx) => {
 		const records = await sharedSessionStateList();
-		return seesChats(ctx.protocolVersion)
-			? records
-			: records.filter((record) => !isChatWorkspaceId(record.workspaceId));
+		return records.filter(
+			(record) =>
+				(seesChats(ctx.protocolVersion) || !isChatWorkspaceId(record.workspaceId)) &&
+				(ctx.protocolVersion === undefined ||
+					ctx.protocolVersion >= GROUP_WORKSPACE_PROTOCOL_VERSION ||
+					getWorkspace(record.workspaceId).kind !== "group"),
+		);
 	},
 	"session.acknowledgeCompletion": (p) => {
 		return acknowledgeCompletion(p.sessionId, p.completionId);
@@ -2171,6 +2204,7 @@ function refuseRepositoryOnlyForChats(method: WsMethodName, params: unknown): vo
 	} catch {
 		return;
 	}
+	if (method === "spec.graph" && workspace.kind === "group") return;
 	assertNotChatWorkspace(workspace, "asked about git, changes, reviews or pull requests");
 }
 
@@ -2180,6 +2214,24 @@ export async function handleRequest(
 	ctx: RequestContext,
 ): Promise<unknown> {
 	if (!isWsMethod(method)) throw new Error(`Unknown method: ${method}`);
+	if (
+		ctx.protocolVersion !== undefined &&
+		ctx.protocolVersion < GROUP_WORKSPACE_PROTOCOL_VERSION &&
+		params &&
+		typeof params === "object"
+	) {
+		const workspaceId = paramWorkspaceId(params, true);
+		const workspace =
+			workspaceId === null
+				? undefined
+				: listAllWorkspaceRecords().find((row) => row.id === workspaceId);
+		const projectId = (params as { projectId?: unknown }).projectId;
+		if (
+			workspace?.kind === "group" ||
+			listProjects().some((project) => project.id === projectId && project.kind === "group")
+		)
+			throw new CodedError("RESOURCE_UNAVAILABLE", "Group workspaces need a newer client.");
+	}
 	refuseRepositoryOnlyForChats(method, params);
 	if (CHAT_RESOURCE_DOORS.has(method)) {
 		const workspaceId = paramWorkspaceId(params, false);

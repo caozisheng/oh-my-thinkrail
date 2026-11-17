@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { TranscriptMessage } from "@thinkrail/contracts";
 import {
 	canonicalIssueInstanceUrl,
+	hasIssueProjectTrust,
 	ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION,
 	type IssueReference,
 	type IssueTarget,
@@ -122,7 +123,7 @@ function request(
 		const keys = Object.keys(params.input);
 		if (
 			connectionKeys.some((key) => !keys.includes(key)) ||
-			keys.some((key) => ![...connectionKeys, "httpConsent"].includes(key)) ||
+			keys.some((key) => ![...connectionKeys, "httpConsent", "scope"].includes(key)) ||
 			!isIssueConnectionInput(params.input)
 		)
 			invalid();
@@ -131,9 +132,9 @@ function request(
 }
 function project(projectId: string, trusted: boolean) {
 	const found = getProjects().find((candidate) => candidate.id === projectId);
-	if (!found || found.kind === "chats")
+	if (!found || found.kind === "chats" || (found.kind === "group" && found.closed))
 		throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project is unavailable.");
-	if (trusted && found.trusted !== true)
+	if (trusted && found.kind !== "group" && !hasIssueProjectTrust(found))
 		throw new CodedError("RESOURCE_UNAVAILABLE", "Issue project requires trust.");
 	return found;
 }
@@ -200,12 +201,18 @@ export async function deliveryPushUrl(path: string, configuredUrl: string): Prom
 }
 
 const storedKeys = ["projectId", "instanceUrl", "remoteProjectId"];
-const optionalStoredKeys = ["credentialId", "httpConsentInstanceUrl", "cleanupCredentialIds"];
+const optionalStoredKeys = [
+	"credentialId",
+	"httpConsentInstanceUrl",
+	"cleanupCredentialIds",
+	"scope",
+];
 function storedRow(value: Record<string, unknown>): boolean {
 	const keys = Object.keys(value);
 	return (
 		storedKeys.every((key) => typeof value[key] === "string") &&
 		keys.every((key) => [...storedKeys, ...optionalStoredKeys].includes(key)) &&
+		(!Object.hasOwn(value, "scope") || value.scope === "group") &&
 		(value.credentialId === undefined || typeof value.credentialId === "string") &&
 		(value.httpConsentInstanceUrl === undefined ||
 			typeof value.httpConsentInstanceUrl === "string") &&
@@ -242,6 +249,7 @@ function persistence(dir: string): IssuesServiceOptions["persistence"] {
 				projectId: binding.projectId,
 				instanceUrl: binding.instanceUrl,
 				remoteProjectId: binding.remoteProjectId,
+				...(binding.scope ? { scope: binding.scope } : {}),
 				...(binding.credentialId ? { credentialId: binding.credentialId } : {}),
 				...(binding.httpConsentInstanceUrl
 					? { httpConsentInstanceUrl: binding.httpConsentInstanceUrl }
@@ -1334,7 +1342,7 @@ export function createIssuesHost(
 				hasAssociations,
 			};
 			const implementation = row.implementation;
-			if (implementation?.state === "completed")
+			if (implementation?.state === "completed" && row.ownerKind !== "group")
 				bindings.set(implementation.workspaceId, { ...base, role: "primary" });
 			for (const member of row.members ?? [])
 				if (member.ownership?.state === "completed")
@@ -1490,13 +1498,19 @@ export function createIssuesHost(
 				log.warn("issues connect rejected: unknown project");
 				project(projectId, false);
 			}
-			project(projectId, false);
+			const owner = project(projectId, false);
 			const issues = await service();
 			// Reconstruct the write-only input; do not retain the ingress envelope.
 			if (!isIssueConnectionInput(input)) invalid();
+			if ((owner.kind === "group") !== (input.scope === "group"))
+				throw new CodedError(
+					"RESOURCE_UNAVAILABLE",
+					"Group trackers belong to group contexts; repository trackers belong to repositories.",
+				);
 			return issues.connect(projectId, {
 				instanceUrl: input.instanceUrl,
 				projectId: input.projectId,
+				...(input.scope ? { scope: input.scope } : {}),
 				token: input.token,
 				...(input.httpConsent ? { httpConsent: input.httpConsent } : {}),
 			});
@@ -1551,6 +1565,7 @@ export function createIssuesHost(
 		async repositoryAddress(params: unknown) {
 			const { projectId } = request(params);
 			const found = project(projectId, true);
+			if (found.kind === "group") return { repositoryUrl: null };
 			return { repositoryUrl: await originRepositoryUrl(found.path) };
 		},
 	};

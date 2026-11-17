@@ -11,6 +11,13 @@ tags: [wire]
 
 ## Responsibility
 
+From v138 a project group has its own working context: `Project.kind: "group"` with the membership
+group id, and one `Workspace.kind: "group"` rooted at the group folder. These are owners, never member
+repositories. `project.openGroup` materializes/reuses that context without selecting a primary repository.
+Group Issues connections use the group owner id and require group scope; repository owners reject
+group scope. Group workspaces support sessions, files, terminals and specs, but no repository git,
+review or delivery RPCs. Group trust is independent of every member's trust.
+
 The browser↔host wire spine: the single source of truth for the protocol. Types plus a small
 dependency-free runtime: the WS method/channel constants, protocol/feature versions, the small config
 default, narrow cross-ring guards, the quit-confirmation rule both clients drive, and the search matcher
@@ -18,6 +25,21 @@ the palette ranks with — kept here so host-side search can rank with the same 
 `apps/web` may depend on—which is what lets the UI ship independently of the host.
 
 ## Issue integration
+
+Protocol v139 enables the existing Issue launch, repository-association and recovery methods for
+group owners. Sessions use the stable group workspace; associated repositories retain their Git
+ownership checks. Issue references always identify the owning remote repository.
+
+Protocol v138 adds GitLab group associations. `IssueConnectionInput.scope` and the persisted/public
+connection's optional `scope` are `"group"` for a group; absence retains the project association.
+`remoteProjectId` remains the verified numeric association target (a group id when scoped to a group),
+never an Issue reference's project id. Group summaries carry `projectPath` and always reference the
+actual owning project. A group id and a project id may coincide without sharing an identity.
+
+At the same v138 floor, summaries optionally include `assignees: IssuePerson[]` and
+`author: IssuePerson | null`. `IssuePerson` projects only numeric id, display name and username;
+emails, avatars, profile URLs and credentials do not cross this surface. Absent fields remain unknown
+for older hosts/provider responses; an empty assignee array means unassigned.
 
 Protocol v134 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.
 
@@ -1772,7 +1794,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v137. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v139. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1782,3 +1804,22 @@ upstream numbers.
 ## Latest upstream capability floors
 
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
+
+## Workspace capability boundary
+
+The public `workspaceCapabilities` projection and `isRepositoryProject` /
+`isRepositoryWorkspace` predicates own which domain kinds permit repository operations.
+They are pure, shared by host and web, and never grant trust or remote authorization.
+Managed, Default and external workspaces support Git, Specs and Issues; group workspaces
+support Specs and Issues without Git; projectless chats support neither. Creation, protocol
+compatibility and presentation still explicitly recognize group identity at their boundaries.
+
+## Shared Issue repository admission
+
+Contracts owns `hasIssueProjectTrust` and `isIssueRepositoryCandidate`. Issue access recognizes
+either an existing alias-skill trust grant (`trusted === true`) or an existing native project-resource
+grant (`piResourceTrust === "granted"`). Missing/revoked grants grant nothing. This is Issue admission
+only: it never writes either trust field, admits native pi resources, acknowledges aliases, or enables MCP.
+Candidates must also be open repository projects; a group owner limits them to its own members.
+The UI, host selection/join guards and agent reference candidates use the same predicate. Host checks
+repeat around asynchronous work. The existing project trust revocation clears both grants.

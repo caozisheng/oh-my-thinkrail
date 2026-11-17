@@ -1,4 +1,5 @@
 import type { WsMethodName, WsParams, WsRequest, WsResult } from "@thinkrail/contracts";
+import { PROTOCOL_VERSION } from "@thinkrail/contracts";
 import { assertE2eHost } from "./isolation";
 import { E2E_DATA_DIR, E2E_PORT, E2E_RESTART_DATA_DIR, E2E_RESTART_PORT } from "./paths";
 
@@ -24,7 +25,7 @@ export class E2eWire {
 			`http://localhost:${port}`,
 			port === E2E_RESTART_PORT ? E2E_RESTART_DATA_DIR : E2E_DATA_DIR,
 		);
-		const socket = new WebSocket(`ws://localhost:${port}/ws`);
+		const socket = new WebSocket(`ws://localhost:${port}/ws?protocol=${PROTOCOL_VERSION}`);
 		await new Promise<void>((resolve, reject) => {
 			const timer = setTimeout(() => {
 				socket.close();

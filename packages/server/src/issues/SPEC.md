@@ -18,6 +18,15 @@ seam and is composed by server-only host actions. Stage publication and draft de
 
 ## Public surface
 
+GitLab group associations use the existing vault/lifecycle with optional `scope: "group"`.
+They verify the group and its complete owned-project catalog, including subgroups and excluding shared
+projects. Group reads reuse the bounded GitLab transport; refresh replaces the catalog atomically only
+after complete success. Every summary and detail retains the owning project's numeric id and
+verified namespace path. Unknown/out-of-group projects and cross-instance references fail closed.
+Group connections resolve workflow/delivery ports through the verified owning project, with the
+existing confirmation and checkout guards. No production credentials enter tests.
+The barrel exports `createGitLabGroupClient`, `GitLabGroupClient` and `GitLabGroupIssue`; its group,
+owned-project catalog and group-Issue reads share the project's bounded request transport.
 `index.ts` exports `createIssuesService`, `IssuesService`, `IssuesServiceOptions`, `IssueBinding`,
 and `IssueBindingPersistence`, `IssueStoredBinding`, and `IssueCredentialStore`. The async factory loads
 and validates metadata only: startup never touches the vault or network. The required
@@ -51,7 +60,8 @@ a server-only lazy asynchronous seam, not a wire contract. Host composition supp
 
 `remoteFor(localProjectId, reference)` is a synchronous server-only capability lookup, not an RPC
 or workflow action. It validates the full reference and requires a live client plus exact canonical
-instance URL and verified numeric remote project id equality with the current binding; the provider
+instance URL and verified numeric remote project id equality with a project binding, or membership in
+the verified owned-project catalog of a group binding; the provider
 follows the instance host through `issueProviderForInstanceUrl`, never the caller. It returns the
 neutral read port, never reconstructing a client from persisted metadata and never exposing a token
 accessor. `workflowFor(localProjectId, reference)` is the GitLab-only companion: it refuses a
@@ -77,6 +87,12 @@ detail, MR creation, and SHA-conditional merge. These are provider primitives, n
 permission to merge. Provider input/read types are exported through the barrel.
 
 ## Connection and read invariants
+
+GitLab Issue reads project optional assignee/author identities into summaries, using only
+numeric id, name and username. GitLab's legacy singular assignee is accepted only when the plural
+field is absent. Missing metadata is not fabricated as an empty assignment. People filtering belongs
+to the loaded browser list; it causes no provider requests, changes no Issue, and cannot bypass the
+existing complete-pagination/resource limits.
 
 - `connect` validates through shared `canonicalIssueInstanceUrl` / `hasIssueHttpConsent` before
   any PAT request. Non-loopback HTTP requires consent for the exact canonical instance, either
@@ -472,4 +488,28 @@ retained reservations) and version-free session reuse across re-entries. Target 
 compatibility and full workflow integration remain separate delivery gates.
 
 Workspace handles admit the shared `chat` kind as input, but every ownership/default validation
-rejects it: Issue work always requires a real project checkout. Projectless chats cannot be Issue targets.
+rejects it. Repository-owned Issue work requires a real project checkout; group owners use their
+explicit non-Git workspace. Projectless chats cannot be Issue targets.
+
+## Group-owned Issue workflows (v139)
+
+The existing workspace coordinator, launch journal, Issue session association and startup prompt also
+serve group owners. `ownerKind: "group"` marks their records explicitly: design and implementation
+sessions belong to the group's stable non-Git workspace. That owner is not a source repository.
+Only selected/joined repositories appear as implementation checkouts; other trusted group members
+are read-only references. Every participating checkout uses the existing member preparation, join,
+cleanup and recovery rules. Group roots never receive Git branches, commits or primary delivery.
+Full Issue identity (instance, remote project, IID) keeps equal numbers in different repositories apart.
+Reopening reuses stage sessions and startup reservation exactly as repository launches do.
+
+A group has no primary Git commit: legacy primary-commit publication refuses it. Bound session
+confirmation uses the participating repositories and their verified commits. Recovery rebuilds missing
+associated checkouts while retaining the group workspace and its bound session.
+
+## Workspace owner policy
+
+`workspaceOwner.ts` privately owns the group-versus-repository session placement policy:
+the default session workspace, primary repository participation, launch key scope and primary
+implementation ownership. The coordinator retains the single journaling, session reuse,
+member-worktree, join, cleanup and recovery algorithms. Group owners never acquire a primary Git
+checkout. Records and persisted ownerKind markers are unchanged; callers still use the existing barrel.

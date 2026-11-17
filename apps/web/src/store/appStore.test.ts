@@ -5519,3 +5519,36 @@ test("a reveal the view handled is cleared, and only for its own tick, so a remo
 	s().clearFileTabReveal("ws1", "ws1:src/a.ts", 2);
 	expect(s().tabsByWorkspace.ws1?.[0]).not.toHaveProperty("reveal");
 });
+
+test("entering a group workspace installs its owner and workspace before publishing selection", () => {
+	const project: Project = {
+		id: "g1",
+		kind: "group",
+		name: "suite",
+		path: "/suite",
+		slug: "group-g1",
+		lastOpened: 1,
+	};
+	const workspace: Workspace = {
+		id: "gw1",
+		projectId: "g1",
+		kind: "group",
+		name: "suite",
+		worktreePath: "/suite",
+		branch: "",
+		baseBranch: "",
+	};
+	useAppStore.setState({ projects: [], workspaces: {}, activeWorkspaceId: null });
+	const observations: boolean[] = [];
+	const unsubscribe = useAppStore.subscribe((state) => {
+		if (state.activeWorkspaceId === "gw1")
+			observations.push(
+				state.projects.some((owner) => owner.id === "g1") &&
+					state.workspaces.g1?.some((row) => row.id === "gw1") === true,
+			);
+	});
+	useAppStore.getState().activateGroupWorkspace(project, workspace);
+	unsubscribe();
+	expect(observations).toEqual([true]);
+	expect(useAppStore.getState().selectedProjectId).toBe("g1");
+});

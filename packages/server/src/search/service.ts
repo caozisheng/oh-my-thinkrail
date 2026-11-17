@@ -13,6 +13,7 @@ import type {
 	WsResult,
 } from "@thinkrail/contracts";
 import {
+	isRepositoryWorkspace,
 	MAX_SEARCH_GROUP_LIMIT,
 	MAX_SEARCH_QUERY_LENGTH,
 	parseMatchTerms,
@@ -113,7 +114,7 @@ export function resolveSearchRoot(
 			root: current.worktreePath,
 			projectId: current.projectId,
 			workspaceId: current.id,
-			git: current.kind !== "chat",
+			git: isRepositoryWorkspace(current),
 		};
 	}
 	const project = projects.find((candidate) => candidate.id === context.projectId);

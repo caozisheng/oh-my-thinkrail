@@ -19,10 +19,9 @@ sessions and isolated Git worktrees.
 ## Current scope
 
 Issues integration is experimental and covers GitLab and GitHub repositories. The provider follows the
-repository address — only `github.com` is GitHub, every other host is GitLab — and both use an access
-token. It includes:
+repository address — only `github.com` is GitHub, every other host is GitLab. Connections use access tokens. It includes:
 
-- HTTP(S) project association from the Issues panel or after opening or cloning a repository. Configure the source address and token first, then trust the project to load Issues. Only open, trusted repositories are offered for linking; operation-lock contention appears beside the Issue title without granting unlock authority.
+- HTTP(S) project association from the Issues panel or after opening or cloning a repository. Configure the source address and token first, then trust the project to load Issues. Existing project-resource or skill trust is recognized, without another grant. Only open, trusted repositories are offered for linking; operation-lock contention appears beside the Issue title without granting unlock authority.
 - Personal access tokens stored in the host's OS credential vault, with explicit consent for non-local
   HTTP connections and no plaintext storage fallback.
 - An issue list with **Design** and **Implement** actions. Sessions use the Issue title; implementation
@@ -47,7 +46,8 @@ token. It includes:
   The outer folder is usually a plain folder (as with Google `repo` or `west`) and never has to be a
   repository. The project rail lists the members flat under the group header, sorted and labelled by
   relative path (a folder that is itself a repository is just another member, `.`). Clicking the
-  group name opens the group home: the group's Issues as a collapsed-by-default list (each row shows
+  group name opens its Default workbench; the group overview button opens the group's Issues as a
+  collapsed-by-default list (each row shows
   how many repositories the Issue touches, how many changed, its commits and uncommitted files; expand
   it for every repository's Issue branch, commits since its start, commits behind the default branch
   and uncommitted files), a warning only when a repository's main directory has uncommitted changes or
@@ -86,7 +86,24 @@ goals. Existing upstream GitHub pull-request features are separate from Issues i
 
 ## GitHub and GitLab Issues
 
-Both providers support listing Issues, reading their descriptions and comments, starting **Design**
+Each group has its own Default workspace in the project tree from host protocol v138. Click the group
+name or its Default row to enter the full workbench directly: start group conversations, open terminals
+at the group root, read group Specs and connect group Issues without choosing a primary repository.
+New conversations start with an empty input and belong to the group. Conversations and terminals work in the original folders. Member repositories retain their own isolated
+workspaces and repository delivery tools.
+
+In **Group Home → Group Issues**, paste a GitLab group URL such as
+`https://gitlab.example/groups/engineering/platform/-/issues`, confirm the instance (including any
+installation prefix), and supply an access token that can read the group. Owned projects and nested subgroups
+are included; each Issue shows its project namespace so equal per-project numbers remain distinct.
+Filter by assignee or author using a display name or username; filters combine and apply to the complete
+loaded list. From host protocol v139, use the same Issue links, previews, repository association,
+**Design** and **Implement** controls as repository Issues. Bound sessions belong to the group;
+implementation prepares worktrees for linked member repositories. Returning to the panel reuses its
+loaded list; use Refresh Issues to fetch updates.
+Group connections belong to the group; repository Issues forms connect individual repositories.
+
+Repository connections on both providers support listing Issues, reading their descriptions and comments, starting **Design**
 and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
 After each stage, a separate question card confirms the complete report before it is published. Design
 moves an Issue with no workflow label or `workflow::backlog` to `workflow::in-progress`; implementation
