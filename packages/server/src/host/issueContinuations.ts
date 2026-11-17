@@ -45,10 +45,21 @@ const messages = {
 		"Issue delivery was refused. Review the original operation and current prerequisites.",
 	ISSUE_CONFIRMATION_BLOCKED:
 		"Issue confirmation was blocked. Inspect the original operation before continuing.",
-	RANGE_INVALID: "Invalid Issue request.",
-	RESOURCE_UNAVAILABLE:
-		"The Issue operation could not continue. Inspect its state and prerequisites.",
 } as const;
+const retryableCodes = new Set<keyof typeof messages>(
+	Object.keys(messages) as (keyof typeof messages)[],
+);
+function nonRetryableError(error: unknown): CodedError {
+	if (error instanceof CodedError && error.code === "RANGE_INVALID")
+		return new CodedError(
+			"RANGE_INVALID",
+			"Invalid Issue request. Correct the input and prepare again; do not confirm a retry of unchanged input.",
+		);
+	return new CodedError(
+		"RESOURCE_UNAVAILABLE",
+		"The Issue operation failed for a non-retryable reason. Inspect its state and prerequisites; no retry card was created.",
+	);
+}
 const knownReasonTags = new Set([
 	"capacity_reached",
 	"checkout-branch-changed",
@@ -103,7 +114,7 @@ const knownReasonTags = new Set([
 	"unsafe_directory",
 	"updated-request-not-observed",
 ]);
-function reason(error: unknown): IssueContinuationBlocked["reason"] {
+function reason(error: unknown): IssueContinuationBlocked["reason"] | null {
 	let code: unknown;
 	let text: unknown;
 	if (error instanceof CodedError) {
@@ -130,14 +141,10 @@ function reason(error: unknown): IssueContinuationBlocked["reason"] {
 			tag = match[0];
 		}
 	}
-	if (
-		code !== "ISSUE_DELIVERY_REFUSED" &&
-		code !== "ISSUE_CONFIRMATION_BLOCKED" &&
-		code !== "RANGE_INVALID"
-	)
-		code = "RESOURCE_UNAVAILABLE";
-	const guidance = messages[code as keyof typeof messages];
-	return { code: code as keyof typeof messages, message: tag ? `${tag} ${guidance}` : guidance };
+	if (typeof code !== "string" || !retryableCodes.has(code as keyof typeof messages)) return null;
+	const retryableCode = code as keyof typeof messages;
+	const guidance = messages[retryableCode];
+	return { code: retryableCode, message: tag ? `${tag} ${guidance}` : guidance };
 }
 function isBlocked(value: unknown): boolean {
 	return (
@@ -208,11 +215,15 @@ type UnavailableReason =
 	| "session-mismatch"
 	| "operation-mismatch"
 	| "expired";
-function unavailable(reason: UnavailableReason): never {
+function unavailable(reason: UnavailableReason, phase?: Phase): never {
+	const recovery =
+		reason === "missing" && phase === "prepare"
+			? "Confirm the original preparation created no mutation intent, correct the input, and prepare again."
+			: "Inspect/reconcile the original operationId; never resend an uncertain write or use a new ID to bypass it.";
 	throw Object.assign(
 		new CodedError(
 			"RESOURCE_UNAVAILABLE",
-			`Issue continuation unavailable [${reason}]. Inspect the original operation before preparing a fresh request; never resend an uncertain write.`,
+			`Issue continuation unavailable [${reason}]. ${recovery}`,
 		),
 		{ reason },
 	);
@@ -248,8 +259,9 @@ export function createIssueContinuations(options: IssueContinuationOptions) {
 				"RESOURCE_UNAVAILABLE",
 				"Issue continuation capacity reached. Wait for existing cards to expire or finish.",
 			);
-		const continuationId = randomUUID();
+		const continuationId = `${phase}.${randomUUID()}`;
 		const refusal = reason(error);
+		if (!refusal) throw nonRetryableError(error);
 		const scope =
 			phase === "prepare"
 				? "Retry preparation only using the original input. This does not authorize a remote write. Any new normal confirmation card still needs separate approval."
@@ -306,6 +318,15 @@ export function createIssueContinuations(options: IssueContinuationOptions) {
 			failure.reason === "confirmation_mismatch"
 		)
 			throw failure;
+		if (continued) {
+			const refusal = reason(failure);
+			if (!refusal) throw nonRetryableError(failure);
+			throw new CodedError(
+				refusal.code as keyof typeof messages,
+				`${refusal.message} The approved continuation was used; inspect the operation and correct its prerequisites before preparing again.`,
+			);
+		}
+		if (!reason(failure)) throw nonRetryableError(failure);
 		return offer(sessionId, operationId, phase, input, attempt, failure);
 	}
 	return {
@@ -327,7 +348,10 @@ export function createIssueContinuations(options: IssueContinuationOptions) {
 		): Promise<unknown> {
 			if (!enabled()) unavailable("disabled");
 			const entry = entries.get(continuationId);
-			if (!entry) unavailable("missing");
+			if (!entry) {
+				const phase = /^(prepare|execute)\./.exec(continuationId)?.[1] as Phase | undefined;
+				unavailable("missing", phase);
+			}
 			if (entry.sessionId !== sessionId) unavailable("session-mismatch");
 			if (entry.operationId !== operationId) unavailable("operation-mismatch");
 			if ((!entry.result || entry.finished) && entry.expiresAt <= Date.now()) {

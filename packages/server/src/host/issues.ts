@@ -500,7 +500,7 @@ export function createIssuesHost(
 			provider,
 			instanceUrl: connection.instanceUrl,
 			projectId: connection.remoteProjectId,
-			number: 1,
+			number: binding.reference.number,
 		});
 		return {
 			remote,
@@ -512,7 +512,7 @@ export function createIssuesHost(
 						provider,
 						instanceUrl: connection.instanceUrl,
 						projectId: connection.remoteProjectId,
-						number: 1,
+						number: binding.reference.number,
 					}) !== remote
 				)
 					invalid();

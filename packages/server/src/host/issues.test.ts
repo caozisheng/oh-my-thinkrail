@@ -223,14 +223,10 @@ test("a fresh host prepares confirmations from durable session bindings without 
 	});
 	await expect(
 		prepareConfirmation("bound-session", { ...confirmation, inspect: true }),
-	).resolves.toMatchObject({
-		status: "blocked",
-		continuationId: expect.any(String),
-		questions: { questions: expect.any(Array) },
-	});
+	).rejects.toMatchObject({ code: "RANGE_INVALID" });
 	await expect(
 		prepareConfirmation("unbound-session", { operationId: "design-review", inspect: true }),
-	).resolves.toMatchObject({ status: "blocked", continuationId: expect.any(String) });
+	).rejects.toMatchObject({ code: "RANGE_INVALID" });
 	await expect(
 		prepareConfirmation("bound-session", { operationId: "missing", recovery: "reconcile" }),
 	).resolves.toEqual({ status: "missing" });
@@ -240,16 +236,13 @@ test("a fresh host prepares confirmations from durable session bindings without 
 			recovery: "reconcile",
 			projectId: "one",
 		}),
-	).resolves.toMatchObject({ status: "blocked", continuationId: expect.any(String) });
-	await expect(prepareConfirmation("unbound-session", confirmation)).resolves.toMatchObject({
-		status: "blocked",
-		continuationId: expect.any(String),
+	).rejects.toMatchObject({ code: "RANGE_INVALID" });
+	await expect(prepareConfirmation("unbound-session", confirmation)).rejects.toMatchObject({
+		code: "RANGE_INVALID",
 	});
 	setProjectTrust("one", false);
-	await expect(prepareConfirmation("bound-session", confirmation)).resolves.toMatchObject({
-		status: "blocked",
-		reason: { code: "RESOURCE_UNAVAILABLE" },
-		continuationId: expect.any(String),
+	await expect(prepareConfirmation("bound-session", confirmation)).rejects.toMatchObject({
+		code: "RESOURCE_UNAVAILABLE",
 	});
 });
 

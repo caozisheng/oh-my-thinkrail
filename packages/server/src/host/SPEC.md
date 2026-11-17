@@ -22,9 +22,11 @@ reserves exclusive immutable intents before mutation, and makes completed receip
 inspection reports missing/prepared/uncertain/completed status. Deterministic preflight happens before
 intent reservation; after reservation, uncertain mutation stays fenced and requires remote inspection and
 explicit user-directed recovery.
-Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live provider
-identity. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP clone
-URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
+
+Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live
+provider identity. Auxiliary-repository delivery ports remain scoped to the bound Issue IID rather than a
+placeholder IID. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP
+clone URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
 creates drafts only. A matching existing request at an older SHA is updated in place after its card is
 confirmed; an exact-head request is reused without modification. Merged/closed requests are historical,
 not active candidates: they neither cause ambiguity nor prevent another Draft request for the same
@@ -39,15 +41,20 @@ next action. Read-only preflight failures occur before intent reservation and re
 refreshed confirmation. Once an intent is reserved, only a completed receipt or explicit inspection and
 user-directed recovery can proceed; no replacement ID bypasses uncertainty. Confirmation receipt mismatch
 is a distinct `ISSUE_CONFIRMATION_BLOCKED` refusal and does not generate another continuation card: asking
-the user to approve a retry cannot repair a receipt that the host could not verify. Other deterministic
-prepare/execute refusals may use host-local `issueContinuations`, which return a sanitized cause tag, fixed
-input snapshot and exact continuation questions. A real receipt authorizes one memoized attempt;
-concurrent/replayed calls share it. A successful prepare continuation returns a new normal/warned operation
-card needing separate approval, not remote mutation. Snapshots expire with host restart or after 30 minutes,
-are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Unavailable execution
-reports static `disabled`, `missing`, `session-mismatch`, `operation-mismatch` or `expired` reasons;
-missing includes restart, eviction and previously pruned entries, not proof of a particular cause.
-Expiry is rechecked after receipt verification before claiming an attempt. Invalid receipts grant no action.
+the user to approve a retry cannot repair a receipt that the host could not verify. Continuations are
+limited to the explicit `ISSUE_CONFIRMATION_BLOCKED` and `ISSUE_DELIVERY_REFUSED` refusal codes; invalid
+input (`RANGE_INVALID`) and unclassified/resource errors return static sanitized failures without cards.
+A continuation returns a sanitized cause tag, fixed input snapshot and exact questions. A real receipt
+authorizes one memoized attempt; concurrent/replayed calls share it. A successful prepare continuation
+returns a new normal/warned operation card needing separate approval, not remote mutation. A failed
+continued attempt is terminal and never produces another card. Snapshots expire with host restart or after
+30 minutes, are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Continuation
+IDs carry their phase so a missing prepare card can direct the user to correct input and prepare again
+only after confirming there is no mutation intent; a missing execute card directs inspection/reconciliation
+of the original operation id and never a resend. Unavailable execution reports static `disabled`, `missing`,
+`session-mismatch`, `operation-mismatch` or `expired` reasons; missing includes restart, eviction and
+previously pruned entries, not proof of a particular cause. Expiry is rechecked after receipt verification
+before claiming an attempt. Invalid receipts grant no action.
 
 `continueDespiteChecks:true` requests a one-shot warning card, not authorization: stage policy warnings
 include closed Issue, missing design receipt, unexpected workflow labels and uncommitted files; delivery
