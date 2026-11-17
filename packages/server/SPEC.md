@@ -220,11 +220,13 @@ and calls `refreshExtensionTools()` after an applied update that contains `disab
   promise, while abrupt death relies on operating-system process cleanup.
 - **WS commands return values directly**; only events + extension-UI use push channels.
 - Binds beyond localhost via `host` option (the Tailscale seam).
-- **Tests never see the developer's home** — `bunfig.toml` preloads `test/isolatedHome.ts`, which points
-  `HOME` at a fresh temp dir, removed after the run, and clears `CLAUDE_CONFIG_DIR` / `CODEX_HOME` /
-  `GEMINI_CLI_HOME` / `PI_CODING_AGENT_DIR` (turbo passes the last one through). Portable
-  skill aliases and pi's `~/.agents/skills` otherwise imported the machine's real libraries, so the skill
-  catalog budget and its hint made results depend on whoever ran the suite.
+- **Unit tests own disposable state before imports** — root and server-package `bunfig.toml` preload
+  the same `test/isolatedHome.ts`. Each test process allocates its own temporary root and explicitly
+  overrides `THINKRAIL_DATA_DIR`, both `HOME` and Windows `USERPROFILE`, PI agent and tool-home paths,
+  including inherited overrides. Cleanup removes only that captured root. This protects direct root-level
+  focused tests as well as package/Turbo runs: registry-writing tests must never fall back to the user's
+  data directory, and skill discovery must not import the developer's real libraries. Subprocess sentinel
+  tests exercise both entry points; E2E runners retain their separate harness-owned isolation policy.
 
 ## Later
 
