@@ -1,4 +1,4 @@
-@layer components {
+@layer utilities {
 	.issue-provider-label {
 		background-color: var(--issue-label-background);
 		color: var(--issue-label-foreground);
