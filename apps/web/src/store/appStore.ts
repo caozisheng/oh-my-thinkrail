@@ -552,6 +552,7 @@ export interface SessionRuntime {
 	composerEdit: ComposerEdit | null;
 	promptImages: PromptImagesState;
 	readingAnchor: ChatReadingAnchor | null;
+	composerFocusWonOver: string | null;
 	pendingExtUi: ExtUiDialogRequest | null;
 	extUiQueue: ExtUiDialogRequest[];
 	extUiStatus: Record<string, string>;
@@ -587,6 +588,7 @@ function newRuntime(
 		composerEdit: null,
 		promptImages: newPromptImagesState(),
 		readingAnchor: null,
+		composerFocusWonOver: null,
 		pendingExtUi: null,
 		extUiQueue: [],
 		extUiStatus: {},
@@ -1303,6 +1305,7 @@ interface AppState {
 		options?: { dismissHistory?: boolean },
 	) => void;
 	clearComposerFocusRequest: () => void;
+	serveComposerFocusRequest: (sessionId: string, waitingToolCallId: string | null) => void;
 	hydrateLocalLayoutState: (payload: LocalLayoutStatePayload) => void;
 	applyLocalLayoutState: (payload: LocalLayoutStatePayload, invalidateProjection?: boolean) => void;
 	setLocalLayoutPreferences: (preferences: LocalLayoutPreferences) => void;
@@ -3138,6 +3141,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 		})),
 	clearComposerFocusRequest: () =>
 		set((state) => (state.composerFocusRequest ? { composerFocusRequest: null } : state)),
+	serveComposerFocusRequest: (sessionId, waitingToolCallId) =>
+		set((state) => ({
+			composerFocusRequest: null,
+			...withRuntime(state, sessionId, (rt) =>
+				rt.composerFocusWonOver === waitingToolCallId
+					? rt
+					: { ...rt, composerFocusWonOver: waitingToolCallId },
+			),
+		})),
 	hydrateLocalLayoutState: (payload) => {
 		set((state) =>
 			state.layoutStateReady
