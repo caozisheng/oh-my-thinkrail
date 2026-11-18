@@ -39,6 +39,7 @@ import { issueToolsExtension } from "./issueTools";
 import {
 	createPiSettings,
 	disabledPackages,
+	piResourcePathKey,
 	recordLoadedExtensions,
 	setDisabledPackagesResolver,
 } from "./packages";
@@ -496,8 +497,7 @@ export async function buildResourceLoader(
 		}
 	};
 
-	const excluded = new Set(excludedExtensionPaths.map((path) => resolve(path)));
-	if (excluded.size === 0) {
+	if (excludedExtensionPaths.length === 0) {
 		const loader = new DefaultResourceLoader({
 			...common,
 			additionalExtensionPaths: devExtensionPaths,
@@ -517,6 +517,7 @@ export async function buildResourceLoader(
 	const resolveExtensionPaths = async (): Promise<void> => {
 		await settingsManager.reload();
 		const resolvedResources = await packageManager.resolve();
+		const excluded = new Set(excludedExtensionPaths.map(piResourcePathKey));
 		const next: string[] = [];
 		const metadata = new Map<string, PathMetadata>();
 		for (const resource of resolvedResources.extensions) {
@@ -525,10 +526,9 @@ export async function buildResourceLoader(
 				next.push(resource.path);
 				continue;
 			}
-			const path = resolve(resource.path);
-			if (excluded.has(path)) continue;
+			if (excluded.has(piResourcePathKey(resource.path))) continue;
 			next.push(resource.path);
-			metadata.set(path, resource.metadata);
+			metadata.set(resolve(resource.path), resource.metadata);
 		}
 		additionalExtensionPaths.splice(
 			0,

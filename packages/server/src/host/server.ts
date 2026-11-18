@@ -110,7 +110,6 @@ import {
 } from "../artifacts";
 import {
 	cancelAllLogins,
-	initializeJbcentralRuntime,
 	setJbcentralAppliedPublisher,
 	setJbcentralChangedPublisher,
 	setLoginPublisher,
@@ -216,6 +215,7 @@ import {
 	workspaceCreationHandoff,
 } from "./handlers";
 import { HeldSnapshots, terminalsMayResume } from "./heldSnapshots";
+import { initializeHostRuntime } from "./hostRuntime";
 import { provisionInitialTerminal } from "./initialTerminal";
 import { issuesHost } from "./issues";
 import { trackLoginOutcome } from "./loginAnalytics";
@@ -380,7 +380,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	} catch (error) {
 		log.warn(`chats without a project are unavailable: ${String(error)}`);
 	}
-	await initializeJbcentralRuntime();
+	await initializeHostRuntime();
 	getConfig();
 	setPiTrustSeed(piTrustsProjectPath);
 	const {
@@ -944,7 +944,6 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 
 	setDisabledExtensionsResolver(() => new Set(getConfig().disabledExtensions));
 	setExtensionSettingsResolver(() => getConfig().extensionSettings ?? {});
-	setDisabledPackagesResolver(() => new Set(getConfig().disabledPackages));
 
 	setProjectPublisher((project) => {
 		const capture = additionalCapture();
