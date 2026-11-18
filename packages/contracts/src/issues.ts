@@ -77,7 +77,13 @@ export interface IssueImplementationRecoveryMember {
 }
 export interface IssueImplementationRecovery {
 	status: "available" | "unavailable";
-	reason: "missing-record" | "not-completed" | "resources-remain" | "pending-operation" | null;
+	reason:
+		| "missing-record"
+		| "not-completed"
+		| "resources-remain"
+		| "pending-operation"
+		| "session-binding-missing"
+		| null;
 	baseCommit: string | null;
 	members: IssueImplementationRecoveryMember[];
 	generation: number;
@@ -121,7 +127,8 @@ export function isIssueImplementationRecovery(
 			value.reason === "missing-record" ||
 			value.reason === "not-completed" ||
 			value.reason === "resources-remain" ||
-			value.reason === "pending-operation") &&
+			value.reason === "pending-operation" ||
+			value.reason === "session-binding-missing") &&
 		(value.baseCommit === null ||
 			/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(String(value.baseCommit))) &&
 		Array.isArray(value.members) &&

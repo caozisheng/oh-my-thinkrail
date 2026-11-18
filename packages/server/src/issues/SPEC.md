@@ -357,9 +357,12 @@ recoverable. The primary is never removed. A removed member reads as a reference
 The exported workspace coordinator uses injected existing-workspace and session ports, not a second
 store or runtime. It reserves a provider-qualified ownership record before creating exactly
 `.worktrees/issue-<IID>`, persists the registered workspace before starting a session, and reuses recorded
-sessions in either idle or busy state. Returning an existing session for navigation does not prompt,
-stop, or restart it; actually starting its initial prompt remains idle-only under the host session-start
-contract. A missing session is replaced only under a durable pending marker. A pending create is recoverable only when both Git registration and a managed workspace match
+sessions in either idle or busy state. Before returning a healthy recorded session, implementation and
+design launch checks the Issue session association: an absent association is restored from the verified
+workspace record under the launch fence, while a conflicting association refuses reconciliation. Restoration
+never creates a workspace or session and never sends a startup prompt. Returning an existing session for
+navigation does not prompt, stop, or restart it; actually starting its initial prompt remains idle-only under
+the host session-start contract. A missing session is replaced only under a durable pending marker. A pending create is recoverable only when both Git registration and a managed workspace match
 its reserved branch/path; it never adopts an unrelated checkout, overwrites a destination, chooses a
 suffix, deletes a checkout, or starts a prompt in a busy session. A pending create that left no
 directory, no Git worktree entry and no workspace registration created nothing, so it is re-reserved with a fresh branch

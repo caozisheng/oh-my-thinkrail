@@ -372,7 +372,10 @@ export function IssuesTool({
 					setActionState(null);
 					return { ok: false, error: "launch-blocked" };
 				}
-				if (diagnosis.status === "available" || diagnosis.reason !== "missing-record") {
+				if (
+					diagnosis.reason !== "session-binding-missing" &&
+					(diagnosis.status === "available" || diagnosis.reason !== "missing-record")
+				) {
 					actionLock.current = false;
 					setActionState(null);
 					setRecovery({ identity, issue, diagnosis });
