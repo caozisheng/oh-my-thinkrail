@@ -1,10 +1,14 @@
 import { afterAll } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { toolHomeEnv } from "@thinkrail/shared/toolHomes";
 
-const home = mkdtempSync(join(tmpdir(), "thinkrail-server-test-home-"));
-process.env.HOME = home;
-for (const name of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "PI_CODING_AGENT_DIR"])
-	delete process.env[name];
-afterAll(() => rmSync(home, { recursive: true, force: true }));
+const root = mkdtempSync(join(tmpdir(), "thinkrail-server-test-home-"));
+const home = join(root, "home");
+mkdirSync(home);
+Object.assign(process.env, toolHomeEnv(home), {
+	THINKRAIL_DATA_DIR: join(root, "data"),
+	PI_CODING_AGENT_DIR: join(home, ".pi", "agent"),
+});
+afterAll(() => rmSync(root, { recursive: true, force: true }));
