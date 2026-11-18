@@ -295,6 +295,11 @@ describe("GitHub Issue reads", () => {
 		]);
 	});
 
+	test("a request deadline rejects without escaping the request promise", async () => {
+		const { remote } = client(() => new Promise<Response>(() => {}), { timeoutMs: 1 });
+		await expect(remote.issue(7)).rejects.toHaveProperty("code", "RESOURCE_UNAVAILABLE");
+	});
+
 	test("a pull request is never returned as one issue", async () => {
 		const { remote } = client(() =>
 			Response.json({ ...issuePayload, pull_request: { url: "https://api.github.com" } }),

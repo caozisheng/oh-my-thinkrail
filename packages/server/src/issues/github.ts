@@ -323,7 +323,7 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
 				new Promise<never>((_resolve, reject) => {
 					timer = setTimeout(() => {
 						controller.abort();
-						reject(unavailable());
+						reject(new CodedError("RESOURCE_UNAVAILABLE", "Issue API request unavailable."));
 					}, remaining);
 				}),
 			]);
