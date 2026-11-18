@@ -118,7 +118,8 @@ permission to merge. Provider input/read types are exported through the barrel.
   never denies the association itself.
 - The low-level client accepts credential/query/fragment-free HTTP(S) URLs; HTTP is also available at the service boundary under the shared explicit-consent gate. Redirects are rejected, not followed with a PAT.
 - A request has a hard deadline covering fetch and streamed body, byte cap, schema validation and
-  static CodedError failures. Lists have page/item caps and must complete; a truncated list is an
+  static CodedError failures. Deadline expiry rejects the request promise; it never escapes the timer
+  callback into the host event loop. Lists have page/item caps and must complete; a truncated list is an
   error, never approval evidence. No retries, especially no uncertain mutation retries.
 
 ## Provider write and MR contract

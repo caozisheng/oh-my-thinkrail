@@ -717,7 +717,7 @@ test("chats taking turns on a file record each round once, so earlier rounds kee
 			toolName: "write",
 			args: { path: `${CONTEXT}/shared.md` },
 		});
-		write(`${CONTEXT}/shared.md`, `v${turn + 1}${"!".repeat(turn)}`);
+		write(`${CONTEXT}/shared.md`, `v${turn + 1}${"!".repeat(turn + 1)}`);
 		await observeArtifactSessionEvent("w1", sessionId, {
 			type: "tool_execution_end",
 			toolCallId: `c${turn}`,

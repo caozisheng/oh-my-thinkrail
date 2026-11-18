@@ -169,7 +169,9 @@ posix("abort after natural exit cannot cancel the drain or kill healthy descenda
 		bun(`
 		const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdout: "inherit", stderr: "inherit" });
 		child.unref();
-		require("node:fs").writeFileSync(${JSON.stringify(ready)}, JSON.stringify([process.pid, child.pid]));
+		const fs = require("node:fs");
+		fs.writeFileSync(${JSON.stringify(`${ready}.tmp`)}, JSON.stringify([process.pid, child.pid]));
+		fs.renameSync(${JSON.stringify(`${ready}.tmp`)}, ${JSON.stringify(ready)});
 		process.stdout.write("done");
 	`),
 		{ timeoutMs: 10_000, signal: controller.signal },
