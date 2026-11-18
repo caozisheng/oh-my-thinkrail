@@ -54,6 +54,7 @@ import {
 	TODO_REVIEW_FIX_CUSTOM_TYPE,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
+import { stripAnsi } from "@thinkrail/shared/stripAnsi";
 import {
 	type BackgroundCommands,
 	createBackgroundCommands,
@@ -486,8 +487,12 @@ function entryFirstPrompt(entry: Entry): { firstPrompt?: string } {
 	return entry.firstPrompt === null ? {} : { firstPrompt: entry.firstPrompt };
 }
 
+function displayedSessionTitle(name: string | undefined): string {
+	return name === undefined ? "" : stripAnsi(name);
+}
+
 function entryTitle(entry: Entry): string {
-	return entry.session.sessionName ?? "";
+	return displayedSessionTitle(entry.session.sessionName);
 }
 
 function publishEntryState(entry: Entry): void {
@@ -537,7 +542,7 @@ function diskStateRecord(
 		workspaceId: workspace.id,
 		projectId: workspace.projectId,
 		state: stateFromDisk(sessionId, manager, legacy),
-		title: manager.getSessionName() ?? "",
+		title: displayedSessionTitle(manager.getSessionName()),
 		...firstPromptOf(manager.getEntries()),
 	};
 }
@@ -1688,7 +1693,7 @@ function summaryOf(sessionId: string, entry: Entry): SessionSummary {
 	return {
 		sessionId,
 		workspaceId: entry.workspaceId,
-		title: session.sessionName ?? "",
+		title: displayedSessionTitle(session.sessionName),
 		...entryFirstPrompt(entry),
 		model:
 			session.model && !entry.unavailableSavedModel
@@ -1827,7 +1832,7 @@ async function listSessionsInternal(workspaceId: string, cwd: string): Promise<S
 			return {
 				sessionId: info.id,
 				workspaceId,
-				title: info.name ?? "",
+				title: displayedSessionTitle(info.name),
 				...firstPromptOf(manager.getEntries()),
 				model: null,
 				thinkingLevel: "medium",
@@ -1948,7 +1953,7 @@ async function collectSessionStateSources(
 					const current = {
 						...record,
 						state: stateFromDisk(info.id, manager),
-						title: manager.getSessionName() ?? "",
+						title: displayedSessionTitle(manager.getSessionName()),
 					};
 					publishState(current);
 					return current;

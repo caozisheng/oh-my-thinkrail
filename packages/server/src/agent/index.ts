@@ -48,21 +48,26 @@ export { isTrustedQuestionnaireReceipt } from "./issueConfirmation";
 export { type IssueSummaryRecovery, type IssueToolHost, setIssueToolHost } from "./issueTools";
 export {
 	effectiveMcpServerConfig,
+	type McpConfigFile,
 	mcpEntryFingerprint,
 	mcpPolicyOf,
 	readMcpServerLog,
 	removeMcpServerEntry,
+	setUserMcpEntryFields,
 	shareMcpOverrideWithRepo,
 	writeMcpServerEntry,
 } from "./mcp";
 export {
 	listMcpServers,
+	listUserMcpServers,
+	type McpReadContext,
 	mcpOwnershipGuard,
 	readMcpToolOutput,
 	reconcileMcpSessions,
 	reconnectMcpServer,
 	refreshMcpStatus,
 	setMcpStatusPublisher,
+	userMcpContext,
 	watchUserMcpConfig,
 } from "./mcpSessions";
 export {

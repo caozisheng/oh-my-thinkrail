@@ -4,7 +4,7 @@ type: submodule-design
 status: active
 title: updates — optional application update capability
 parent: module-web
-depends-on: [module-contracts]
+depends-on: [module-contracts, submodule-web-settingskit]
 references: [submodule-desktop-fork-update, submodule-desktop-updates]
 tags: [ui, updates]
 ---
@@ -21,8 +21,10 @@ is running.
 - **Public surface (`index.ts`):** `useUpdates`, `UpdateSettings`, `UpdateReadyButton`, and
   `UpdateInstallSurfaces`.
 - **External deps:** React, Remix Icon, `@thinkrail/contracts` types, the sibling store barrel (host notice,
-  toasts), `@thinkrail/ui` `button`/`dialog`/`utils`, and `@thinkrail/locales/react` for every user-visible string.
-- **Forbidden:** Electron/Electrobun imports; server/shared/transport imports; launcher-name checks;
+  toasts), the sibling `settingsKit` barrel (the Settings page, group, row and notice blocks),
+  `@thinkrail/ui` `button`/`dialog`/`utils`, and `@thinkrail/locales/react` for every user-visible string.
+- **Forbidden:** `panels` imports (the Settings catalog, defaults and saving stay there); Electron/Electrobun
+  imports; server/shared/transport imports; launcher-name checks;
   renderer-selected feed URLs; update check/download/install logic; browser-supplied shell commands, paths,
   channels, versions, or URLs; draft saving, input protection, renderer preparation, or any second native
   restart-consent step.
@@ -60,6 +62,18 @@ release page in the browser. Nothing is downloaded, verified or installed here: 
 release manually. The topbar chip appears only while a release is available. Check failures are silent by
 design — the card's manual re-check is the retry path — so this source carries no error surface. Its strings
 live in `updates.fork.*`.
+
+## Settings section
+
+`UpdateSettings` is the Updates section Shell injects into Settings, built from [[submodule-web-settingskit]]
+blocks like every other section: a page titled with its nav name (the native or host description under it), a
+**Software updates** group, and one row whose id is the literal `software-updates` — the catalog entry in
+`panels/settingsCatalog.ts` it must match, so Settings search and the palette jump to it (this module never
+imports `panels`; the Settings search drift check keeps the two in step). The row's label is the status title;
+its description holds the detail, the progress bar and label, the inline error (`role=alert`), the version
+line and, when ready, the deferral note. Its actions are size-`m` buttons in phase order: the first is the
+row's stop, the rest are row sides (`data-setting-side`), each with an explicit `tabIndex`. The last-install
+failure callout, the fixed host guidance and the host restart guidance follow the row as notices.
 
 ## Native install journey
 

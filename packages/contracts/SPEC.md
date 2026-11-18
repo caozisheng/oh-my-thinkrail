@@ -947,7 +947,7 @@ these structural guards do not grant trust or enable an RPC by themselves.
   **`cacheWarming.get`** / **`cacheWarming.set`** (v121, `CACHE_WARMING_SETTINGS_PROTOCOL_VERSION`; both
   return a **`CacheWarmingSetting`** — pi's `cacheWarming` mode, one of **`CACHE_WARMING_MODES`** `off` /
   `streaming` / `idle` tested by `isCacheWarmingMode`, and `source`: `user` when pi's global `settings.json`
-  names it, `default` when the host's own default applies. The mutation takes `{mode}`; a write pi's
+  names it, `default` when the host's own default, **`DEFAULT_CACHE_WARMING_MODE`** (`streaming`), applies. The mutation takes `{mode}`; a write pi's
   settings loader would silently skip fails with **`CACHE_WARMING_WRITE_FAILED`**. The value lives only in
   pi's file; no AppConfig field mirrors it) /
   **`customEndpoints.list`** / **`customEndpoints.probe`** / **`customEndpoints.save`** /
@@ -1356,6 +1356,20 @@ contracts only.
 - Every request names its target: `workspaceId` for configuration (project scope = that workspace's
   `.pi/mcp.json`; `user` = the global file), plus `sessionId` for per-session actions (`reconnect`,
   `setSessionOverride`, `readOutput`). The host has no notion of an "active workspace".
+- **User-level servers without a workspace** (`MCP_USER_SERVERS_PROTOCOL_VERSION`, 138). `mcp.list`,
+  `mcp.login`, `mcp.logout`, `mcp.testConnection` and `mcp.readLog` take `workspaceId` optionally;
+  `add` / `update` / `remove` take it optionally only at `scope: "user"` (`McpScopeTarget`), and the host
+  refuses project scope without one (`MCP_CONFIG_INVALID`). Without a workspace the list holds the user
+  servers alone with `statuses: []`, the global file's `configErrors`, and `handledElsewhere` from pi's
+  global settings only (no chat is consulted); mutations reconcile every workspace's live chats; probes
+  run against the global file with no project policy, and their `provider.login` pushes carry a
+  `LoginPush.target` (`McpLoginTarget`, whose `workspaceId` is optional) that names no workspace.
+  **`mcp.setUserServer { name, expectedFingerprint, enabled?, exposure? }`** is the no-workspace switch: it merges only those keys into the user entry of
+  the global `mcp.json` (pi's writer semantics — `enabled: true` is removed as the default; exposure is
+  `deferred` / `direct` / `hidden`), so it applies to every project without its own override and to the
+  pi CLI, refused like `update` when the entry no longer has the rendered fingerprint. Inside a workspace
+  the switch stays `setProjectOverride`, a record write; the global file is never written by a toggle
+  there.
 - `mcp.list` returns the configured `McpServerSummary` set (scope, defining file, the `fingerprint` of the
   defining file's entry as rendered, masked endpoint, configured and effective exposure, enablement,
   project override, repo-approval state, pi-equivalent config error — one per named entry, an entry that
@@ -1380,7 +1394,7 @@ contracts only.
   (`{ tool, label }`: grants still valid for the effective entry, listed on that row only) and
   `mcp.revokeToolGrant { workspaceId, name, tool }`, a record-only mutation like `setProjectOverride`.
   An older host never lists grants, so a client needs no gate to hide the revoke.
-- Mutations (`add`, `update`, `remove`, `setProjectOverride`, `approve`, `shareWithRepo`, `revokeToolGrant`) re-check that
+- Mutations (`add`, `update`, `remove`, `setUserServer`, `setProjectOverride`, `approve`, `shareWithRepo`, `revokeToolGrant`) re-check that
   ownership and the current project policy in the same synchronous step as the write and fail with `MCP_HANDLED_ELSEWHERE` where
   `mcp.list` would set `handledElsewhere`, so a stale client cannot write while another manager owns MCP; they return the fresh
   list without waiting for the open chats to reload; `mcp.status` pushes report each reload, so the returned
@@ -1426,7 +1440,7 @@ contracts only.
   `details.thinkrail` that lets cards render identically live, after reload and on another client.
   `mcp.readOutput` serves a result's recorded `fullOutputPath` only and reports `expired` when the temp
   file is gone.
-- `mcp.readLog { workspaceId, name }` returns `McpServerLog`: the server's latest lines (at most 200, oldest
+- `mcp.readLog { workspaceId?, name }` returns `McpServerLog`: the server's latest lines (at most 200, oldest
   first) from pi's shared `mcp.log` and its rotated copy — the `notifications/message` log messages servers
   send pi, attributed by each entry's `[<server>]` head — masked like `detail`; `text` is empty when the
   server logged nothing there. It needs no session: pi keeps one log per agent directory.
@@ -1772,7 +1786,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v137. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v138. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1781,4 +1795,4 @@ upstream numbers.
 
 ## Latest upstream capability floors
 
-The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
+The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
