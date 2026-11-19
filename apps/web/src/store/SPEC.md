@@ -75,6 +75,13 @@ first and disabled/replaced rows last. `selectMcpWorkspaceStarting` drives the b
 re-read while a server starts. The state vocabulary and the attention/active predicates live in `lib`
 (`mcpState`) because the props-only chat resources module shares them.
 
+## Agent availability
+
+`disabledSubagents` mirrors `AppConfig.disabledSubagents` through the welcome/`applyConfig` fold (`[]` from
+an older host); the roster's switches render only it. `selectActiveSubagentProjectTrust` is the active
+repository workspace's project `piResourceTrust` (undefined for a chat or no workspace), which keys the
+roster's catalog reads ([[submodule-web-panels]]).
+
 ## Boundary
 
 - **Owns:** `appStore.ts` — connection/projects/workspaces state + setters. Connection state has two
@@ -952,6 +959,8 @@ branch's review — a commit sha means nothing in another worktree — and dropp
   `selectMcpRead` + `McpRead`, `selectMcpWorkspaceStarting`, `McpWorkspaceProjection`, `selectSupportsMcp`,
   and the resource helper `orderMcpResources`; `selectSupportsProjectTrust` (the
   `PROJECT_TRUST_PROTOCOL_VERSION` gate for the trust summary and the pi-level resource grant);
+  `selectSupportsServerFallbackRepair` (the `SERVER_FALLBACK_PROTOCOL_VERSION` gate for the chat's
+  rejected-fallbacks repair);
   `toast` (the fire-from-anywhere helper),
   `Toast` (type), the prompt-image draft model `newPromptImagesState` + `PromptImagesState` /
   `PromptImage` / `PromptImageError` (`chat`'s `usePromptImages` shares it for dialog-local drafts), web-local frame/workspace-view/attention selectors and atomic actions, resource render-state types

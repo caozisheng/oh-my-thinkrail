@@ -229,6 +229,34 @@ re-opened transcripts provider-valid.
     the parent only when the child runs again or is reconciled, so the parent's live total lags that
     spend; and a second client with Settings → Models open learns of another client's change on its next
     mount, since the setting has no push channel (unlike `provider.changed` for `models.json`).
+  - `serverFallback` — the one-click repair for a proxy or gateway that rejects pi's Anthropic
+    server-side refusal fallback (the `fallbacks` request field plus its beta header, which pi sends
+    whenever a model's `compat.allowedFallbackModels` is non-empty). `disableModelFallback` writes a
+    **per-model** `providers.<p>.modelOverrides.<id>.compat.allowedFallbackModels: []` through
+    `modelsFile`; pi applies `modelOverrides` last, so it also replaces a hand-written override that
+    re-enables fallbacks. *Decision:* per model, not provider-level `compat`. Only the model that actually
+    failed through the proxy loses fallback, so models never seen failing keep refusal fallback and the
+    file names exactly what was turned off; the cost is one more failure and click for each further
+    fallback model behind the same proxy, which the repair makes cheap. It then refreshes the given
+    runtimes without network and publishes `provider.changed` only when the file changed.
+    `disableSessionServerFallback` (session manager, `session.disableServerFallback`) is the one
+    exception to "live sessions keep their model". It targets **the model of the request that failed** —
+    the session's last assistant message, which must have `stopReason: "error"` — not the chat's current
+    model, so a user who switched models after the failure never repairs a model that worked. It refuses
+    with `SERVER_FALLBACK_NOT_USED` when there is no such failed request or its model declares no
+    fallback targets (e.g. a Sonnet turn whose error merely matched), refreshes both the current and the
+    session's generation, and `setModel`s the refreshed model only while the chat is still on that model
+    (one the user picked meanwhile is left alone), so the chat's next request drops the field without a
+    restart. The failed model is read host-side from pi's messages rather than sent by the client: the
+    button exists only on the current failure, whose request is by construction the last one. If the
+    refreshed model still declares fallbacks — pi ignored the override, e.g. it rejected `models.json`
+    for an unrelated schema error — it refuses with `SERVER_FALLBACK_STILL_ON` instead of reporting a
+    repair that would fail the same way and loop on the button. That rebind
+    and `setSessionModel` share one per-session model-write queue, and the re-check runs inside it: pi's
+    `setModel` awaits an auth check before switching, so an unserialized rebind could overwrite a model
+    the user picked meanwhile. The rebind restores the chat's thinking level afterwards, because
+    `setModel` re-applies the saved default even for the same model. There is no undo affordance;
+    reverting is a manual `models.json` edit.
   - `customEndpoints` — the settings adapter for the user's own OpenAI-compatible servers (a company
     gateway or a local llama.cpp / vLLM / sglang / Ollama / LM Studio server), again a `models.json` editor
     and not a registry: each is a `custom-*` provider with `api: "openai-completions"`, served by pi like any
@@ -969,10 +997,14 @@ re-opened transcripts provider-valid.
     A host-injected `setSubagentConcurrencyResolver` supplies each service's per-chat
     limit at creation (`null`, the default, leaves new services on the core limit), and
     `refreshSubagentConcurrency(workspaceId?)` re-resolves and live-resizes the
-    cached services (core `setMaxConcurrentPerParent`) after a global or workspace limit change; `subagentsFor(workspaceId, isEnabled, canDeliverCompletion)` creates one retained portable
+    cached services (core `setMaxConcurrentPerParent`) after a global or workspace limit change; `subagentsFor(workspaceId, isEnabled, canDeliverCompletion, isAgentEnabled)` creates one retained portable
     `Subagents` owner per parent; its extension is injected on every resource load. A host-injected
     `setSubagentsEnabledResolver` maps that
     workspace id to its current effective policy without creating an `agent` → settings/workspaces edge.
+    `setSubagentEnabledResolver` injects the host's live per-name availability into every retained owner
+    (`isAgentEnabled`), without importing settings. `listSubagentCatalog(cwd?, includeProject?)` projects
+    portable discovery onto `SubagentCatalogEntry`; without a cwd it never loads project definitions
+    ([[submodule-server-host]] supplies the trusted worktree).
     The predicate reaches the extension's launch-time guard and initial/reload activation. For live
     policy changes, `refreshSubagentTools(workspaceId?)` removes/adds `Agent` +
     `get_subagent_result` through pi's active-tool API: idle sessions update synchronously, streaming
@@ -1423,7 +1455,7 @@ re-opened transcripts provider-valid.
   the runtime-generation facade (`usePiRuntime`, candidate prepare/activate, current generation id, and the
   closed `load-failed` outcome—no manager internals) plus `configurePiRuntime`/factory test seams and the
   pre-bootstrap `configurePiRuntimeGenerationInitializer` composition seam; `listModelContextSettings` /
-  `setModelContextWindow` (the `modelContext` adapter); `readCacheWarmingSetting` / `writeCacheWarmingMode`
+  `setModelContextWindow` (the `modelContext` adapter); `disableSessionServerFallback` (the `serverFallback` repair); `readCacheWarmingSetting` / `writeCacheWarmingMode`
   (the `cacheWarming` adapter); `listCustomEndpoints` / `probeCustomEndpoint` /
   `saveCustomEndpoint` / `removeCustomEndpoint` (the `customEndpoints` adapter); `setModelsFilePublisher`
   (their shared `provider.changed` seam); `piLoginOptions` (pi login options
@@ -1510,7 +1542,7 @@ re-opened transcripts provider-valid.
   skill roots — `agent` never imports an `@thinkrail/ext-*` package or its pi package directly; the barrel
   stays Node-loadable for the workflow harness ([[module-workflow-tests]]): web access's third-party
   package is compiled JavaScript, imported when its factory runs, see [[module-ext-web-access]]); `typebox` (the host tools' parameter schemas); `jsonc-parser` (targeted
-  `models.json` edits in `modelsFile`, `modelContext` and `customEndpoints`); global `fetch` (only
+  `models.json` edits in `modelsFile`, `modelContext`, `serverFallback` and `customEndpoints`); global `fetch` (only
   `customEndpoints`' user-initiated probes of the address the user typed); `trash` (reached only through the
   sibling **`trash` module** — see [[submodule-server-trash]]: one path, globbing disabled, allowed to
   throw, never degraded to `unlink`; the launcher's staged-helper and procfs-parser seams live there too,

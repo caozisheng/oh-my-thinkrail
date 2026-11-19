@@ -80,6 +80,7 @@ import type {
 	SessionResources,
 	SessionStateRecord,
 	SpecGraphSnapshot,
+	SubagentCatalogEntry,
 	SubagentCompletionDetails,
 	SubagentOverride,
 	SurveyInvitationResponse,
@@ -173,7 +174,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 138;
+export const PROTOCOL_VERSION = 140;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
@@ -207,6 +208,8 @@ export const ARTIFACTS_PROTOCOL_VERSION = 135;
 export const KEYBINDINGS_PROTOCOL_VERSION = 136;
 export const ARTIFACT_ROLES_PROTOCOL_VERSION = 137;
 export const MCP_USER_SERVERS_PROTOCOL_VERSION = 138;
+export const SERVER_FALLBACK_PROTOCOL_VERSION = 139;
+export const SUBAGENT_CATALOG_PROTOCOL_VERSION = 140;
 export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
 export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";
@@ -600,6 +603,7 @@ export const WS_METHODS = {
 	sessionDelete: "session.delete",
 	sessionRename: "session.rename",
 	sessionSetModel: "session.setModel",
+	sessionDisableServerFallback: "session.disableServerFallback",
 	sessionSetThinkingLevel: "session.setThinkingLevel",
 	sessionCompact: "session.compact",
 	sessionGetStats: "session.getStats",
@@ -614,6 +618,8 @@ export const WS_METHODS = {
 	sessionNudge: "session.nudge",
 	sessionActivityList: "session.activityList",
 	sessionGetMessages: "session.getMessages",
+	subagentList: "subagent.list",
+	subagentSetEnabled: "subagent.setEnabled",
 	subagentGetTranscript: "subagent.getTranscript",
 	sessionResources: "session.resources",
 	sessionResourceHistory: "session.resourceHistory",
@@ -1467,6 +1473,7 @@ export interface WsMethodMap {
 		result: Ack;
 	};
 	"session.setModel": { params: { sessionId: string; model: WireModel }; result: Ack };
+	"session.disableServerFallback": { params: { sessionId: string }; result: WireModel };
 	"session.setThinkingLevel": { params: { sessionId: string; level: ThinkingLevel }; result: Ack };
 	"session.compact": { params: { sessionId: string; instructions?: string }; result: Ack };
 	"session.getStats": { params: { sessionId: string }; result: SessionStats };
@@ -1525,6 +1532,14 @@ export interface WsMethodMap {
 	"subagent.stopAll": {
 		params: { workspaceId: string; parentSessionId: string };
 		result: Ack & { targeted: number };
+	};
+	"subagent.setEnabled": {
+		params: { name: string; enabled: boolean };
+		result: Ack;
+	};
+	"subagent.list": {
+		params: { workspaceId?: string };
+		result: SubagentCatalogEntry[];
 	};
 	"subagent.getTranscript": {
 		params: { workspaceId: string; parentSessionId: string; childSessionId: string };
@@ -1818,6 +1833,8 @@ export type WsErrorCode =
 	| "TEXT_SEARCH_FAILED"
 	| "FRAME_TOO_LARGE"
 	| "KEYBINDINGS_INVALID"
+	| "SERVER_FALLBACK_NOT_USED"
+	| "SERVER_FALLBACK_STILL_ON"
 	| SpeechErrorCode;
 
 export interface WsResponse {

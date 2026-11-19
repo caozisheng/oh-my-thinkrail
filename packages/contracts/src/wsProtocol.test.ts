@@ -99,11 +99,13 @@ import {
 	REVIEW_RICH_ANCHORS_PROTOCOL_VERSION,
 	readToolResponseMessage,
 	SEARCH_PROTOCOL_VERSION,
+	SERVER_FALLBACK_PROTOCOL_VERSION,
 	SESSION_RENAME_PROTOCOL_VERSION,
 	SESSION_STATE_PROTOCOL_VERSION,
 	SESSION_TITLE_MAX_LENGTH,
 	SPEC_SECTIONS_PROTOCOL_VERSION,
 	SPEECH_PROTOCOL_VERSION,
+	SUBAGENT_CATALOG_PROTOCOL_VERSION,
 	SUBAGENT_CONCURRENCY_PROTOCOL_VERSION,
 	SUBAGENT_SETTINGS_PROTOCOL_VERSION,
 	SURVEY_TRANSLATIONS_PROTOCOL_VERSION,
@@ -315,7 +317,7 @@ test("new upstream capabilities do not collide with existing fork feature floors
 	for (const version of additions)
 		expect(version).toBeGreaterThan(PROJECT_GROUP_HOME_PROTOCOL_VERSION);
 	expect(new Set(additions).size).toBe(additions.length);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 });
 
 test("the project group home is pinned to v127", () => {
@@ -419,7 +421,7 @@ test("on-demand Issue repository joins are pinned to v126", () => {
 
 test("Issue workspace recovery is additive at v134 and validates frozen identity snapshots", () => {
 	expect(ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION).toBe(134);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(WS_METHODS.issuesImplementationRecovery).toBe("issues.implementationRecovery");
 	expect(WS_METHODS.issuesRecoverImplementation).toBe("issues.recoverImplementation");
 	const reference = {
@@ -591,7 +593,7 @@ test("find in files is pinned to v122", () => {
 });
 
 test("the question panel height setting is pinned to v124", () => {
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(QUESTION_PANEL_PROTOCOL_VERSION).toBe(124);
 	expect(DEFAULT_CONFIG.questionPanelHeight).toBe(70);
 });
@@ -611,12 +613,25 @@ test("workspace path resolution is pinned to v132", () => {
 test("image references advance the merged fork protocol without reusing a floor", () => {
 	expect(IMAGE_REFS_PROTOCOL_VERSION).toBe(133);
 	expect(IMAGES_ROUTE).toBe("/images/");
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 });
 
 test("extension editor text is pinned to v128", () => {
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(EXTENSION_EDITOR_TEXT_PROTOCOL_VERSION);
 	expect(EXTENSION_EDITOR_TEXT_PROTOCOL_VERSION).toBe(128);
+});
+
+test("turning off server-side fallback is pinned to v139", () => {
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(SERVER_FALLBACK_PROTOCOL_VERSION);
+	expect(SERVER_FALLBACK_PROTOCOL_VERSION).toBe(139);
+	expect(WS_METHODS.sessionDisableServerFallback).toBe("session.disableServerFallback");
+});
+
+test("subagent catalog and availability are pinned to v140", () => {
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(SUBAGENT_CATALOG_PROTOCOL_VERSION);
+	expect(SUBAGENT_CATALOG_PROTOCOL_VERSION).toBe(140);
+	expect(WS_METHODS.subagentList).toBe("subagent.list");
+	expect(WS_METHODS.subagentSetEnabled).toBe("subagent.setEnabled");
 });
 
 test("continue in workspace is pinned to v120", () => {
@@ -972,7 +987,7 @@ test("issues read RPCs are registered at v103", () => {
 
 test("complete Issue detail is pinned to v114", () => {
 	expect(ISSUES_DETAIL_PROTOCOL_VERSION).toBe(114);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(WS_METHODS.issuesDetail).toBe("issues.detail");
 	const detail: WsMethodMap["issues.detail"]["result"] = {
 		reference: {
@@ -1025,7 +1040,7 @@ test("the repository-address hint is registered at the v105 Issues auth floor", 
 });
 
 test("six closed Issue actions are registered at v104", () => {
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
 	expect(WS_METHODS.issuesLaunchDesign).toBe("issues.launchDesign");
@@ -1038,7 +1053,7 @@ test("six closed Issue actions are registered at v104", () => {
 
 test("app-originated Issue approvals are registered at v106", () => {
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
@@ -1063,7 +1078,7 @@ test("app-originated Issue approvals are registered at v106", () => {
 
 test("the approved-design read is registered at v107", () => {
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
@@ -1088,7 +1103,7 @@ test("the approved-design read is registered at v107", () => {
 
 test("the implementation start is registered at v108", () => {
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
@@ -1136,7 +1151,7 @@ test("GitHub Issues changes the wire contract at v110", () => {
 
 test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
 	expect(WS_METHODS.issuesBeginDesign).toBe("issues.beginDesign");
@@ -1191,7 +1206,7 @@ test("keybinding overrides are pinned to v136 and default to none", () => {
 
 test("extension settings are pinned to v112", () => {
 	expect(EXTENSION_SETTINGS_PROTOCOL_VERSION).toBe(112);
-	expect(PROTOCOL_VERSION).toBe(138);
+	expect(PROTOCOL_VERSION).toBe(140);
 	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
 });
 
@@ -1199,4 +1214,12 @@ test("ask_user_question discuss answers are pinned to v112, after background wor
 	expect(ASK_DISCUSS_PROTOCOL_VERSION).toBe(112);
 	expect(ASK_DISCUSS_PROTOCOL_VERSION).toBeGreaterThan(WORKSPACE_CREATION_PROTOCOL_VERSION);
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(ASK_DISCUSS_PROTOCOL_VERSION);
+});
+
+test("subagent catalog and per-name preference start at protocol 140", () => {
+	expect(WS_METHODS.subagentList).toBe("subagent.list");
+	expect(WS_METHODS.subagentSetEnabled).toBe("subagent.setEnabled");
+	expect(SUBAGENT_CATALOG_PROTOCOL_VERSION).toBe(140);
+	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(SUBAGENT_CATALOG_PROTOCOL_VERSION);
+	expect(DEFAULT_CONFIG.disabledSubagents).toEqual([]);
 });

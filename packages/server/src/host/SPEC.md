@@ -88,6 +88,16 @@ from that token and its effective data, OS home and PI agent directories capture
 This test-only readiness seam lets the E2E harness reject unrelated hosts before destructive resets;
 normal health reveals neither paths nor an isolation header. Isolation policy remains in [[module-browser-e2e]].
 
+## Subagent catalog
+
+`subagent.list` takes an optional `workspaceId`, never a caller cwd: the host resolves the registered
+workspace and passes its worktree and `admissionContextFor(...).piResourceTrusted` to agent's metadata-only
+`listSubagentCatalog`, so without a workspace or pi-resource trust only built-in and personal definitions
+are read. Each read rediscovers files; there is no catalog state or push. `subagent.setEnabled` delegates
+to settings' `setSubagentEnabled` ([[submodule-server-settings]]). The host injects
+`getConfig().disabledSubagents` as agent's live per-name resolver and resets it on stop. Wire shape and
+gate: [[module-contracts]].
+
 ## Boundary
 
 - **Owns:** `server.ts` (async `createServer` first asks auth to start Central artifact watching and publish
@@ -359,6 +369,7 @@ normal health reveals neither paths nor an isolation header. Isolation policy re
   catalog. An ambient API key must not preempt a configured subscription; explicit selections, available
   saved defaults and pi's global default still take precedence, including environment-backed ones. This
   changes only new-chat resolution, never an existing session's model or a failed request's connection.
+  `session.disableServerFallback` delegates to agent's `disableSessionServerFallback`;
   `model.contextSettings` and `model.setContextWindow` delegate to agent's `modelContext`
   adapter and return its `ModelContextSetting[]`; the mutation names a provider/model target or all
   eligible pairs, never arbitrary model metadata, and successful saves reuse `provider.changed` to
