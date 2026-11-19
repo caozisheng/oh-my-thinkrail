@@ -146,7 +146,11 @@ for (const startup of [true, false]) {
 		await page.getByTestId("settings-nav-language").click();
 		await page.getByTestId("language-system").click();
 		await expect(page.locator("html")).toHaveAttribute("lang", "en");
-		await page.keyboard.press("Escape");
+		await page
+			.getByTestId("settings-dialog")
+			.getByRole("button", { name: "Close", exact: true })
+			.click();
+		await expect(page.getByTestId("settings-dialog")).toBeHidden();
 		const chat = page.locator(`[data-testid="editor-tab"][data-session-id="${sessionId}"]`);
 		for (const [action, locale] of [
 			["design", "en"],
@@ -157,7 +161,11 @@ for (const startup of [true, false]) {
 			await page.getByTestId("settings-nav-language").click();
 			await page.getByTestId(locale === "en" ? "language-system" : "language-zh-CN").click();
 			await expect(page.locator("html")).toHaveAttribute("lang", locale);
-			await page.keyboard.press("Escape");
+			await page
+				.getByTestId("settings-dialog")
+				.getByRole("button", { name: locale === "en" ? "Close" : "关闭", exact: true })
+				.click();
+			await expect(page.getByTestId("settings-dialog")).toBeHidden();
 			// Close the real persisted tab, then prove the launch callback reopens that ID.
 			await expect(chat).toBeVisible();
 			await chat.getByTestId("editor-tab-close").click();

@@ -55,6 +55,12 @@ in the owning spec graph, not a parallel local plan store.
 Stage completion and per-repository delivery each require their own exact host-verified questionnaire
 submission. Only that receipt authorizes the fixed report/label transition or non-force push and Draft
 PR/MR. The skill itself grants no remote authority, bypass, merge, ready transition or Issue closure.
+Confirmation preparation is operation-specific: a schema-valid union of fields is not necessarily a
+valid operation. `design-and-implementation.md` owns the current call shapes and local-versus-provider
+project ID distinction. Generic preparation rejection requires a request-contract audit, not an
+unsupported claim of capability failure or excessive policy strictness; `refusals-and-recovery.md`
+owns that classification. This guidance is unverified by use.
+
 Design and implementation may alternate; acceptance and closure stay in the tracker. The confirmed
 Issue #62 lifecycle design separates stage records from delivery eligibility, requires independent
 Issue-close authorization, and expects exact target/SHA and operation evidence. Current host support

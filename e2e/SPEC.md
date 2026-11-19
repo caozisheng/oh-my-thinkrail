@@ -136,7 +136,8 @@ and access to Default. These helpers are shared by source, binary and desktop br
 RPC replies through `page.routeWebSocket`, advertising v109 or v108. It explicitly grants the disposable
 project trust with `E2eWire` and seeds a persisted chat before workspace entry. The browser connects
 with a fixture-only PAT, switches between system English and bundled Chinese while the tool stays
-mounted, and clicks design, implementation, then design again. Exact wire assertions pin localized
+mounted, and clicks design, implementation, then design again. Language setup closes Settings through
+its Close button and awaits dismissal; a single Escape from content only steps toward navigation. Exact wire assertions pin localized
 v109 begin params, locale-free legacy calls, and one request per click. Returned IDs reopen the same
 persisted chat through real shell navigation, without `session.create` or `session.prompt`. The PAT
 appears only on connect; no approval, publication or other stage mutation RPC is allowed.
@@ -241,7 +242,9 @@ sits above the fold at the latest edge, and each tool-step expansion moves the e
 animates to.
 Entering a workspace auto-opens its latest chat, and a pending questionnaire there claims focus and reveal
 at once. Workbench shortcuts pressed afterwards are user input, and the card yields to them. Questionnaire
-attention coverage therefore closes and reopens the chat after arranging the workbench.
+attention coverage therefore closes and reopens the chat after arranging the workbench. Held-arrival
+probes intercept the pending state before workspace entry, so the initial auto-open cannot consume the
+mount's one-time attention claim before the simulated arrival.
 Showing a side or the bottom focuses its selected tab (its edge-rail control when no tab renders) one
 animation frame after the region renders; a probe that then focuses inside the shown region first waits
 for that endpoint, or a late frame moves focus away from the probe's target.
