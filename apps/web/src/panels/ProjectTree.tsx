@@ -1258,7 +1258,7 @@ function WorkspaceRow({
 					{ number: issue.number },
 				)}
 				aria-hidden={true}
-				className="shrink-0 rounded-full border border-border-default px-4 text-text-subtle tr-text-caption leading-tight"
+				className="shrink-0 rounded-full border border-border-default px-4 text-primary tr-text-caption leading-tight"
 			>
 				{issueTagText}
 			</span>
