@@ -13,14 +13,27 @@ Use for an explicit design or implementation stage. Design is design-only. Imple
 3. Keep durable decisions in owning specs when boundaries, contracts or documented behavior change.
 4. Verify and self-review the implementation. Do not assume a stage update succeeded because work is complete.
 5. Evaluate implementation delivery readiness independently of stage publication.
+6. Before stage confirmation, read the calling contract below. For preparation rejection or uncertain execution, follow `refusals-and-recovery.md`; do not change action or IDs by trial and error.
 
 ## Host capabilities
 
 Stage reporting uses its own confirmed operation and durable journal. Provider stage labels are records, not authority for code correctness or delivery. Current server support is governed by the Issues module contract; do not infer unavailable lifecycle features from stage support.
 
+## Confirmation calling contract
+
+The tool's optional fields describe several different operations, not one combinable payload. Match the installed host contract; for the current host:
+
+- Stage report: `issue_prepare_confirmation({operationId, report})`. **Omit `action`**; the bound session determines design versus implementation. Do not send `projectId`, `expectedRevision`, `expectedSha` or a custom `deliveryState` as a stage report.
+- Journal inspection: `issue_prepare_confirmation({operationId, inspect:true})` using the original operationId. Omit `action`, `projectId` and the report/state fields; this inspects an operation, not general host health.
+- Delivery-state read: `{operationId, action:"read-delivery-state"}`; do not add `inspect:true` or `projectId`.
+- Delivery-state write: `{operationId, action:"record-delivery-state", expectedRevision, deliveryState}` using the host-defined state structure and observed revision. This is not stage confirmation; never invent a `{stage, status, summary}` replacement.
+- For operations that require `projectId`, use the local repository binding from fresh `issue_context`, not the provider Issue reference's project id. These are different namespaces even when both are strings.
+
+Use only the fields for the intended operation; a schema-valid superset can still violate host validation. Stage preparation uses a fresh unique operationId; inspection and uncertain-write recovery preserve the original. Pass the returned confirmation questions unchanged and execute only the real submitted receipt as required by `SKILL.md`.
+
 ## Completion, questions and recovery
 
-Design approval in the request covers only the design; it does not authorize implementation in a design session. Implementation launch needs no second design gate. Clarify conflicts or changes to agreed design. For a refused or uncertain stage write, use `refusals-and-recovery.md` and keep the original operationId.
+Design approval in the request covers only the design; it does not authorize implementation in a design session. Implementation launch needs no second design gate. Clarify conflicts or changes to agreed design. For a refused or uncertain stage write, use `refusals-and-recovery.md`; preserve the original operationId while inspecting it or recovering an uncertain write. A corrected preparation may use a new ID only after confirming no intent was reserved.
 
 ## Handoff
 
