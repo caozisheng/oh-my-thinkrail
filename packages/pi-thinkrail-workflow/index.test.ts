@@ -134,6 +134,27 @@ describe("pi-thinkrail-workflow extension", () => {
 		expect(skill).toContain("A successful context read with `comments: []` is valid");
 	});
 
+	test("documents executable registration and reason-specific cross-repository recovery", () => {
+		const pairing = readFileSync(
+			new URL("./skills/tomato-issue-workflow/cross-repository.md", import.meta.url),
+			"utf8",
+		);
+		const recovery = readFileSync(
+			new URL("./skills/tomato-issue-workflow/refusals-and-recovery.md", import.meta.url),
+			"utf8",
+		);
+		for (const contract of [
+			"read-delivery-state",
+			"record-delivery-state",
+			"expectedRevision",
+			"mergeRequestId",
+			"preflight-dependencies",
+			"THINKRAIL_ISSUE_COMPATIBILITY_CONTEXT",
+		])
+			expect(pairing).toContain(contract);
+		expect(recovery).toContain("not that upstream merge evidence was inspected");
+	});
+
 	test("classifies every GitHub merge state before declaring a PR ready", () => {
 		const checks = readFileSync(
 			new URL("./skills/shipping-a-pr/checks.md", import.meta.url),

@@ -68,6 +68,18 @@ remains narrower: the confirmed operation covers Draft delivery; ready/merge orc
 cross-provider body-update/close confirmation chain are not implemented by this skill slice. Do not
 present those requirements as available host capabilities.
 
+## Cross-repository recovery
+
+`cross-repository.md` owns explicit read/register/preflight call shapes, host-observed checkout mapping,
+MR IID selection and compatibility runner setup. Planning notes and MR links alone never initialize
+host delivery state. New and resumed sessions refresh registration after membership/target/checkout
+changes, using CAS rather than overwriting concurrent decisions. Incomplete registration is distinct
+from merge verification and compatibility refusal; recovery names the actual missing capability or
+metadata instead of asking users to repeatedly supply merge links. The trusted downstream project's
+configured host-executed check must validate declared coverage against exact upstream/downstream
+versions; metadata registration and agent test claims are never compatibility proof or authorization.
+A diagnostic chat cannot acquire another session's Issue binding by copying its transcript.
+
 ## Delivery checkout preparation
 
 The worker's `delivery-worktree.md` owns task-completeness review: necessary files are committed,

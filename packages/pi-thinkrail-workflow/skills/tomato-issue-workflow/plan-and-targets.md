@@ -10,7 +10,7 @@ Use when requested work crosses repositories, changes target/scope, or asks for 
 
 1. Identify each repository, its host-bound worktree, source branch and intended target branch from observed facts or user choice.
 2. Display the mapping as repository → target branch before any delivery action.
-3. For multiple repositories, record a directed dependency order and which upstream target SHA must be read before downstream pairing.
+3. For multiple repositories, record a directed dependency order and which upstream target SHA must be read before downstream pairing. Follow `cross-repository.md` to initialize host delivery-state registration and identify the real compatibility check before promising paired delivery. A written plan is not host registration.
 4. Check provider/host support for every requested remote action before planning it as executable.
 5. Re-evaluate dependent state, validation evidence and authorizations whenever target, repository or scope changes.
 
