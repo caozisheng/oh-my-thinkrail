@@ -122,6 +122,7 @@ import {
 	useTreeKeys,
 } from "./treeNavigation";
 import { useOpenProject } from "./useOpenProject";
+import { WorkspaceAttention } from "./WorkspaceAttention";
 import { WorkspaceCreationRow } from "./WorkspaceCreation";
 import {
 	canMoveProject,
@@ -1422,7 +1423,7 @@ function WorkspaceRow({
 					</button>
 				)}
 				{reasonChip}
-				{needsAttention ? <AttentionDot /> : null}
+				{needsAttention ? <WorkspaceAttention /> : null}
 				<span
 					className={cn(
 						"flex shrink-0 items-center gap-4",
