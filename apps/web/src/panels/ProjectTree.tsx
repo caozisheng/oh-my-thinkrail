@@ -34,6 +34,7 @@ import {
 	RiGitRepositoryFill,
 	RiGitRepositoryLine,
 	RiHome2Fill,
+	RiLinksLine,
 	RiStackFill,
 	RiStackLine,
 	RiDeleteBin6Line as Trash2,
@@ -1258,8 +1259,9 @@ function WorkspaceRow({
 					{ number: issue.number },
 				)}
 				aria-hidden={true}
-				className="shrink-0 rounded-full border border-border-default px-4 text-primary tr-text-caption leading-tight"
+				className="inline-flex shrink-0 items-center gap-4 rounded-full border border-border-default px-4 text-primary tr-text-caption leading-tight"
 			>
+				<RiLinksLine aria-hidden="true" className="size-14" />
 				{issueTagText}
 			</span>
 		) : null;
