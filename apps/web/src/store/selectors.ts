@@ -596,10 +596,7 @@ export function selectWorkspaceNeedsInput(
 	);
 }
 
-export function selectProjectNeedsInput(
-	state: SessionStateProjection,
-	projectId: string,
-): boolean {
+export function selectProjectNeedsInput(state: SessionStateProjection, projectId: string): boolean {
 	return Object.values(state.sessionStateByWorkspace).some((records) =>
 		Object.values(records).some(
 			(record) => record.projectId === projectId && record.state.needsInput !== null,

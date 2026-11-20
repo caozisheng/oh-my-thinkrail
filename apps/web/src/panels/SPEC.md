@@ -206,7 +206,8 @@ treatment.
   identity icon while a top-level session is genuinely working. Attention is binary: workspace rows use
   a warning-coloured circle-question glyph, while collapsed project/group rollups retain the green/accent
   dot. Both mean a pending input request, never a delivered notification or an unread completion;
-  workspace markers use the localized “Your input is needed” label and tooltip. Neither adds a count, spinner, motion, or independent action. Working keeps the row's existing active/inactive colour (the badge wears
+  workspace markers use the localized “Your input is needed” label and tooltip, with no count, spinner,
+  motion, or independent action. Working keeps the row's existing active/inactive colour (the badge wears
   `text-primary` / `text-text-muted` exactly as the glyph it replaces) and exposes **“Agent working”**
   accessibly; it never adds a second marker. Queued, hidden/background, stopped, and quiet sessions show
   their identity glyph; a needs-input session may still show the badge when its orthogonal execution fact

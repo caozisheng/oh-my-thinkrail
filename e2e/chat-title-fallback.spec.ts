@@ -40,7 +40,7 @@ test("unnamed chats read as their first prompt in the tab strip and Recently clo
 
 	await page.reload();
 	await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", "connected");
-	await expect(defaultWorkspaceRow(page)).toHaveAttribute("data-attention", "true");
+	await expect(defaultWorkspaceRow(page)).not.toHaveAttribute("data-attention", /.+/);
 	await page.keyboard.press("ControlOrMeta+k");
 	const paletteTitle = page
 		.locator(`[data-testid="search-row"][data-item-id="chat:${older.id}"]`)

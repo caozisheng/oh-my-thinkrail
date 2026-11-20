@@ -232,16 +232,25 @@ test("Projects input markers ignore unread results while retaining pending quest
 
 test("Projects markers clear on response even when another completion stays unread", () => {
 	const state: SessionStateRecord["state"] = {
-		execution: "running", runId: "run", queuedCount: 0, backgroundWork: false,
+		execution: "running",
+		runId: "run",
+		queuedCount: 0,
+		backgroundWork: false,
 		needsInput: { kind: "tool-response", interactionId: "tool:q", toolCallId: "q" },
-		completion: null, completionUnread: false,
+		completion: null,
+		completionUnread: false,
 	};
 	const record: SessionStateRecord = { sessionId: "s", workspaceId: "w", projectId: "p", state };
 	const projection = { sessionStateByWorkspace: { w: { s: record } } };
 	expect(selectWorkspaceNeedsInput(projection, "w")).toBe(true);
 	expect(selectProjectNeedsInput(projection, "p")).toBe(true);
-	record.state = { ...state, needsInput: null, execution: "idle", completionUnread: true,
-		completion: { completionId: "done", outcome: "succeeded" } };
+	record.state = {
+		...state,
+		needsInput: null,
+		execution: "idle",
+		completionUnread: true,
+		completion: { completionId: "done", outcome: "succeeded" },
+	};
 	expect(selectWorkspaceNeedsInput(projection, "w")).toBe(false);
 	expect(selectProjectNeedsInput(projection, "p")).toBe(false);
 	expect(selectWorkspaceNeedsAttention(projection, "w")).toBe(true);
