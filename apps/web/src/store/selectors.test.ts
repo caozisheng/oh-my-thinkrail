@@ -183,6 +183,52 @@ test("normalized rail flags keep attention binary and working orthogonal", () =>
 	expect(selectProjectIsRunning(state, "p3")).toBe(true);
 });
 
+test("workspace attention persists until every session blocker and unread result clears", () => {
+	const quiet: SessionStateRecord["state"] = {
+		execution: "idle",
+		runId: null,
+		needsInput: null,
+		completion: null,
+		completionUnread: false,
+		queuedCount: 0,
+		backgroundWork: false,
+	};
+	const record = (sessionId: string, state: SessionStateRecord["state"]): SessionStateRecord => ({
+		sessionId,
+		projectId: "p1",
+		workspaceId: "w1",
+		state,
+	});
+	const question = record("question", {
+		...quiet,
+		needsInput: { interactionId: "tool:q1", kind: "tool-response", toolCallId: "q1" },
+	});
+	const result = record("result", {
+		...quiet,
+		completion: { completionId: "done", outcome: "failed", failure: "error" },
+		completionUnread: true,
+	});
+	const state = { sessionStateByWorkspace: { w1: { question, result } } };
+	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
+	const opened = { ...state, activeWorkspaceId: "w1" };
+	expect(selectWorkspaceNeedsAttention(opened, "w1")).toBe(true);
+	result.state = { ...result.state, completionUnread: false };
+	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
+	question.state = { ...quiet };
+	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(false);
+	expect(selectProjectNeedsAttention(state, "p1")).toBe(false);
+	question.state = {
+		...quiet,
+		needsInput: { interactionId: "tool:q2", kind: "tool-response", toolCallId: "q2" },
+	};
+	result.state = { ...result.state, completionUnread: true };
+	question.state = { ...quiet };
+	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
+	result.state = { ...result.state, completionUnread: false };
+	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(false);
+	expect(selectWorkspaceNeedsAttention(state, "missing")).toBe(false);
+});
+
 test("the workspace read action offers read over unread and hides with nothing to relight", () => {
 	const base = {
 		execution: "idle" as const,
