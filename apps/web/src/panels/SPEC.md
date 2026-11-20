@@ -196,7 +196,8 @@ treatment.
   an Issue (`Workspace.issue`) carries an **oval tag** beside the name: `#<number>` for an associated
   repository, and `#<number>(master)` for the primary worktree of an issue that actually has associated
   repositories. A single-repository issue workspace has no tag. The tag is host metadata, never parsed
-  from the branch; it is a compact caption with a tooltip naming the role, and the row keeps its one entry
+  from the branch; it is a compact caption with a leading `RiLinksLine` icon and theme-primary text,
+  with a tooltip naming the role, and the row keeps its one entry
   in its own source project.
 
   Workspace/project session presentation comes only from normalized host state. The rail has exactly two
