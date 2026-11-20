@@ -222,7 +222,8 @@ treatment.
   identity button and the hover-revealed kebab. It introduces no state or clearing policy: any session's
   pending needs-input keeps it visible; opening or reading alone never clears it. Answering, cancelling,
   or invalidating the last request clears it even if a completion remains unread. Unread completions
-  have no Projects marker; their read state, notifications, and settling policy remain independent. Search and projectless-chat attention remain unchanged. Workspace and collapsed-project rows
+  have no Projects marker; their read state, notifications, and settling policy remain independent. Search
+  and projectless-chat attention remain unchanged. Workspace and collapsed-project rows
   expose `data-attention` only while positive. Separately, the shared `RunningIcon` replaces the
   identity icon for normalized working state; workspace and collapsed-project rows expose `data-running` only
   while positive. These attributes are test hooks, not a second state model.

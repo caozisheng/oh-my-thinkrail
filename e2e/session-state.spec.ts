@@ -28,7 +28,10 @@ async function expectAttentionDot(row: Locator): Promise<void> {
 	await expect(row).toHaveAttribute("data-attention", "true");
 	const isWorkspace = (await row.getAttribute("data-testid")) === "workspace-item";
 	const indicator = row.getByTestId(isWorkspace ? "workspace-attention" : "attention-dot");
-	await expect(indicator).toHaveAttribute("aria-label", "Your input is needed");
+	await expect(indicator).toHaveAttribute(
+		"aria-label",
+		isWorkspace ? "Your input is needed" : "Needs attention",
+	);
 	if (isWorkspace) {
 		await expect(indicator).toHaveClass(/text-feedback-warning/);
 		await expect(row.getByTestId("attention-dot")).toHaveCount(0);

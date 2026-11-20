@@ -118,6 +118,10 @@ test("the empty palette lists the chats waiting for you; arrows, Enter, click an
 		const workspace = defaultWorkspaceRow(page);
 		await expect(workspace).toHaveAttribute("data-attention", "true");
 		await expect(workspace.getByTestId("workspace-attention")).toHaveCount(1);
+		await expect(workspace.getByTestId("workspace-attention")).toHaveAttribute(
+			"aria-label",
+			"Your input is needed",
+		);
 		await expect(workspace.getByTestId("attention-dot")).toHaveCount(0);
 
 		await page.getByTestId("open-search").click();
@@ -280,9 +284,9 @@ test("a chat in a workspace this window never opened is found by its title, rena
 	try {
 		await page.reload();
 		await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", "connected");
-		const workspace = defaultWorkspaceRow(page);
-		await expect(workspace).not.toHaveAttribute("data-attention", /.+/);
-		await expect(workspace.getByTestId("workspace-attention")).toHaveCount(0);
+		const workspaceRow = defaultWorkspaceRow(page);
+		await expect(workspaceRow).not.toHaveAttribute("data-attention", /.+/);
+		await expect(workspaceRow.getByTestId("workspace-attention")).toHaveCount(0);
 		sent.length = 0;
 
 		await openPalette(page);
