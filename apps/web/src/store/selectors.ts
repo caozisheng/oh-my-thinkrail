@@ -587,6 +587,26 @@ export function selectWorkspaceNeedsAttention(
 	);
 }
 
+export function selectWorkspaceNeedsInput(
+	state: SessionStateProjection,
+	workspaceId: string,
+): boolean {
+	return Object.values(state.sessionStateByWorkspace[workspaceId] ?? {}).some(
+		(record) => record.state.needsInput !== null,
+	);
+}
+
+export function selectProjectNeedsInput(
+	state: SessionStateProjection,
+	projectId: string,
+): boolean {
+	return Object.values(state.sessionStateByWorkspace).some((records) =>
+		Object.values(records).some(
+			(record) => record.projectId === projectId && record.state.needsInput !== null,
+		),
+	);
+}
+
 export function supportsWorkspaceReadState(protocolVersion: number | null): boolean {
 	return protocolVersion !== null && protocolVersion >= WORKSPACE_READ_STATE_PROTOCOL_VERSION;
 }

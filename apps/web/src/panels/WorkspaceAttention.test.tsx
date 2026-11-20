@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { WorkspaceAttention } from "./WorkspaceAttention";
 
-test("workspace attention is a static warning question with one generic accessible meaning", () => {
+test("workspace attention is a static warning question for pending input", () => {
 	const markup = renderToStaticMarkup(<WorkspaceAttention />);
-	expect(markup).toContain('aria-label="Needs attention"');
-	expect(markup).toContain('title="Needs attention"');
+	expect(markup).toContain('aria-label="Your input is needed"');
+	expect(markup).toContain('title="Your input is needed"');
 	expect(markup).toContain('data-testid="workspace-attention"');
 	expect(markup).toContain("text-feedback-warning");
 	expect(markup).toContain("<svg");

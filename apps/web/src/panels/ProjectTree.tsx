@@ -81,12 +81,12 @@ import {
 	selectActiveWorkspaceProjectId,
 	selectAutoSettledCounts,
 	selectProjectIsRunning,
-	selectProjectNeedsAttention,
+	selectProjectNeedsInput,
 	selectRepoProjects,
 	selectSupportsOnboarding,
 	selectSupportsProjectGroupHome,
 	selectWorkspaceIsRunning,
-	selectWorkspaceNeedsAttention,
+	selectWorkspaceNeedsInput,
 	selectWorkspacePartition,
 	selectWorkspaceReadAction,
 	settledReasonLabel,
@@ -359,7 +359,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 
 	const stateProjection = { sessionStateByWorkspace };
 	const anyNeedsAttention = (list: readonly Project[]) =>
-		list.some((project) => selectProjectNeedsAttention(stateProjection, project.id));
+		list.some((project) => selectProjectNeedsInput(stateProjection, project.id));
 
 	const renderProject = (project: Project, inGroup?: { path: string }) => {
 		const isExpanded = expandedProjectIds[project.id] === true;
@@ -399,7 +399,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 						: {})}
 					isSelected={selectedProjectId === project.id}
 					isExpanded={isExpanded}
-					needsAttention={!isExpanded && selectProjectNeedsAttention(stateProjection, project.id)}
+					needsAttention={!isExpanded && selectProjectNeedsInput(stateProjection, project.id)}
 					isRunning={!isExpanded && selectProjectIsRunning(stateProjection, project.id)}
 					workspaceCount={(list ?? []).filter((w) => !isDefaultWorkspace(w)).length}
 					onToggle={() => toggleExpand(project.id)}
@@ -434,7 +434,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 									settled={settled}
 									now={now}
 									isActive={activeWorkspaceId === ws.id}
-									needsAttention={selectWorkspaceNeedsAttention(stateProjection, ws.id)}
+									needsAttention={selectWorkspaceNeedsInput(stateProjection, ws.id)}
 									isRunning={selectWorkspaceIsRunning(stateProjection, ws.id)}
 									canRename={canRenameWorkspace(protocolVersion, ws)}
 									canSettle={canSettleWorkspace(protocolVersion, ws)}

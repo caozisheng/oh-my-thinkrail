@@ -201,12 +201,12 @@ treatment.
   in its own source project.
 
   Workspace/project session presentation comes only from normalized host state. The rail has exactly two
-  visual treatments: a static **attention marker** for either a concrete needs-input blocker or an
-  owner-globally unread result, and the shared `RunningIcon` brand badge **in place of** the workspace/project
+  visual treatments: a static **attention marker** only for a concrete needs-input blocker (pending
+  question or extension confirmation), and the shared `RunningIcon` brand badge **in place of** the workspace/project
   identity icon while a top-level session is genuinely working. Attention is binary: workspace rows use
   a warning-coloured circle-question glyph, while collapsed project/group rollups retain the green/accent
-  dot. Both mean **“Needs attention”**, not just a pending answer or a delivered notification; workspace
-  markers use that same generic tooltip. Neither adds a count, spinner, motion, or independent action. Working keeps the row's existing active/inactive colour (the badge wears
+  dot. Both mean a pending input request, never a delivered notification or an unread completion;
+  workspace markers use the localized “Your input is needed” label and tooltip. Neither adds a count, spinner, motion, or independent action. Working keeps the row's existing active/inactive colour (the badge wears
   `text-primary` / `text-text-muted` exactly as the glyph it replaces) and exposes **“Agent working”**
   accessibly; it never adds a second marker. Queued, hidden/background, stopped, and quiet sessions show
   their identity glyph; a needs-input session may still show the badge when its orthogonal execution fact
@@ -219,8 +219,9 @@ treatment.
   rows and the shared dependency-light `AttentionDot` for collapsed project/group rollups, both from
   normalized host-state selectors. The workspace marker occupies its own flex column between the
   identity button and the hover-revealed kebab. It introduces no state or clearing policy: any session's
-  needs-input or unread result keeps it visible; opening alone never clears needs-input, while results
-  follow the existing read mechanism. Search and projectless-chat attention remain unchanged. Workspace and collapsed-project rows
+  pending needs-input keeps it visible; opening or reading alone never clears it. Answering, cancelling,
+  or invalidating the last request clears it even if a completion remains unread. Unread completions
+  have no Projects marker; their read state, notifications, and settling policy remain independent. Search and projectless-chat attention remain unchanged. Workspace and collapsed-project rows
   expose `data-attention` only while positive. Separately, the shared `RunningIcon` replaces the
   identity icon for normalized working state; workspace and collapsed-project rows expose `data-running` only
   while positive. These attributes are test hooks, not a second state model.

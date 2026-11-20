@@ -50,12 +50,14 @@ import {
 	selectLayoutTabPlacement,
 	selectProjectIsRunning,
 	selectProjectNeedsAttention,
+	selectProjectNeedsInput,
 	selectReadyCompletionAck,
 	selectSkillsStale,
 	selectSupportsModelPicker,
 	selectUnnamedChatFirstPrompts,
 	selectWorkspaceIsRunning,
 	selectWorkspaceNeedsAttention,
+	selectWorkspaceNeedsInput,
 	selectWorkspaceReadAction,
 	specPathMatcher,
 	workspaceName,
@@ -183,7 +185,7 @@ test("normalized rail flags keep attention binary and working orthogonal", () =>
 	expect(selectProjectIsRunning(state, "p3")).toBe(true);
 });
 
-test("workspace attention persists until every session blocker and unread result clears", () => {
+test("Projects input markers ignore unread results while retaining pending questions", () => {
 	const quiet: SessionStateRecord["state"] = {
 		execution: "idle",
 		runId: null,
@@ -210,12 +212,13 @@ test("workspace attention persists until every session blocker and unread result
 	});
 	const state = { sessionStateByWorkspace: { w1: { question, result } } };
 	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(true);
 	const opened = { ...state, activeWorkspaceId: "w1" };
-	expect(selectWorkspaceNeedsAttention(opened, "w1")).toBe(true);
+	expect(selectWorkspaceNeedsInput(opened, "w1")).toBe(true);
 	result.state = { ...result.state, completionUnread: false };
-	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(true);
 	question.state = { ...quiet };
-	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(false);
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(false);
 	expect(selectProjectNeedsAttention(state, "p1")).toBe(false);
 	question.state = {
 		...quiet,
@@ -223,10 +226,25 @@ test("workspace attention persists until every session blocker and unread result
 	};
 	result.state = { ...result.state, completionUnread: true };
 	question.state = { ...quiet };
-	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
-	result.state = { ...result.state, completionUnread: false };
-	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(false);
-	expect(selectWorkspaceNeedsAttention(state, "missing")).toBe(false);
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(false);
+	expect(selectWorkspaceNeedsInput(state, "missing")).toBe(false);
+});
+
+test("Projects markers clear on response even when another completion stays unread", () => {
+	const state: SessionStateRecord["state"] = {
+		execution: "running", runId: "run", queuedCount: 0, backgroundWork: false,
+		needsInput: { kind: "tool-response", interactionId: "tool:q", toolCallId: "q" },
+		completion: null, completionUnread: false,
+	};
+	const record: SessionStateRecord = { sessionId: "s", workspaceId: "w", projectId: "p", state };
+	const projection = { sessionStateByWorkspace: { w: { s: record } } };
+	expect(selectWorkspaceNeedsInput(projection, "w")).toBe(true);
+	expect(selectProjectNeedsInput(projection, "p")).toBe(true);
+	record.state = { ...state, needsInput: null, execution: "idle", completionUnread: true,
+		completion: { completionId: "done", outcome: "succeeded" } };
+	expect(selectWorkspaceNeedsInput(projection, "w")).toBe(false);
+	expect(selectProjectNeedsInput(projection, "p")).toBe(false);
+	expect(selectWorkspaceNeedsAttention(projection, "w")).toBe(true);
 });
 
 test("the workspace read action offers read over unread and hides with nothing to relight", () => {
