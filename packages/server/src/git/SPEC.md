@@ -241,6 +241,10 @@ ref off the workspace-create critical path.
   parallel with the gh lookup, not after it) so the plan page can flag commits the PR doesn't have yet and
   the diverged sync-conflict state; **`originUrls(worktreePath)`** (async) → origin's configured `{ fetch, push }`
   URLs (`push` = `remote.origin.pushurl`, else the fetch URL; unexpanded, `null` without an origin);
+  **`readPushBranchSha(worktreePath, branch, pushUrl)`** (async) reads only the exact full source ref
+  via `ls-remote`, without fetching objects or updating local refs. A missing ref returns `null`;
+  failed reads or ambiguous/malformed responses throw. The host owns canonical URL verification and
+  authorization; this observation alone grants no push authority.
   **`countPushTargetDivergence(worktreePath, branch, pushUrl)`** (async) → `{ published: false }` or
   `{ published: true, ahead?, behind? }` measured against the **push** repository for an origin whose push URL
   differs from its fetch URL: the remote-tracking `origin/<branch>` mirrors the fetch repository there (a
@@ -390,7 +394,7 @@ ref off the workspace-create critical path.
   `remoteRefOid`, `remoteRefOidAsync`, `remoteTrackingRef`, `gitStatus`,
   `gitUncommittedPaths`, `gitDiffFile`,
   `readBlobAt`, `readBlobBytesAt`, `readBlobBytesAtAsync`, `readBlobStreamAtAsync`, `readBlobSizeAtAsync`,
-  `readPathModeAtAsync`, `readCommitSubject`, `commitsAheadOf`, `originUrls`, `countPushTargetDivergence`,
+  `readPathModeAtAsync`, `readCommitSubject`, `commitsAheadOf`, `originUrls`, `readPushBranchSha`, `countPushTargetDivergence`,
   `PushTargetStatus`,
   `gitCommitPaths`, `gitHeadSha`, `headShaAt`, `headBranchAt`, `listCommits`,
   `listCommitsSince`,

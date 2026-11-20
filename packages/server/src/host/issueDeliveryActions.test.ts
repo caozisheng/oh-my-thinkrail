@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IssueDeliveryRemote, IssueMergeRequest } from "../issues";
@@ -10,7 +11,7 @@ const roots: string[] = [];
 afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-async function fixture() {
+async function fixture(observe = true) {
 	const root = mkdtempSync(join(tmpdir(), "issue-delivery-"));
 	roots.push(root);
 	const journal = createIssueConfirmationStore(root);
@@ -52,6 +53,7 @@ async function fixture() {
 	let requests: IssueMergeRequest[] = [];
 	let answered = false;
 	let failCreate = false;
+	let failPush = false;
 	let createdOverrides: Partial<IssueMergeRequest> = {};
 	let race = false;
 	const effects: unknown[] = [];
@@ -119,7 +121,9 @@ async function fixture() {
 			return { ...request(), ...createdOverrides };
 		},
 	};
+	const observation = { sha: "b".repeat(40) as string | null };
 	const actions = createIssueDeliveryActions({
+		...(observe ? { remoteBranchSha: async () => observation.sha } : {}),
 		binding: async () => structuredClone(binding),
 		access: async () => ({ remote, guard: () => {} }),
 		repositories: async () => [structuredClone(repository)],
@@ -132,6 +136,7 @@ async function fixture() {
 				["opened", "locked"].includes(entry.state) ? { ...entry, sha: input.sha } : entry,
 			);
 			if (race) requests = [request()];
+			if (failPush) throw new Error("Uncertain push");
 		},
 		verifyAnswer: async (_sessionId, _payload: DeliveryPayload, toolCallId) => {
 			if (!answered || toolCallId !== "answer") throw new Error("Unverified answer");
@@ -151,6 +156,7 @@ async function fixture() {
 		});
 	return {
 		actions,
+		observation,
 		journal,
 		prepare,
 		effects,
@@ -169,6 +175,9 @@ async function fixture() {
 		},
 		fail: () => {
 			failCreate = true;
+		},
+		failPush: () => {
+			failPush = true;
 		},
 		invalid: () => {
 			createdOverrides = { draft: false };
@@ -704,4 +713,166 @@ test("delivery accepts only the host-provided policy authorization path", async 
 	await f.actions.execute("session", "deliver", "policy-call", authorization);
 	expect(f.authorizations).toEqual([authorization]);
 	expect((await f.journal.inspect("session", "deliver")).status).toBe("completed");
+});
+
+function leasePrepare(f: Awaited<ReturnType<typeof fixture>>, continueDespiteChecks = false) {
+	return f.actions.prepare("session", {
+		operationId: "deliver",
+		projectId: f.repository.projectId,
+		title: "Rebased update",
+		body: "Exact update",
+		pushMode: "force-with-lease",
+		continueDespiteChecks,
+	});
+}
+
+test("exact lease card freezes observed old SHA and pushes only the reviewed replacement", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	const card = await leasePrepare(f);
+	const preview = card.questions.questions[0]?.preview;
+	for (const text of [
+		"force-with-lease",
+		`refs/heads/${f.state.branch}`,
+		"b".repeat(40),
+		f.state.sha,
+		"replace",
+	])
+		expect(preview).toContain(text);
+	expect((await f.journal.get("session", "deliver"))?.payload).toMatchObject({
+		pushMode: "force-with-lease",
+		expectedRemoteSha: "b".repeat(40),
+	});
+	f.approve();
+	await f.actions.execute("session", "deliver", "answer");
+	expect(f.effects).toEqual([
+		{
+			repository: "associated",
+			sha: f.state.sha,
+			branch: f.state.branch,
+			url: f.host.url,
+			pushMode: "force-with-lease",
+			expectedRemoteSha: "b".repeat(40),
+		},
+	]);
+});
+
+test("lease prerequisites cannot be bypassed by warning cards", async () => {
+	for (const overrides of [
+		null,
+		{ state: "closed" as const },
+		{ state: "locked" as const },
+		{ sourceProjectId: 789 },
+		{ targetProjectId: null },
+		{ sha: null },
+		{ sha: "bad" },
+		{ sha: "c".repeat(40) },
+	]) {
+		const f = await fixture();
+		f.setRequests(
+			overrides === null ? [] : [{ ...f.request(), sha: "b".repeat(40), ...overrides }],
+		);
+		await expect(leasePrepare(f, true)).rejects.toThrow();
+		expect(f.effects).toEqual([]);
+	}
+	for (const sha of [null, "", "bad", "c".repeat(40)]) {
+		const f = await fixture();
+		f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+		f.observation.sha = sha;
+		await expect(leasePrepare(f, true)).rejects.toThrow();
+	}
+});
+
+test("missing observation fails closed only in explicit lease mode", async () => {
+	const ordinary = await fixture(false);
+	await ordinary.prepare();
+	const explicit = await fixture(false);
+	explicit.setRequests([{ ...explicit.request(), sha: "b".repeat(40) }]);
+	await expect(leasePrepare(explicit, true)).rejects.toThrow("lease-observation-unavailable");
+});
+
+test("uncertain lease update remains fenced and recovery never pushes again", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	await leasePrepare(f);
+	f.failPush();
+	f.approve();
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+	expect(f.effects).toHaveLength(1);
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+	await expect(f.journal.prepare("session", "replacement", {})).rejects.toThrow();
+	const stored = await f.journal.get("session", "deliver");
+	if (!stored) throw new Error("Missing payload");
+	expect((await f.actions.observe("session", stored.payload as DeliveryPayload)).result.sha).toBe(
+		f.state.sha,
+	);
+	expect(f.effects).toHaveLength(1);
+});
+
+test("remote head changes invalidate lease before intent, never dispatch", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	await leasePrepare(f, true);
+	f.observation.sha = "c".repeat(40);
+	f.approve();
+	await expect(f.actions.execute("session", "deliver", "answer")).rejects.toThrow();
+	expect(f.effects).toEqual([]);
+	expect(await f.journal.inspect("session", "deliver")).toMatchObject({ status: "prepared" });
+});
+
+test("Git rejects an exact lease after a concurrent remote update", async () => {
+	const root = mkdtempSync(join(tmpdir(), "issue-lease-git-"));
+	roots.push(root);
+	const run = (cwd: string, ...args: string[]) =>
+		execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+	const bare = join(root, "remote.git");
+	const first = join(root, "first");
+	const second = join(root, "second");
+	run(root, "init", "--bare", bare);
+	run(root, "init", first);
+	run(first, "config", "user.email", "test@example.com");
+	run(first, "config", "user.name", "Test");
+	run(first, "checkout", "-b", "feature/38");
+	writeFileSync(join(first, "file"), "base");
+	run(first, "add", "file");
+	run(first, "commit", "-m", "base");
+	const oldSha = run(first, "rev-parse", "HEAD");
+	run(first, "push", bare, "HEAD:refs/heads/feature/38");
+	run(root, "clone", "--branch", "feature/38", bare, second);
+	run(second, "config", "user.email", "test@example.com");
+	run(second, "config", "user.name", "Test");
+	writeFileSync(join(second, "file"), "concurrent");
+	run(second, "commit", "-am", "concurrent");
+	run(second, "push", "origin", "HEAD:refs/heads/feature/38");
+	writeFileSync(join(first, "file"), "replacement");
+	run(first, "commit", "-am", "replacement");
+	const replacementSha = run(first, "rev-parse", "HEAD");
+	let error = "";
+	try {
+		run(
+			first,
+			"push",
+			`--force-with-lease=refs/heads/feature/38:${oldSha}`,
+			bare,
+			`${replacementSha}:refs/heads/feature/38`,
+		);
+	} catch (caught) {
+		error = String(caught);
+	}
+	expect(error).toContain("stale info");
+});
+
+test("lease cannot be authorized by autonomous policy; recovery remains read-only", async () => {
+	const f = await fixture();
+	f.setRequests([{ ...f.request(), sha: "b".repeat(40) }]);
+	await leasePrepare(f);
+	await expect(f.actions.execute("session", "deliver", "policy", {})).rejects.toThrow();
+	expect(f.authorizations).toEqual([]);
+	const stored = await f.journal.get("session", "deliver");
+	if (!stored) throw new Error("Missing payload");
+	f.setRequests([f.request()]);
+	expect((await f.actions.observe("session", stored.payload as DeliveryPayload)).result.sha).toBe(
+		f.state.sha,
+	);
+	expect(f.effects).toEqual([]);
 });

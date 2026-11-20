@@ -25,6 +25,7 @@ import {
 	prefetchBranch,
 	readBlobBytesAtAsync,
 	readBlobStreamAtAsync,
+	readPushBranchSha,
 	tryCurrentBranch,
 } from "./git";
 import { setSyncGitTimeoutForTests } from "./gitExec";
@@ -59,6 +60,24 @@ beforeEach(() => {
 		JSON.stringify([{ id: "p1", name: "repo", path: repo, slug: "repo", lastOpened: 1 }]),
 	);
 });
+
+test("push branch observation reads only the exact ref without fetching or changing local refs", async () => {
+	const remote = join(dataDir, "remote.git");
+	git(dataDir, "init", "--bare", remote);
+	git(repo, "push", remote, "HEAD:refs/heads/feature/38");
+	git(repo, "push", remote, "HEAD:refs/heads/other/feature/38");
+	const head = Bun.spawnSync(["git", "-C", repo, "rev-parse", "HEAD"]).stdout.toString().trim();
+	expect(await readPushBranchSha(repo, "feature/38", remote)).toBe(head);
+	expect(await readPushBranchSha(repo, "missing", remote)).toBeNull();
+	await expect(readPushBranchSha(repo, "--all", remote)).rejects.toThrow();
+	await expect(
+		readPushBranchSha(repo, "feature/38", join(dataDir, "missing.git")),
+	).rejects.toThrow();
+	expect(Bun.spawnSync(["git", "-C", repo, "rev-parse", "HEAD"]).stdout.toString().trim()).toBe(
+		head,
+	);
+	expect(existsSync(join(repo, ".git", "FETCH_HEAD"))).toBe(false);
+}, 30_000);
 
 test("reading the branch needs no git spawn, and linked worktrees keep their own HEAD", () => {
 	// The fast path reads `<gitdir>/HEAD`; a stub `git` that always fails proves it was never spawned.

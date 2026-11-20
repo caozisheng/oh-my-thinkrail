@@ -29,6 +29,8 @@ export interface DeliveryPayload {
 	hostTargetBranch: string;
 	issueSnapshot: unknown;
 	existing: IssueMergeRequest | null;
+	pushMode?: "force-with-lease";
+	expectedRemoteSha?: string;
 	warnings?: string[];
 	sessionStage?: IssueSessionAssociation["stage"];
 }
@@ -45,9 +47,19 @@ export interface IssueDeliveryActionOptions {
 		url: string;
 		targetBranch: string;
 	}>;
+	remoteBranchSha?(
+		repository: DeliveryRepository,
+		input: { url: string; branch: string },
+	): Promise<string | null>;
 	push(
 		repository: DeliveryRepository,
-		input: { sha: string; branch: string; url: string },
+		input: {
+			sha: string;
+			branch: string;
+			url: string;
+			pushMode?: "force-with-lease";
+			expectedRemoteSha?: string;
+		},
 		onDispatch: () => void,
 	): Promise<void>;
 	verifyAnswer(sessionId: string, payload: DeliveryPayload, toolCallId: string): Promise<void>;
@@ -146,11 +158,14 @@ function requestSnapshot(request: IssueMergeRequest | null) {
 	};
 }
 export function deliveryQuestions(payload: DeliveryPayload) {
-	const action = payload.existing
-		? payload.existing.sha === payload.sha
-			? `Reuse existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. No push or PR/MR modification.`
-			: `Update existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. Non-force push ${payload.existing.sha} → ${payload.sha} to ${payload.url}, branch ${payload.branch}. Keep this request, title, body and draft status; do not create another PR/MR.`
-		: `Non-force push exact commit ${payload.sha} to ${payload.url}, branch ${payload.branch}; then create a draft PR/MR targeting ${payload.targetBranch}.`;
+	const action =
+		payload.pushMode === "force-with-lease"
+			? `Update existing PR/MR #${payload.existing?.iid}: ${payload.existing?.webUrl}. Exact force-with-lease for refs/heads/${payload.branch} at ${payload.url}: ${payload.expectedRemoteSha} → ${payload.sha}. This may replace remote branch history. Keep this request, title, body and draft status; do not create another PR/MR.`
+			: payload.existing
+				? payload.existing.sha === payload.sha
+					? `Reuse existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. No push or PR/MR modification.`
+					: `Update existing PR/MR #${payload.existing.iid}: ${payload.existing.webUrl}. Non-force push ${payload.existing.sha} → ${payload.sha} to ${payload.url}, branch ${payload.branch}. Keep this request, title, body and draft status; do not create another PR/MR.`
+				: `Non-force push exact commit ${payload.sha} to ${payload.url}, branch ${payload.branch}; then create a draft PR/MR targeting ${payload.targetBranch}.`;
 	return {
 		questions: [
 			{
@@ -182,6 +197,21 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 		if (request) validRequest(request, payload, false, check);
 		return request;
 	}
+	async function leaseHead(payload: DeliveryPayload, request: IssueMergeRequest | null) {
+		if (!request) stop("lease-existing-request-required");
+		validRequest(request, payload, false);
+		if (!options.remoteBranchSha) stop("lease-observation-unavailable");
+		const sha = await options.remoteBranchSha(payload.repository, payload);
+		if (!sha || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha)) stop("lease-remote-sha-invalid");
+		if (sha !== request.sha) stop("lease-request-head-mismatch");
+		return sha;
+	}
+	async function validateLease(payload: DeliveryPayload, request: IssueMergeRequest | null) {
+		if (payload.pushMode === undefined) return;
+		if (payload.pushMode !== "force-with-lease") stop("input-invalid");
+		if ((await leaseHead(payload, request)) !== payload.expectedRemoteSha)
+			stop("lease-remote-head-changed");
+	}
 	async function prepare(
 		sessionId: string,
 		input: {
@@ -190,9 +220,12 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			title: string;
 			body: string;
 			targetBranch?: string;
+			pushMode?: "force-with-lease";
 			continueDespiteChecks?: boolean;
 		},
 	) {
+		if (input.pushMode !== undefined && input.pushMode !== "force-with-lease")
+			stop("input-invalid");
 		const warnings: string[] = [];
 		const check = checks(input.continueDespiteChecks ? warnings : undefined);
 		if (
@@ -253,7 +286,16 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			existing: null,
 			...(warnings.length ? { warnings } : {}),
 		};
-		payload.existing = await existing(host.remote, payload, check);
+		payload.existing = await existing(host.remote, payload, input.pushMode ? checks() : check);
+		if (input.pushMode) {
+			if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(payload.sha)) stop("checkout-sha-invalid");
+			if (!branch(payload.branch)) stop("source-branch-invalid");
+			if (!branch(payload.targetBranch) || payload.targetBranch === payload.branch)
+				stop("target-branch-invalid");
+			payload.pushMode = input.pushMode;
+			payload.expectedRemoteSha = await leaseHead(payload, payload.existing);
+		}
+
 		if (warnings.length) payload.warnings = warnings;
 		guard();
 		const stored = await options.journal.prepare(sessionId, input.operationId, payload);
@@ -274,6 +316,8 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 			payload.operationId !== operationId
 		)
 			stop();
+		if (payload.pushMode && authorization !== undefined)
+			stop("lease-policy-authorization-forbidden");
 		if (authorization === undefined) await options.verifyAnswer(sessionId, payload, toolCallId);
 		else {
 			if (!options.authorize) stop("policy-authorization-unavailable");
@@ -344,6 +388,8 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 					);
 				}
 				executable(before);
+				await validateLease(payload, before);
+				guard();
 				let request = before;
 				if (request && request.sha !== payload.sha) {
 					await options.push(
@@ -352,6 +398,9 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 							sha: payload.sha,
 							branch: payload.branch,
 							url: payload.url,
+							...(payload.pushMode
+								? { pushMode: payload.pushMode, expectedRemoteSha: payload.expectedRemoteSha }
+								: {}),
 						},
 						() => {
 							dispatched = true;
@@ -379,6 +428,9 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 							sha: payload.sha,
 							branch: payload.branch,
 							url: payload.url,
+							...(payload.pushMode
+								? { pushMode: payload.pushMode, expectedRemoteSha: payload.expectedRemoteSha }
+								: {}),
 						},
 						() => {
 							dispatched = true;
@@ -416,6 +468,8 @@ export function createIssueDeliveryActions(options: IssueDeliveryActionOptions) 
 				if (!isDeepStrictEqual(requestSnapshot(actual), requestSnapshot(payload.existing)))
 					stop("existing-request-changed");
 				executable(actual);
+				await validateLease(payload, actual);
+				guard();
 			},
 			() => dispatched,
 		);

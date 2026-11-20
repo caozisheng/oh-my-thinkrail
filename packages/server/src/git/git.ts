@@ -838,6 +838,30 @@ export type PushTargetStatus =
 	| { published: false }
 	| ({ published: true } & Partial<PushDivergence>);
 
+export async function readPushBranchSha(
+	worktreePath: string,
+	branch: string,
+	pushUrl: string,
+): Promise<string | null> {
+	if (!isSafeRef(branch)) throw new Error("Invalid push branch.");
+	const ref = `refs/heads/${branch}`;
+	const listed = await gitAsync(worktreePath, ["ls-remote", "--end-of-options", pushUrl, ref], {
+		network: true,
+	});
+	if (!listed.ok) throw new Error("Could not read the push branch.");
+	const lines = listed.out.trim() ? listed.out.trim().split("\n") : [];
+	if (!lines.length) return null;
+	const [sha, actualRef] = lines[0]?.split("\t") ?? [];
+	if (
+		lines.length !== 1 ||
+		actualRef !== ref ||
+		!sha ||
+		!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha)
+	)
+		throw new Error("Invalid push branch response.");
+	return sha;
+}
+
 export async function countPushTargetDivergence(
 	worktreePath: string,
 	branch: string,

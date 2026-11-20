@@ -102,7 +102,9 @@ and **Implement** sessions, reopening those sessions, and publishing session sum
 After each stage, a separate question card confirms the complete report before it is published. Design
 moves an Issue with no workflow label or `workflow::backlog` to `workflow::in-progress`; implementation
 moves `workflow::in-progress` to `workflow::in-review`, preserving unrelated labels. Delivery is another
-separate confirmation per repository and creates only Draft PRs/MRs after a non-force push. Delivery
+separate confirmation per repository and creates only Draft PRs/MRs after an ordinary non-force push. Existing opened same-repository requests
+may instead receive an explicitly confirmed exact `force-with-lease` update; autonomous policy and
+unconditional force never authorize history replacement. Delivery
 reviews the current committed version and PR/MR content directly; it does not require historical design or
 implementation stage-confirmation records. Local uncommitted files are not pushed and do not block the
 card: the agent verifies necessary changes are committed and asks about doubtful files, leaving private

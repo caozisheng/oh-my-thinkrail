@@ -31,6 +31,7 @@ export {
 	readBlobStreamAtAsync,
 	readCommitSubject,
 	readPathModeAtAsync,
+	readPushBranchSha,
 	remoteRefOid,
 	remoteRefOidAsync,
 	resolveDefaultBranch,

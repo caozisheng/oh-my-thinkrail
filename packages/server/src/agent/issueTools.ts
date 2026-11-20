@@ -68,6 +68,7 @@ export interface IssueToolHost {
 			title?: string;
 			body?: string;
 			targetBranch?: string;
+			pushMode?: "force-with-lease";
 			action?:
 				| "update-body"
 				| "close-issue"
@@ -348,6 +349,7 @@ const PrepareConfirmationSchema = Type.Object(
 			}),
 		),
 		targetBranch: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+		pushMode: Type.Optional(Type.Literal("force-with-lease")),
 	},
 	{ additionalProperties: false },
 );
@@ -368,8 +370,18 @@ export function createIssuePrepareConfirmationTool(): ToolDefinition<
 		label: "Prepare Issue Confirmation",
 		parameters: PrepareConfirmationSchema,
 		description:
-			"Record/read structured per-repository delivery state; authorize and advance per-repository lifecycle policies using action:'authorize-automation' and action:'advance-automation' with the same operationId/projectId. Before changing a downstream pairing, call action:'preflight-dependencies' with its projectId; this reads exact upstream merged requests and target SHAs. It blocks when host-verified API/ABI/protocol compatibility evidence is unavailable—do not substitute independent CI. Policy advancement also requires host-observed validation evidence bound to the exact SHA/tree/target; agent-reported validation never qualifies. Other actions independently confirm MR ready/merge, Issue close, body replacement, stage report and Draft delivery. Pass returned confirmation questions unchanged to ask_user_question. inspect:true and dependency preflight are read-only. Never bypass host operations through shell.",
+			"Record/read structured per-repository delivery state; authorize and advance per-repository lifecycle policies using action:'authorize-automation' and action:'advance-automation' with the same operationId/projectId. Before changing a downstream pairing, call action:'preflight-dependencies' with its projectId; this reads exact upstream merged requests and target SHAs. It blocks when host-verified API/ABI/protocol compatibility evidence is unavailable—do not substitute independent CI. Policy advancement also requires host-observed validation evidence bound to the exact SHA/tree/target; agent-reported validation never qualifies. Other actions independently confirm MR ready/merge, Issue close, body replacement, stage report and Draft delivery. Delivery defaults to ordinary non-force push. Only for an explicitly requested per-repository update of an existing opened same-repository PR/MR, use pushMode:'force-with-lease'; its exact card freezes the observed remote head and replacement SHA. Never select it through autonomous policy, for creation, inspection, recovery or unrelated actions. No implicit lease, unconditional force or retry is permitted. Pass returned confirmation questions unchanged to ask_user_question. inspect:true and dependency preflight are read-only. Never bypass host operations through shell.",
 		async execute(_id, params, _signal, _update, ctx) {
+			if (
+				params.pushMode !== undefined &&
+				(params.pushMode !== "force-with-lease" ||
+					!params.projectId ||
+					params.action ||
+					params.inspect ||
+					params.recovery ||
+					params.report)
+			)
+				throw invalid();
 			if (
 				params.action === "update-body" &&
 				(!Object.hasOwn(params, "body") ||

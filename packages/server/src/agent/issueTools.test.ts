@@ -62,6 +62,38 @@ async function expectClosedFailure(promise: Promise<unknown>, code: string, mess
 	}
 }
 
+test("exact lease input delegates unchanged only for explicit repository delivery", async () => {
+	const { host, calls } = fakeHost();
+	host.prepareConfirmation = async (...args) => {
+		calls.push(args);
+		return {};
+	};
+	setIssueToolHost(host);
+	const tool = createIssuePrepareConfirmationTool();
+	const input = {
+		operationId: "lease",
+		projectId: "repo",
+		title: "Rebased",
+		body: "Update",
+		pushMode: "force-with-lease" as const,
+	};
+	expect(Check(tool.parameters, input)).toBe(true);
+	expect(Check(tool.parameters, { ...input, pushMode: "force" })).toBe(false);
+	await tool.execute("call", input, undefined, undefined, ctx);
+	expect(calls).toEqual([["own-session", input]]);
+	for (const extra of [
+		{ inspect: true },
+		{ recovery: "reconcile" as const },
+		{ action: "update-body" as const },
+		{ report: "Stage" },
+	]) {
+		await expect(
+			tool.execute("call", { ...input, ...extra }, undefined, undefined, ctx),
+		).rejects.toHaveProperty("code", "RANGE_INVALID");
+	}
+	expect(calls).toHaveLength(1);
+});
+
 test("tools delegate only their SDK session identity and return host results", async () => {
 	const { host, calls } = fakeHost();
 	setIssueToolHost(host);

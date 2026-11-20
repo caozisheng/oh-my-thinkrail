@@ -21,7 +21,7 @@ import {
 	sessionReuseStatus,
 	startInitialSessionPrompt,
 } from "../agent";
-import { gitAsync, originUrls } from "../git";
+import { gitAsync, originUrls, readPushBranchSha } from "../git";
 import {
 	createIssuesService,
 	type IssueCredentialStore,
@@ -612,6 +612,13 @@ export function createIssuesHost(
 					targetBranch: metadata.defaultBranch,
 				};
 			},
+			remoteBranchSha: async (repository, input) => {
+				project(repository.projectId, true);
+				const urls = await originUrls(repository.path);
+				const effective = urls.push ? await deliveryPushUrl(repository.path, urls.push) : null;
+				if (!effective || effective !== safeRepositoryUrl(input.url)) invalid();
+				return readPushBranchSha(repository.path, input.branch, effective);
+			},
 			push: async (repository, input, onDispatch) => {
 				const current = await trustedCheckout(repository);
 				if (current.sha !== input.sha || current.branch !== input.branch) invalid();
@@ -619,11 +626,21 @@ export function createIssuesHost(
 				const urls = await originUrls(repository.path);
 				const effective = urls.push ? await deliveryPushUrl(repository.path, urls.push) : null;
 				if (!effective || effective !== safeRepositoryUrl(input.url)) invalid();
+				if (
+					input.pushMode !== undefined &&
+					(input.pushMode !== "force-with-lease" ||
+						!input.expectedRemoteSha ||
+						!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(input.expectedRemoteSha))
+				)
+					invalid();
 				onDispatch();
 				const pushed = await gitAsync(repository.path, [
 					"-c",
 					"push.followTags=false",
 					"push",
+					...(input.pushMode
+						? [`--force-with-lease=refs/heads/${input.branch}:${input.expectedRemoteSha}`]
+						: []),
 					"--",
 					effective,
 					`${input.sha}:refs/heads/${input.branch}`,
@@ -953,6 +970,16 @@ export function createIssuesHost(
 		service,
 		prepareConfirmation: async (sessionId, params) => {
 			const request = structuredClone(params);
+			if (
+				request.pushMode !== undefined &&
+				(request.pushMode !== "force-with-lease" ||
+					!request.projectId ||
+					request.action ||
+					request.inspect ||
+					request.recovery ||
+					request.report)
+			)
+				invalid();
 			if (request.action === "read-delivery-state") {
 				if (
 					request.inspect ||
@@ -1208,6 +1235,7 @@ export function createIssuesHost(
 								title: input.title,
 								body: input.body,
 								...(input.targetBranch ? { targetBranch: input.targetBranch } : {}),
+								...(input.pushMode ? { pushMode: input.pushMode } : {}),
 								...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
 							});
 						} catch (error) {
