@@ -26,9 +26,16 @@ async function reconnectWithSeed(page: Parameters<typeof openFixtureProject>[0])
 
 async function expectAttentionDot(row: Locator): Promise<void> {
 	await expect(row).toHaveAttribute("data-attention", "true");
-	const dot = row.getByTestId("attention-dot");
-	await expect(dot).toHaveAttribute("aria-label", "Needs attention");
-	await expect(dot.locator('[aria-hidden="true"]')).toHaveClass(/bg-primary/);
+	const isWorkspace = (await row.getAttribute("data-testid")) === "workspace-item";
+	const indicator = row.getByTestId(isWorkspace ? "workspace-attention" : "attention-dot");
+	await expect(indicator).toHaveAttribute("aria-label", "Needs attention");
+	if (isWorkspace) {
+		await expect(indicator).toHaveClass(/text-feedback-warning/);
+		await expect(row.getByTestId("attention-dot")).toHaveCount(0);
+	} else {
+		await expect(indicator.locator('[aria-hidden="true"]')).toHaveClass(/bg-primary/);
+		await expect(row.getByTestId("workspace-attention")).toHaveCount(0);
+	}
 }
 
 async function seedSentReviewComment(page: Page, sessionId: string): Promise<void> {

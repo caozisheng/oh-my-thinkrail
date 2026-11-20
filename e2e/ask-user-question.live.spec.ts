@@ -31,7 +31,7 @@ test("single-select: focus, roving keys, and Enter resolve the tool", {
 	await expect(card).toBeVisible({ timeout: 90_000 });
 	const workspaceRow = activeWorktreeRow(page);
 	await expect(workspaceRow).toHaveAttribute("data-attention", "true");
-	await expect(workspaceRow.getByTestId("attention-dot")).toHaveAttribute(
+	await expect(workspaceRow.getByTestId("workspace-attention")).toHaveAttribute(
 		"aria-label",
 		"Needs attention",
 	);

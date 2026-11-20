@@ -201,22 +201,26 @@ treatment.
   in its own source project.
 
   Workspace/project session presentation comes only from normalized host state. The rail has exactly two
-  visual treatments: a static green/accent **attention dot** for either a concrete needs-input blocker or an
+  visual treatments: a static **attention marker** for either a concrete needs-input blocker or an
   owner-globally unread result, and the shared `RunningIcon` brand badge **in place of** the workspace/project
-  identity icon while a top-level session is genuinely working. Attention is binary: needs-input and unread-result states use the
-  same dot, with the accessible label **“Needs attention”** and no question/check/result glyph, spinner,
-  count, or status-specific tooltip. Working keeps the row's existing active/inactive colour (the badge wears
+  identity icon while a top-level session is genuinely working. Attention is binary: workspace rows use
+  a warning-coloured circle-question glyph, while collapsed project/group rollups retain the green/accent
+  dot. Both mean **“Needs attention”**, not just a pending answer or a delivered notification; workspace
+  markers use that same generic tooltip. Neither adds a count, spinner, motion, or independent action. Working keeps the row's existing active/inactive colour (the badge wears
   `text-primary` / `text-text-muted` exactly as the glyph it replaces) and exposes **“Agent working”**
   accessibly; it never adds a second marker. Queued, hidden/background, stopped, and quiet sessions show
   their identity glyph; a needs-input session may still show the badge when its orthogonal execution fact
-  remains running, so the attention dot and working treatment can coexist. Reduced motion keeps the badge
+  remains running, so the attention marker and working treatment can coexist. Reduced motion keeps the badge
   static. Collapsed project rollup uses the same selectors as
   workspace rows, while expanded projects show the detail on workspace rows. The components remain
   props-driven over the normalized host-state selectors.
 
-  `ProjectTree` renders the shared dependency-light `AttentionDot` from normalized host-state selectors.
-  It is static accent colour, carries no count or state-specific glyph/tooltip, and occupies its own flex
-  column between the identity button and the hover-revealed kebab. Workspace and collapsed-project rows
+  `ProjectTree` renders the panel-local, props-free `WorkspaceAttention` circle-question for workspace
+  rows and the shared dependency-light `AttentionDot` for collapsed project/group rollups, both from
+  normalized host-state selectors. The workspace marker occupies its own flex column between the
+  identity button and the hover-revealed kebab. It introduces no state or clearing policy: any session's
+  needs-input or unread result keeps it visible; opening alone never clears needs-input, while results
+  follow the existing read mechanism. Search and projectless-chat attention remain unchanged. Workspace and collapsed-project rows
   expose `data-attention` only while positive. Separately, the shared `RunningIcon` replaces the
   identity icon for normalized working state; workspace and collapsed-project rows expose `data-running` only
   while positive. These attributes are test hooks, not a second state model.

@@ -391,15 +391,16 @@ before any provider turn; PI's ordinary first-available fallback is never accept
 The same copy and hermetic environment seed the private restart host.
 
 **Session state** coverage seeds complete transcript states and drives normalized host blockers/runs to pin
-Projects rail presentation: both needs-input and owner-globally unread results render the same static green
-attention dot (“Needs attention”), while genuinely running sessions swap the workspace/project identity
-icon for the shared `RunningIcon` brand badge in the row's own colour. The rail must not substitute
-question/check/result glyphs or a generic spinner. Running alone has no attention dot; queued, hidden/background, and explicitly stopped sessions stay
-quiet; a live blocked question keeps its dot while its orthogonal running badge may coexist. Reconnect/restart
+Projects rail presentation: both needs-input and owner-globally unread results render the same static
+warning circle-question on workspace rows (“Needs attention”); collapsed project/group rollups retain
+static green attention dots. Genuinely running sessions swap the workspace/project identity
+icon for the shared `RunningIcon` brand badge in the row's own colour, never a generic spinner.
+Running alone has no attention marker; queued, hidden/background, and explicitly stopped sessions stay
+quiet; a live blocked question keeps its marker while its orthogonal running badge may coexist. Reconnect/restart
 snapshots, direct-versus-passive activation, owner-global clearing, and snapshot
 retry are covered; live-agent coverage pins `data-running`/`running-icon` (its strokes animate, and stay fully drawn and still under
 reduced motion) and coexistence with
-`data-attention`/`attention-dot`. These are stable visual hooks rather than alternate state models. The retired `session.activityList → []` compatibility method
+`data-attention`/`workspace-attention` (project rollups use `attention-dot`). These are visual hooks rather than alternate state models. The retired `session.activityList → []` compatibility method
 remains a focused handler test.
 
 **Topbar chrome** (`topbar-chrome.spec.ts`) proves the web side of the desktop title-bar contract without a
