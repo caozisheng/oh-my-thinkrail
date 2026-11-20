@@ -428,6 +428,27 @@ function registered(projects: Record<string, { path: string; trusted?: boolean }
 	);
 }
 
+test("lease mode is refused on inspection recovery stage and unrelated actions before access", async () => {
+	const prepare = createIssuesHost({ dir, credentials }).agentSessions.prepareConfirmation;
+	if (!prepare) throw new Error("Missing prepare");
+	for (const fields of [
+		{ inspect: true },
+		{ recovery: "reconcile" as const },
+		{ report: "Stage" },
+		{ action: "read-delivery-state" as const },
+		{ action: "advance-automation" as const },
+	]) {
+		await expect(
+			prepare("unbound", {
+				operationId: "lease",
+				projectId: "one",
+				pushMode: "force-with-lease",
+				...fields,
+			}),
+		).rejects.toMatchObject({ code: "RANGE_INVALID" });
+	}
+});
+
 test("delivery URL validation refuses fetch and push rewrites without contacting a remote", async () => {
 	const url = "https://gitlab.example/group/repo.git";
 	const path = repository("delivery", ["origin", url]);

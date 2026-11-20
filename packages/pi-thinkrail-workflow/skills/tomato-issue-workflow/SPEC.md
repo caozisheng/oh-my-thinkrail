@@ -53,7 +53,7 @@ dumps, or secrets are published. The Issue is the remote handoff record; reposit
 in the owning spec graph, not a parallel local plan store.
 
 Stage completion and per-repository delivery each require their own exact host-verified questionnaire
-submission. Only that receipt authorizes the fixed report/label transition or non-force push and Draft
+submission. Only that receipt authorizes the fixed report/label transition or ordinary non-force push and Draft
 PR/MR. The skill itself grants no remote authority, bypass, merge, ready transition or Issue closure.
 Confirmation preparation is operation-specific: a schema-valid union of fields is not necessarily a
 valid operation. `design-and-implementation.md` owns the current call shapes and local-versus-provider
@@ -110,3 +110,8 @@ is needed. `index.test.ts` checks that the spine routes to every lifecycle docum
 has a handoff, and stage/delivery and close-authorization invariants remain explicit. Local package
 tests and skill discovery checks need no real provider. Behavioral use is unverified until a real
 session is observed; the authoritative roster records that debt in [[submodule-workflow-skills]].
+
+Explicit exact-lease delivery is the sole workflow exception for updating an existing opened
+same-repository PR/MR after a rebase. The host delivery contract owns its frozen remote-head check and
+execution details. The workflow may request the explicit mode but never grants generic force or
+autonomous policy authority.

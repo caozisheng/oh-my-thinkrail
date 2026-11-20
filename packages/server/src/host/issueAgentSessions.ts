@@ -28,6 +28,7 @@ export interface IssueAgentSessionHostOptions {
 			title?: string;
 			body?: string;
 			targetBranch?: string;
+			pushMode?: "force-with-lease";
 			action?:
 				| "update-body"
 				| "close-issue"

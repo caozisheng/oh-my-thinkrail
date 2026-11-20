@@ -286,13 +286,17 @@ branch is recreated by ordinary confirmed push. One matching opened PR/MR at the
 source/target repository and branch is updated by the confirmed non-force push, then re-read to verify
 the same request id/iid now points at the new SHA; it is never replaced by a duplicate. Otherwise only a
 Draft PR/MR is created.
-Automatic commits, force push, merge and Issue closure are outside this surface. Delivery failure
+Automatic commits, unconditional force push, merge and Issue closure are outside this surface. Delivery failure
 reasons and journal status are inspectable; deterministic preflight happens before intent reservation.
 Post-write uncertainty retains its intent and blocks blind replay. Read-only inspection exposes
 status/reasons, and receipt adoption requires a frozen observed-result card, original-process-ended
 human confirmation, and a fresh remote recheck before completing the original intent. Stage exact-body
 matching alone does not prove note authorship; the adoption card discloses that limitation. Automatic
 or user-authorized resend after unresolved uncertainty remains unimplemented.
+
+An explicitly confirmed exact-lease update is the sole history-replacement exception for an existing
+opened same-repository PR/MR. [[submodule-server-host]] owns its frozen remote-head authorization and execution
+contract; this grants neither generic force push nor autonomous policy authority.
 
 ## Workspace/session coordination
 

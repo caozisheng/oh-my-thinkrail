@@ -76,7 +76,7 @@ confirmation does not authorize delivery.
 
 After implementation and validation, check task-scoped checkout completeness using
 [`delivery-worktree.md`](delivery-worktree.md). Offer delivery separately per changed repository with
-the exact prepared title/body and optional target branch; the unchanged card authorizes only non-force
+the exact prepared title/body and optional target branch; the unchanged card authorizes ordinary non-force
 push and Draft PR/MR creation or reuse. It does not authorize ready, merge, commit or closure. Changed
 content requires a fresh card. For uncertain execution, inspect with the original operationId and stop
 when receipt-backed recovery is unavailable.
@@ -87,3 +87,7 @@ After confirmed Issue handoff publication, report the concise result and remaini
 the caller: **Issue session handed off** (not necessarily Issue complete). Failed context reads,
 identity mismatch, or failed/uncertain handoff end as **blocked — required Issue context or handoff
 unavailable**.
+
+For an explicitly requested rebased update of an existing opened same-repository PR/MR only, see
+`draft-delivery.md` for the separately confirmed `pushMode: "force-with-lease"` exception. Autonomous
+policy, unconditional force and automatic retries never authorize history replacement.

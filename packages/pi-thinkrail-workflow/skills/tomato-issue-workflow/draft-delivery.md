@@ -11,12 +11,19 @@ Use for a requested Draft PR/MR push/create/update. A stage label or stage-repor
 1. Read fresh repository identity, source/target branches, commit and provider capability facts.
 2. Check for the same active request and verify repository, source and target identity before reuse.
 3. For an unapproved automation policy, prepare and present the exact host delivery card; execute only its submitted receipt.
-4. Push only the authorized exact commit, non-force; create a Draft request or update the matching active request, never a duplicate.
+4. Push only the authorized exact commit, non-force by default; create a Draft request or update the matching active request, never a duplicate.
 5. Read back request identity, target and head SHA; report creation/update and CI state separately.
 
 ## Host capabilities
 
-The confirmed host delivery operation currently covers non-force push and Draft PR/MR create/reuse/update. It does not grant ready, merge, close or Issue-body update. Check actual provider support before promising the full lifecycle.
+The confirmed host delivery operation covers ordinary non-force push and Draft PR/MR create/reuse/update. It does not grant ready, merge, close or Issue-body update. Check actual provider support before promising the full lifecycle.
+
+Only for an explicitly requested update of an existing opened same-repository PR/MR after rebasing,
+prepare `pushMode: "force-with-lease"` with that repository's exact delivery inputs. Present the returned
+card unchanged: it shows the canonical remote/ref, frozen old SHA, replacement SHA and history risk.
+This requires its own submitted confirmation, never autonomous policy selection. Missing heads, forks,
+request/head disagreement and concurrent updates are hard refusals even with a warning card. Never use
+implicit leases, unconditional force, shell bypass or automatic retry. This mode cannot create a request.
 
 ## Completion, questions and recovery
 

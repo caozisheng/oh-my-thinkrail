@@ -26,7 +26,7 @@ explicit user-directed recovery.
 Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live
 provider identity. Auxiliary-repository delivery ports remain scoped to the bound Issue IID rather than a
 placeholder IID. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP
-clone URL and a real default or explicitly selected target branch. It pushes the fixed SHA without force and
+clone URL and a real default or explicitly selected target branch. By default it pushes the fixed SHA without force and
 creates drafts only. A matching existing request at an older SHA is updated in place after its card is
 confirmed; an exact-head request is reused without modification. Merged/closed requests are historical,
 not active candidates: they neither cause ambiguity nor prevent another Draft request for the same
@@ -35,6 +35,19 @@ unstaged and untracked files are excluded and do not block preparation or execut
 necessary files are committed and asks the human about doubtful exclusions; the host does not infer
 file necessity. No stash, deletion, commit or local ignore mutation is performed by delivery. The exact submitted questionnaire receipt, repository identity, remote, Issue snapshot and checkout are still revalidated before mutation. A changed checkout requires a fresh card; uncertain intents remain fenced. The agent receives no token,
 path override or merge/close capability.
+
+Explicit `pushMode: "force-with-lease"` extends only the existing per-repository delivery operation for
+an opened same-repository PR/MR update. Absence preserves ordinary push and legacy previews/payloads.
+The host reads the exact full source ref from the canonical authenticated push repository, freezes its
+full SHA, and hard-requires equality with the existing request head. Missing observation capability,
+missing/malformed branch heads, forks, closed/locked requests and identity mismatches fail closed,
+including with `continueDespiteChecks`. The card displays mode, remote/ref, old/new SHA and history
+replacement risk. Before intent and dispatch the host revalidates checkout, remote and request identity
+and the frozen remote head; Git uses `--force-with-lease=refs/heads/<branch>:<oldSha>` with the fixed
+commit refspec. This is never an implicit tracking-ref lease, naked force, creation mode or autonomous
+policy choice. Unrelated actions, inspection and recovery reject the parameter. There is no automatic
+retry or replacement operation-id bypass; dispatched uncertainty keeps the existing fence and recovery
+only observes/adopts the original result without pushing again.
 
 Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags and a concrete
 next action. Read-only preflight failures occur before intent reservation and remain eligible for a
