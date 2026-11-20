@@ -11,7 +11,7 @@ Use for deterministic preflight rejection, provider outage, execution refusal, d
 1. Read the exact host reason code and failure stage; distinguish preflight, service unavailable, not dispatched, confirmed success and uncertain dispatch.
 2. For `Invalid Issue request` or another generic preparation rejection, first audit the request against the chosen action's advertised schema and operation contract: action, required and forbidden fields, field meanings, and authoritative ID source. Correct only a demonstrated request mismatch, refresh facts and prepare again with a fresh operationId if no intent was reserved.
 3. Do not treat repeated generic rejection as evidence that the capability is unavailable, that the gate is too strict, or that a particular field caused the refusal. State that the cause is unknown unless the host provides a specific reason.
-4. For safe local/readonly conditions within existing authorization, correct the cause, refresh facts and rerun preflight.
+4. For safe local/readonly conditions within existing authorization, correct the cause, refresh facts and rerun preflight. `delivery-state-incomplete` means repository registration is incomplete, not that upstream merge evidence was inspected or compatibility failed: use `cross-repository.md`'s registration recipe. Classify missing MR identity separately from absent compatibility configuration, failed checks and stale versions; never tell the user that repeating an MR link will synchronize state.
 5. For uncertain dispatch, inspect the existing operation and read current remote state; retain its original operationId.
 6. Adopt an observed result only through the host's receipt-backed recovery capability and its real user confirmation.
 
@@ -21,7 +21,7 @@ Preparation rejection before intent reservation is distinct from uncertain execu
 
 ## Completion, questions and recovery
 
-Never classify service unavailability as an authorization error without evidence. Never repeat an operation merely because an error, timeout or absent comment was observed. Ask the user only for the specific missing identity, policy, permission or recovery confirmation. If the host lacks safe recovery, name that missing capability and stop.
+Never classify service unavailability as an authorization error without evidence. A generic `Issue tools are unavailable for this session` cannot identify a particular lost binding, trust failure or provider outage by itself. A plain diagnostic chat does not inherit another chat's Issue association; report that distinction without rebinding sessions or modifying journals. Never repeat an operation merely because an error, timeout or absent comment was observed. Ask the user only for the specific missing identity, policy, permission or recovery confirmation. If the host lacks safe recovery, name that missing capability and stop.
 
 ## Handoff
 

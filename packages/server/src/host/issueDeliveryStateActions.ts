@@ -40,6 +40,18 @@ export interface IssueDeliveryStateActionOptions {
 		workspaceId: string;
 		path: string;
 	}): Promise<{ sha: string; tree: string; branch: string; dirty: boolean }>;
+	mergeRequest?(
+		binding: IssueSessionAssociation,
+		projectId: string,
+		iid: number,
+	): Promise<{
+		iid: number;
+		webUrl: string;
+		headSha: string;
+		targetBranch: string;
+		sourceBranch: string;
+		state: string;
+	}>;
 	store: IssueDeliveryStateStore;
 }
 export function createIssueDeliveryStateActions(options: IssueDeliveryStateActionOptions) {
@@ -56,6 +68,7 @@ export function createIssueDeliveryStateActions(options: IssueDeliveryStateActio
 		const request = input as { repositories: unknown[] };
 		const repositories = await options.repositories(binding);
 		if (request.repositories.length !== repositories.length) stop("repository-set-mismatch");
+		const previous = options.store.load(binding.projectId, binding.reference);
 		const nextRepositories: IssueDeliveryRepositoryState[] = [];
 		for (const value of request.repositories) {
 			if (!value || typeof value !== "object" || Array.isArray(value)) stop("repository-invalid");
@@ -71,8 +84,9 @@ export function createIssueDeliveryStateActions(options: IssueDeliveryStateActio
 				data.checkoutTree !== actual.tree
 			)
 				stop("checkout-snapshot-changed");
+			const { mergeRequestId, ...metadata } = data;
 			if (
-				!exact(data, [
+				!exact(metadata, [
 					"projectId",
 					"worktreeId",
 					"sourceBranch",
@@ -124,12 +138,59 @@ export function createIssueDeliveryStateActions(options: IssueDeliveryStateActio
 					source: "agent-reported" as const,
 				};
 			});
+			const before = previous?.repositories.find((item) => item.projectId === repository.projectId);
+			let mergeRequest =
+				before?.sourceBranch === actual.branch && before.worktreeId === repository.workspaceId
+					? before.mergeRequest
+					: undefined;
+			if (mergeRequestId !== undefined) {
+				if (
+					!Number.isSafeInteger(mergeRequestId) ||
+					Number(mergeRequestId) <= 0 ||
+					!options.mergeRequest
+				)
+					stop("merge-request-selector-invalid");
+				const observed = await options.mergeRequest(
+					binding,
+					repository.projectId,
+					Number(mergeRequestId),
+				);
+				if (
+					observed.iid !== mergeRequestId ||
+					observed.sourceBranch !== actual.branch ||
+					observed.headSha !== actual.sha ||
+					observed.targetBranch !== data.targetBranch
+				)
+					stop("merge-request-checkout-mismatch");
+				mergeRequest = {
+					iid: observed.iid,
+					webUrl: observed.webUrl,
+					headSha: observed.headSha,
+					targetBranch: observed.targetBranch,
+					state: observed.state,
+				};
+			}
+			if (mergeRequest?.headSha !== actual.sha || mergeRequest.targetBranch !== data.targetBranch)
+				mergeRequest = undefined;
 			nextRepositories.push({
-				...(data as unknown as IssueDeliveryRepositoryState),
+				...(metadata as unknown as IssueDeliveryRepositoryState),
+				...(mergeRequest ? { mergeRequest } : {}),
 				checkoutSha: actual.sha,
 				checkoutTree: actual.tree,
 				validations: validations as unknown as IssueDeliveryRepositoryState["validations"],
 			});
+		}
+		for (const repository of repositories) {
+			const current = await options.checkout(repository);
+			const saved = nextRepositories.find((item) => item.projectId === repository.projectId);
+			if (
+				!saved ||
+				saved.sourceBranch !== current.branch ||
+				saved.checkoutSha !== current.sha ||
+				saved.checkoutTree !== current.tree ||
+				(current.dirty && saved.validations.length)
+			)
+				stop("checkout-snapshot-changed");
 		}
 		const next = { revision: expectedRevision + 1, repositories: nextRepositories };
 		if (options.store.compareAndSet(binding.projectId, binding.reference, expectedRevision, next))
@@ -140,9 +201,19 @@ export function createIssueDeliveryStateActions(options: IssueDeliveryStateActio
 	async function read(sessionId: string) {
 		const binding = await options.binding(sessionId);
 		if (binding.stage !== "implementation") stop("session-stage-invalid");
-		return (
-			options.store.load(binding.projectId, binding.reference) ?? { revision: 0, repositories: [] }
+		const current = options.store.load(binding.projectId, binding.reference) ?? {
+			revision: 0,
+			repositories: [],
+		};
+		const participating = await options.repositories(binding);
+		const snapshots = await Promise.all(
+			participating.map(async (repository) => ({
+				projectId: repository.projectId,
+				worktreeId: repository.workspaceId,
+				...(await options.checkout(repository)),
+			})),
 		);
+		return { ...current, participating: snapshots };
 	}
 	return { record, read };
 }

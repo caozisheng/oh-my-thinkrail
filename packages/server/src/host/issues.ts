@@ -54,6 +54,7 @@ import {
 	type IssueClosePayload,
 	issueCloseQuestions,
 } from "./issueCloseActions";
+import { runIssueCompatibility } from "./issueCompatibility";
 import {
 	createIssueConfirmationStore,
 	type IssueConfirmationInspection,
@@ -484,6 +485,16 @@ export function createIssuesHost(
 			binding: confirmationBinding,
 			repositories: participatingRepositories,
 			checkout: trustedCheckout,
+			mergeRequest: async (binding, projectId, iid) => {
+				const access = await repositoryAccess(binding, projectId);
+				const metadata = await access.remote.project();
+				const request = await access.remote.mergeRequest(iid);
+				access.guard();
+				if (request.targetProjectId !== metadata.id || request.sourceProjectId !== metadata.id)
+					invalid();
+				if (!request.sha) invalid();
+				return { ...request, headSha: request.sha };
+			},
 			store: createIssueDeliveryStatePersistence(path),
 		});
 	}
@@ -638,10 +649,16 @@ export function createIssuesHost(
 		const binding = await confirmationBinding(sessionId);
 		const contexts = await participatingRepositories(binding);
 		const state = await deliveryStateActions().read(sessionId);
-		if (contexts.length !== state.repositories.length)
+		const missing = contexts.filter(
+			(item) => !state.repositories.some((saved) => saved.projectId === item.projectId),
+		);
+		const extra = state.repositories.filter(
+			(saved) => !contexts.some((item) => item.projectId === saved.projectId),
+		);
+		if (missing.length || extra.length)
 			throw new CodedError(
 				"ISSUE_DELIVERY_REFUSED",
-				"Repository dependency preflight refused (delivery-state-incomplete).",
+				`Repository dependency preflight refused (delivery-state-incomplete); revision=${state.revision}; missing=${JSON.stringify(missing.map((item) => item.projectId))}; extra=${JSON.stringify(extra.map((item) => item.projectId))}. Read delivery state and register every participating repository using its observed checkout and the current revision. Extra repositories require reconciliation; do not erase history.`,
 			);
 		const repositories: IssueDependencyRepository[] = await Promise.all(
 			state.repositories.map(async (saved) => {
@@ -722,11 +739,27 @@ export function createIssuesHost(
 				const checkout = await trustedCheckout(context);
 				return { sha: checkout.sha, tree: checkout.tree };
 			},
-			compatibility: async () => {
-				throw new CodedError(
-					"ISSUE_DELIVERY_REFUSED",
-					"Repository dependency preflight refused (host-compatibility-evidence-unavailable).",
-				);
+			compatibility: async (input) => {
+				const context = contexts.find((item) => item.projectId === input.projectId);
+				if (!context) invalid();
+				const before = await trustedCheckout(context);
+				if (
+					before.dirty ||
+					before.sha !== input.downstreamSha ||
+					before.tree !== input.downstreamTree
+				)
+					throw new CodedError(
+						"ISSUE_DELIVERY_REFUSED",
+						"Repository compatibility refused (checkout-changed-or-dirty).",
+					);
+				const evidence = await runIssueCompatibility({ ...input, path: context.path });
+				const after = await trustedCheckout(context);
+				if (after.dirty || after.sha !== before.sha || after.tree !== before.tree)
+					throw new CodedError(
+						"ISSUE_DELIVERY_REFUSED",
+						"Repository compatibility refused (checkout-changed-or-dirty).",
+					);
+				return evidence;
 			},
 		});
 	}
@@ -975,7 +1008,7 @@ export function createIssuesHost(
 						operationId: request.operationId,
 						reason: error.message,
 						nextAction:
-							"Do not update the downstream pairing. Resolve the named target/SHA mismatch or provide a host-verifiable cross-repository compatibility check, then preflight again.",
+							"Do not update downstream pairing. For delivery-state-incomplete, read-delivery-state then record-delivery-state with every participating repository and expectedRevision. For missing-upstream-request, register its mergeRequestId for provider verification. For compatibility configuration errors, configure .thinkrail/issue-compatibility.json in the trusted downstream worktree. Other refusals require resolving the named mismatch; a link or independent CI is not compatibility evidence.",
 					};
 				}
 			}

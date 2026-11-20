@@ -74,9 +74,15 @@ Lifecycle authorization is per Issue/repository/source/target and freezes a base
 bind child delivery, ready, merge and close actions to that receipt; they recheck current request identity,
 checkout ancestry and exact target before each operation. Automatic advancement refuses absent or agent-reported
 validation records. Dependency preflight reads exact upstream MR merge evidence and target-branch SHA, brackets
-the evidence with repeated reads, and never treats independent CI as cross-repository compatibility. When no
-host compatibility evidence producer is available, dependent delivery remains blocked rather than asserting
-API/ABI/protocol compatibility.
+the evidence with repeated reads, and never treats independent CI as cross-repository compatibility.
+Explicit dependency preflight may execute the trusted downstream project's `.thinkrail/issue-compatibility.json`
+argv command with a bounded timeout and exact upstream merge/target and downstream commit/tree JSON context
+in `THINKRAIL_ISSUE_COMPATIBILITY_CONTEXT`. Version 1 configuration declares coverage for API, ABI,
+protocol, conflicts and checks as checked or explicitly not applicable; at least one must be checked.
+Exit zero produces host-observed evidence for the declared coverage, bound to configuration and version
+context, only while both remain unchanged. Missing/invalid configuration, timeout or failure blocks;
+agent assertions, no-op replacements and ordinary independent CI cannot supply this evidence.
+This runner does not authorize remote mutations or auto-advance validation.
 
 ## Responsibility
 
@@ -1678,13 +1684,19 @@ record a state only after the host confirms its repository membership, workspace
 checkout. Agent-supplied validation is labeled `agent-reported` and is never proof for automatic merge.
 The host currently has no validation command runner, so no `host-observed` validation is minted; the
 automation policy helper therefore refuses auto-advance until such evidence exists. The policy and
-cross-repository helpers are not wired as public Issue actions. `draft`, `auto-merge` and `manual`
+cross-repository helpers are exposed through operation-specific Issue actions. `draft`, `auto-merge` and `manual`
 records do not grant push, ready, merge or close on their own.
 
 The Issue confirmation dispatcher exposes local delivery-state read/record and separately confirmed MR
 ready/merge actions. Ready and merge remain separate operations; merge requires provider-observed head-
 bound checks/approval and target ancestry. Cross-repository dependency ordering, actual merge-SHA
-pairing and compatibility evidence remain a helper, not an integrated delivery gate.
+pairing and compatibility evidence gate explicit dependency preflight and automatic advancement.
+Delivery-state reads include current participating checkout snapshots; registration uses revision CAS,
+verifies membership and snapshots, and permits append-only membership expansion without erasing history.
+An optional MR IID selector is fetched from the bound provider and checked against source/target/head;
+agent-provided MR facts are rejected. Refresh preserves matching observed identity and drops stale identity.
+Incomplete registration is compared by repository identity, not count, and reports missing/extra local IDs
+before any merge or compatibility conclusion. These records remain metadata, never authorization.
 
 ### Confirmed MR ready and merge limits
 

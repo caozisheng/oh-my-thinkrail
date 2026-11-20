@@ -209,7 +209,7 @@ function transition(
 	const previousByProject = new Map(previous.repositories.map((repo) => [repo.projectId, repo]));
 	for (const current of next.repositories) {
 		const before = previousByProject.get(current.projectId);
-		if (!before) stop();
+		if (!before) continue;
 		if (current.targetBranch !== before.targetBranch && current.validations.length > 0) stop();
 		if (
 			(current.checkoutSha !== before.checkoutSha ||
@@ -217,12 +217,6 @@ function transition(
 			current.validations.some(
 				(item) => item.sha !== current.checkoutSha || item.tree !== current.checkoutTree,
 			)
-		)
-			stop();
-		if (
-			current.mergeRequest &&
-			(current.mergeRequest.targetBranch !== current.targetBranch ||
-				current.mergeRequest.headSha !== current.checkoutSha)
 		)
 			stop();
 	}
@@ -249,7 +243,13 @@ function record(value: unknown): IssueDeliveryStateRecord {
 			),
 		) ||
 		new Set(repositories.map((repo) => repo.projectId)).size !== repositories.length ||
-		repositories.some((repo) => repo.dependsOn.includes(repo.projectId))
+		repositories.some((repo) => repo.dependsOn.includes(repo.projectId)) ||
+		repositories.some(
+			(repo) =>
+				repo.mergeRequest &&
+				(repo.mergeRequest.headSha !== repo.checkoutSha ||
+					repo.mergeRequest.targetBranch !== repo.targetBranch),
+		)
 	)
 		stop();
 	return { revision: Number(value.revision), repositories };

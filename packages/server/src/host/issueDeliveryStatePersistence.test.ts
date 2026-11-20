@@ -140,3 +140,25 @@ test("malformed evidence and symlinked record directories fail closed", () => {
 		rmSync(elsewhere, { recursive: true, force: true });
 	}
 });
+
+test("verified membership can expand without erasing existing history", () => {
+	const root = mkdtempSync(join(tmpdir(), "issue-delivery-state-"));
+	try {
+		const store = createIssueDeliveryStatePersistence(root);
+		store.compareAndSet("local", ref, 0, record(1));
+		const next = record(2);
+		const original = next.repositories[0];
+		if (!original) throw new Error("missing fixture");
+		next.repositories.push({
+			...original,
+			projectId: "downstream",
+			worktreeId: "workspace-2",
+			dependsOn: ["local"],
+			validations: [],
+		});
+		expect(store.compareAndSet("local", ref, 1, next)).toBe(true);
+		expect(createIssueDeliveryStatePersistence(root).load("local", ref)).toEqual(next);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});

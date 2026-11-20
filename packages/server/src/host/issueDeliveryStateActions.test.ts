@@ -90,3 +90,54 @@ test("CAS conflict refuses rather than overwriting concurrent delivery decisions
 		"revision-conflict-refresh-and-retry",
 	);
 });
+
+test("state reads expose checkout snapshots and MR selectors are verified and preserved", async () => {
+	let saved: IssueDeliveryStateRecord | null = null;
+	let branch = "feature";
+	const actions = createIssueDeliveryStateActions({
+		binding: async () => binding,
+		repositories: async () => [
+			{ projectId: "local", workspaceId: "ws", path: "/repo", name: "Repo" },
+		],
+		checkout: async () => ({
+			sha: "a".repeat(40),
+			tree: "b".repeat(40),
+			branch,
+			dirty: false,
+		}),
+		mergeRequest: async (_binding, _projectId, iid) => ({
+			iid,
+			webUrl: "https://github.com/o/r/pull/1",
+			headSha: "a".repeat(40),
+			targetBranch: "main",
+			sourceBranch: "feature",
+			state: "merged",
+		}),
+		store: {
+			load: () => saved,
+			compareAndSet: (_id, _ref, rev, next) => {
+				if ((saved?.revision ?? 0) !== rev) return false;
+				saved = next;
+				return true;
+			},
+		},
+	});
+	expect(await actions.read("s")).toMatchObject({
+		revision: 0,
+		participating: [{ projectId: "local", worktreeId: "ws", sha: "a".repeat(40) }],
+	});
+	const first = await actions.record("s", 0, { repositories: [{ ...state(), mergeRequestId: 1 }] });
+	expect(first.repositories[0]?.mergeRequest).toMatchObject({ iid: 1, state: "merged" });
+	const refreshed = await actions.record("s", 1, { repositories: [state()] });
+	expect(refreshed.repositories[0]?.mergeRequest).toMatchObject({ iid: 1 });
+	branch = "another-feature";
+	const switched = await actions.record("s", 2, {
+		repositories: [{ ...state(), sourceBranch: branch }],
+	});
+	expect(switched.repositories[0]?.mergeRequest).toBeUndefined();
+	await expect(
+		actions.record("s", 3, {
+			repositories: [{ ...state(), sourceBranch: branch, mergeRequest: { iid: 9 } }],
+		}),
+	).rejects.toThrow("repository-state-invalid");
+});

@@ -74,6 +74,17 @@ token. It includes:
   with that confirmation, fresh zero exact matches and a durable exclusive retry fence; uncertainty
   after retry can only be reconciled, including after restart.
 
+- Cross-repository dependency preflight requires explicit repository delivery registration and a
+  provider-verified upstream MR identity. It does not infer compatibility from an MR link or independent
+  CI. Configure `.thinkrail/issue-compatibility.json` in the trusted downstream worktree with
+  `version: 1`, an argv `command` array, `timeoutMs` (1–300000), and `coverage` containing `api`, `abi`,
+  `protocol`, `conflict` and `checks`, each `checked` or explicitly `not-applicable` (at least one checked).
+  The command must validate that coverage against the exact versions supplied as JSON in
+  `THINKRAIL_ISSUE_COMPATIBILITY_CONTEXT`; only exit zero on an unchanged clean checkout produces
+  host-observed evidence. Missing configuration, timeout, failed checks or changed versions block pairing.
+  Configuration is executable project code: review it before trusting/running it, and keep local-only
+  configuration gitignored. Passing preflight never authorizes a push or merge.
+
 Starting implementation does not require design approval and does not change Issue labels. Approval
 and Issue closure remain in the tracker. Automated push/MR/CI/merge delivery is not implemented.
 

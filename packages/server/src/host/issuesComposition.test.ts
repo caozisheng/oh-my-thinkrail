@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveProjects, saveWorkspaces } from "../persistence";
@@ -29,8 +30,10 @@ const reference = {
 	number: 7,
 };
 let snapshot: { sha: string; tree: string; branch: string };
+let upstreamMerged = false;
 
 beforeEach(async () => {
+	upstreamMerged = false;
 	dir = mkdtempSync(join(tmpdir(), "issues-composition-"));
 	const primaryPath = join(dir, "repo");
 	repositoryPath = join(primaryPath, ".worktrees", "issue-7");
@@ -102,6 +105,10 @@ beforeEach(async () => {
 		credentials,
 		fetch: (async (url) => {
 			const address = String(url);
+			if (address.includes("/api/v4/projects/43"))
+				return new Response(JSON.stringify({ id: 43, path_with_namespace: "group/downstream" }));
+			if (upstreamMerged && address.includes("/repository/merge_base?"))
+				return new Response(JSON.stringify({ id: snapshot.sha }));
 			if (address.includes("/api/v4/issues/7"))
 				return new Response(
 					JSON.stringify({
@@ -120,7 +127,8 @@ beforeEach(async () => {
 						id: 7,
 						iid: 7,
 						web_url: "https://gitlab.example/sub/group/repo/-/merge_requests/7",
-						state: "opened",
+						state: upstreamMerged ? "merged" : "opened",
+						...(upstreamMerged ? { merge_commit_sha: snapshot.sha } : {}),
 						source_branch: snapshot.branch,
 						target_branch: "main",
 						sha: snapshot.sha,
@@ -143,7 +151,8 @@ beforeEach(async () => {
 						id: 7,
 						iid: 7,
 						web_url: "https://gitlab.example/sub/group/repo/-/merge_requests/7",
-						state: "opened",
+						state: upstreamMerged ? "merged" : "opened",
+						...(upstreamMerged ? { merge_commit_sha: snapshot.sha } : {}),
 						source_branch: snapshot.branch,
 						target_branch: "main",
 						sha: snapshot.sha,
@@ -172,9 +181,12 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 test("host composition records and reads delivery state without a confirmation", async () => {
 	const prepare = host.agentSessions.prepareConfirmation;
 	if (!prepare) throw new Error("Issue confirmation tool is unavailable");
-	expect(await prepare("session", { operationId: "read", action: "read-delivery-state" })).toEqual({
+	expect(
+		await prepare("session", { operationId: "read", action: "read-delivery-state" }),
+	).toMatchObject({
 		revision: 0,
 		repositories: [],
+		participating: [{ projectId: "repo", worktreeId: "workspace", ...snapshot }],
 	});
 	const deliveryState = {
 		repositories: [
@@ -188,6 +200,7 @@ test("host composition records and reads delivery state without a confirmation",
 				checkoutSha: snapshot.sha,
 				checkoutTree: snapshot.tree,
 				validations: [],
+				mergeRequestId: 7,
 				updatedAt: new Date().toISOString(),
 			},
 		],
@@ -200,12 +213,32 @@ test("host composition records and reads delivery state without a confirmation",
 	});
 	expect(result).toMatchObject({
 		revision: 1,
-		repositories: [expect.objectContaining({ projectId: "repo" })],
+		repositories: [
+			expect.objectContaining({
+				projectId: "repo",
+				mergeRequest: expect.objectContaining({ iid: 7 }),
+			}),
+		],
 	});
 	expect(
 		await prepare("session", { operationId: "read-after-write", action: "read-delivery-state" }),
 	).toMatchObject({
 		revision: 1,
+	});
+});
+
+test("dependency preflight names incomplete registration before merge or compatibility checks", async () => {
+	const prepare = host.agentSessions.prepareConfirmation;
+	if (!prepare) throw new Error("Issue confirmation tool is unavailable");
+	const result = await prepare("session", {
+		operationId: "dependency-registration",
+		action: "preflight-dependencies",
+		projectId: "repo",
+	});
+	expect(result).toMatchObject({
+		status: "blocked",
+		reason: expect.stringContaining('delivery-state-incomplete); revision=0; missing=["repo"]'),
+		nextAction: expect.stringContaining("record-delivery-state"),
 	});
 });
 
@@ -232,3 +265,261 @@ test("MR ready and merge are reached through the composed host routes", async ()
 		}),
 	).resolves.toMatchObject({ status: "blocked" });
 });
+
+async function compatibilityFixture(mode: "pass" | "missing" | "failed" | "dirty") {
+	upstreamMerged = true;
+	const primaryPath = join(dir, "downstream");
+	mkdirSync(primaryPath);
+	const git = (...args: string[]) => {
+		const result = Bun.spawnSync(["git", "-C", primaryPath, ...args]);
+		if (!result.success) throw new Error(result.stderr.toString());
+		return result.stdout.toString().trim();
+	};
+	git("init", "-q");
+	git(
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.test",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	const key = JSON.stringify(["repo", "gitlab", reference.instanceUrl, "42", 7]);
+	const digest = createHash("sha256").update(key).digest("hex").slice(0, 16);
+	const path = join(primaryPath, ".worktrees", `issue-7-${digest}`);
+	mkdirSync(join(primaryPath, ".worktrees"));
+	git("worktree", "add", "-b", "issue-7-downstream", path, "HEAD");
+	const checkout = (...args: string[]) => {
+		const result = Bun.spawnSync(["git", "-C", path, ...args]);
+		if (!result.success) throw new Error(result.stderr.toString());
+		return result.stdout.toString().trim();
+	};
+	if (mode !== "missing") {
+		mkdirSync(join(path, ".thinkrail"));
+		writeFileSync(
+			join(path, "compatibility.ts"),
+			`
+import { readFileSync } from "node:fs";
+const context = JSON.parse(process.env.THINKRAIL_ISSUE_COMPATIBILITY_CONTEXT!);
+const git = (ref: string) => Bun.spawnSync(["git", "rev-parse", ref]).stdout.toString().trim();
+const upstream = ${JSON.stringify({
+				projectId: "repo",
+				provider: "gitlab",
+				instanceUrl: reference.instanceUrl,
+				remoteProjectId: 42,
+				iid: 7,
+				targetBranch: "main",
+				mergeCommitSha: snapshot.sha,
+				targetSha: snapshot.sha,
+				snapshot: JSON.stringify([7, 7, "main", snapshot.sha, snapshot.sha, "ancestor"]),
+			})};
+if (process.argv[2] !== "argument with spaces" ||
+    context.projectId !== "downstream" || context.downstreamSha !== git("HEAD") ||
+    context.downstreamTree !== git("HEAD^{tree}") ||
+    JSON.stringify(context.upstream) !== JSON.stringify(upstream) ||
+    readFileSync("version.txt", "utf8") !== "fixture-v1") process.exit(8);
+process.exit(${mode === "failed" ? 9 : 0});
+`,
+		);
+		writeFileSync(join(path, "version.txt"), "fixture-v1");
+		writeFileSync(
+			join(path, ".thinkrail", "issue-compatibility.json"),
+			JSON.stringify({
+				version: 1,
+				command: [process.execPath, "compatibility.ts", "argument with spaces"],
+				timeoutMs: 5000,
+				coverage: {
+					api: "checked",
+					abi: "not-applicable",
+					protocol: "checked",
+					conflict: "checked",
+					checks: "checked",
+				},
+			}),
+		);
+		checkout("add", ".");
+		checkout(
+			"-c",
+			"user.name=Test",
+			"-c",
+			"user.email=test@example.test",
+			"commit",
+			"-m",
+			"compatibility fixture",
+		);
+	}
+	const downstream = {
+		sha: checkout("rev-parse", "HEAD"),
+		tree: checkout("rev-parse", "HEAD^{tree}"),
+		branch: checkout("branch", "--show-current"),
+	};
+	saveProjects([
+		{
+			id: "repo",
+			name: "repo",
+			slug: "repo",
+			path: join(dir, "repo"),
+			lastOpened: 1,
+			trusted: true,
+		},
+		{
+			id: "downstream",
+			name: "downstream",
+			slug: "downstream",
+			path: primaryPath,
+			lastOpened: 1,
+			trusted: true,
+		},
+	]);
+	saveWorkspaces([
+		{
+			id: "workspace",
+			projectId: "repo",
+			name: "Issue 7",
+			branch: snapshot.branch,
+			baseBranch: "main",
+			worktreePath: repositoryPath,
+		},
+		{
+			id: "downstream-workspace",
+			projectId: "downstream",
+			name: "Issue 7",
+			branch: downstream.branch,
+			baseBranch: "main",
+			worktreePath: path,
+		},
+	]);
+	const store = createIssueWorkspacePersistence(join(dir, "issue-workspaces"));
+	await store.withLaunch("repo", reference, (ports) =>
+		ports.save(key, {
+			projectId: "repo",
+			reference,
+			implementation: {
+				state: "completed",
+				workspaceId: "workspace",
+				worktreePath: repositoryPath,
+				branch: snapshot.branch,
+			},
+			repositoryProjectIds: ["downstream"],
+			members: [
+				{
+					projectId: "downstream",
+					ownership: {
+						state: "completed",
+						workspaceId: "downstream-workspace",
+						worktreePath: path,
+						branch: downstream.branch,
+					},
+				},
+			],
+		}),
+	);
+	await host.connect({
+		projectId: "downstream",
+		input: {
+			instanceUrl: reference.instanceUrl,
+			projectId: "group/downstream",
+			token: "test-token",
+		},
+	});
+	const prepare = host.agentSessions.prepareConfirmation;
+	if (!prepare) throw new Error("Issue confirmation tool is unavailable");
+	expect(
+		await prepare("session", { operationId: "membership", action: "read-delivery-state" }),
+	).toMatchObject({
+		participating: [
+			expect.objectContaining({ projectId: "repo", ...snapshot }),
+			expect.objectContaining({ projectId: "downstream", ...downstream }),
+		],
+	});
+	expect(
+		await prepare("session", {
+			operationId: "register-pair",
+			action: "record-delivery-state",
+			expectedRevision: 0,
+			deliveryState: {
+				repositories: [
+					{
+						projectId: "repo",
+						worktreeId: "workspace",
+						sourceBranch: snapshot.branch,
+						targetBranch: "main",
+						policy: "draft",
+						dependsOn: [],
+						checkoutSha: snapshot.sha,
+						checkoutTree: snapshot.tree,
+						validations: [],
+						mergeRequestId: 7,
+						updatedAt: new Date().toISOString(),
+					},
+					{
+						projectId: "downstream",
+						worktreeId: "downstream-workspace",
+						sourceBranch: downstream.branch,
+						targetBranch: "main",
+						policy: "draft",
+						dependsOn: ["repo"],
+						checkoutSha: downstream.sha,
+						checkoutTree: downstream.tree,
+						validations: [],
+						updatedAt: new Date().toISOString(),
+					},
+				],
+			},
+		}),
+	).toMatchObject({ revision: 1 });
+	if (mode === "dirty") writeFileSync(join(path, "version.txt"), "uncommitted-version");
+	return {
+		downstream,
+		result: await prepare("session", {
+			operationId: "real-compatibility",
+			action: "preflight-dependencies",
+			projectId: "downstream",
+		}),
+	};
+}
+
+test("composed dependency preflight accepts real argv compatibility for exact repository versions", async () => {
+	const { downstream, result } = await compatibilityFixture("pass");
+	expect(result).toMatchObject({
+		status: "passed",
+		receipt: {
+			projectId: "downstream",
+			downstreamSha: downstream.sha,
+			downstreamTree: downstream.tree,
+			upstreams: [
+				expect.objectContaining({
+					projectId: "repo",
+					mergeCommitSha: snapshot.sha,
+					targetSha: snapshot.sha,
+				}),
+			],
+			compatibility: [
+				expect.objectContaining({
+					kind: "cross-repository",
+					downstreamSha: downstream.sha,
+					downstreamTree: downstream.tree,
+					upstreamMergeSha: snapshot.sha,
+					api: "passed",
+					abi: "not-applicable",
+					checks: "passed",
+					snapshot: expect.stringMatching(/^[a-f0-9]{64}$/),
+				}),
+			],
+		},
+	});
+}, 20_000);
+
+for (const [mode, reason] of [
+	["missing", "compatibility-missing"],
+	["failed", "compatibility-failed"],
+	["dirty", "checkout-changed-or-dirty"],
+] as const) {
+	test(`composed dependency preflight refuses ${mode} compatibility`, async () => {
+		const { result } = await compatibilityFixture(mode);
+		expect(result).toMatchObject({ status: "blocked", reason: expect.stringContaining(reason) });
+		expect(result).not.toHaveProperty("receipt");
+	}, 20_000);
+}
