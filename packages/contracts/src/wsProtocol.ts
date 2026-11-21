@@ -174,7 +174,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 140;
+export const PROTOCOL_VERSION = 141;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
@@ -210,6 +210,7 @@ export const ARTIFACT_ROLES_PROTOCOL_VERSION = 137;
 export const MCP_USER_SERVERS_PROTOCOL_VERSION = 138;
 export const SERVER_FALLBACK_PROTOCOL_VERSION = 139;
 export const SUBAGENT_CATALOG_PROTOCOL_VERSION = 140;
+export const ARTIFACT_OUTPUTS_PROTOCOL_VERSION = 141;
 export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
 export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";

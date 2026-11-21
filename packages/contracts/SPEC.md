@@ -552,10 +552,12 @@ optional `model` and `thinking`, disabled entries included, never a prompt body 
   (**`WorkspaceArtifact`**: worktree-relative `path`, `state: "live" | "deleted"` — deleted means gone from
   disk but restorable from the host's kept copy — `size`, `changedAt` (for a deleted row, when the host saw
   it gone, so a new deletion of the same path carries a new value), `firstSeenAt`, the writing chat's
-  optional `sessionId`, and from **`ARTIFACT_ROLES_PROTOCOL_VERSION`** (v124) the host's **`role`**
-  (`ArtifactRole`: `"result" | "working"`), its **`reason`** (`ArtifactRoleReason`: `picked`, `shown`,
-  `linked`, `document` for a result; `working-folder`, `script`, `data`, `unshown` for a working file)
-  and **`rounds`** (`ArtifactRound[]`: the chat rounds, `{ sessionId, startedAt }`, that created or
+  optional `sessionId`, and from **`ARTIFACT_ROLES_PROTOCOL_VERSION`** (v137) the host's **`role`**
+  (`ArtifactRole`: `"result" | "working"`), its **`reason`** (`ArtifactRoleReason`: `published`, `picked`,
+  `shown`, `linked` for a result; `working-folder`, `script`, `data`, `unshown` for a working file; a
+  v137–v140 fork host also sent `document`, which v141 dropped), from **`ARTIFACT_OUTPUTS_PROTOCOL_VERSION`**
+  (v141) the flag **`published: true`** on what the agent published (`present_files`), whatever its
+  reason, and **`rounds`** (`ArtifactRound[]`: the chat rounds, `{ sessionId, startedAt }`, that created or
   changed it, oldest first and bounded; `startedAt` is the round's prompt timestamp, or the run start for a
   run no prompt opened) — absent from an older host, so a client that needs them checks the
   version rather than reading absence as "working") and `outputs` (**`WorkspaceIgnoredOutput`** rows — an ignored file or folder an
@@ -1800,7 +1802,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v140. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v141. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
