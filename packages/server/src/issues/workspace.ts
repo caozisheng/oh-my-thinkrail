@@ -105,6 +105,13 @@ export interface IssueWorkspaceOptions {
 		/** The ref to branch from (e.g. `origin/main`); absent keeps the repository's local HEAD. */
 		baseRef?: string,
 	): Awaitable<WorkspaceHandle>;
+	/** Register a verified existing worktree without changing its checkout or branch. */
+	registerExistingWorktreeAtPath?(
+		projectId: string,
+		path: string,
+		branch: string,
+		workspaceId?: string,
+	): Awaitable<WorkspaceHandle>;
 	/**
 	 * A shared layout covering at least the primary plus `projectIds` (it may place further group
 	 * members, which can join later), or null to keep per-repository paths.
@@ -383,6 +390,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		ownership: PendingWorkspace | CompletedWorkspace,
 		path: string,
 		memberProjectId = projectId,
+		repairMissingRegistration = false,
 	): Promise<WorkspaceHandle> {
 		const { occupied, trees } = await implementationPathState(path, memberProjectId);
 		if (
@@ -394,11 +402,27 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			trees[0].prunable
 		)
 			stop();
-		const ws = await options.findWorkspace(
+		let ws = await options.findWorkspace(
 			ownership.state === "completed"
 				? { workspaceId: ownership.workspaceId }
 				: { worktreePath: path },
 		);
+		if (!ws && ownership.state === "completed" && repairMissingRegistration) {
+			const pathOwner = await options.findWorkspace({ worktreePath: path });
+			if (pathOwner) stop();
+		}
+		if (
+			!ws &&
+			ownership.state === "completed" &&
+			repairMissingRegistration &&
+			options.registerExistingWorktreeAtPath
+		)
+			ws = await options.registerExistingWorktreeAtPath(
+				memberProjectId,
+				path,
+				ownership.branch,
+				ownership.workspaceId,
+			);
 		return verifyWorkspace(ws, ownership, path, memberProjectId);
 	}
 
@@ -423,7 +447,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			!state.trees.length &&
 			!registered;
 		if (ownership && !retryRecovery) {
-			ws = await verifyImplementation(ownership, path);
+			ws = await verifyImplementation(ownership, path, projectId, true);
 		} else {
 			const { occupied, trees } = await implementationPathState(path);
 			if (occupied || trees.length || (await options.findWorkspace({ worktreePath: path }))) stop();
@@ -449,7 +473,20 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				path,
 			);
 		}
-		if (ownership.state === "completed") return ownership;
+		if (ownership.state === "completed") {
+			if (
+				options.restoreSessionBinding &&
+				ownership.session?.id &&
+				options.boundSession &&
+				options.bindSession
+			) {
+				const bound = await options.boundSession("implementation", ownership.workspaceId);
+				if (bound && bound !== ownership.session.id) stop();
+				if (!bound)
+					await options.bindSession("implementation", ownership.workspaceId, ownership.session.id);
+			}
+			return ownership;
+		}
 		const completed: CompletedWorkspace = { ...ownership, state: "completed", workspaceId: ws.id };
 		await options.save(key, { ...record, implementation: completed });
 		return completed;
@@ -499,7 +536,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 				!registered
 			)
 		) {
-			const ws = await verifyImplementation(ownership, path, member.projectId);
+			const ws = await verifyImplementation(ownership, path, member.projectId, true);
 			member.ownership = { ...ownership, state: "completed", workspaceId: ws.id };
 		} else {
 			if (state.occupied || state.trees.length || registered) stop();
@@ -686,7 +723,12 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			reason = "pending-operation";
 		if (!record.implementation) reason = "missing-record";
 		for (const id of [projectId, ...selection(record)]) {
-			if (reason) break;
+			if (
+				reason &&
+				reason !== "workspace-registration-missing" &&
+				reason !== "session-binding-missing"
+			)
+				break;
 			const ownership =
 				id === projectId
 					? record.implementation
@@ -702,9 +744,28 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			const byId = await options.findWorkspace({ workspaceId: ownership.workspaceId });
 			const byPath = await options.findWorkspace({ worktreePath: path });
 			const missing = !state.occupied && state.trees.length === 0 && !byId && !byPath;
+			const exactGitCheckout =
+				state.occupied &&
+				state.trees.length === 1 &&
+				state.trees[0]?.branch === ownership.branch &&
+				!state.trees[0].prunable;
 			if (!missing) {
 				try {
-					await verifyImplementation(ownership, path, id);
+					const workspace = await options.findWorkspace({ workspaceId: ownership.workspaceId });
+					if (!workspace && !byPath && exactGitCheckout && options.registerExistingWorktreeAtPath) {
+						reason = "workspace-registration-missing";
+						members.push({
+							projectId: id,
+							worktreePath: path,
+							branch: ownership.branch,
+							baseCommit: null,
+						});
+					} else {
+						if (workspace) verifyWorkspace(workspace, ownership, path, id);
+						// Diagnosis must never repair a registration as a side effect of verification.
+						if (!workspace) stop();
+						await verifyImplementation(ownership, path, id);
+					}
 					if (
 						options.restoreSessionBinding &&
 						id === projectId &&
@@ -716,7 +777,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 							reason = "resources-remain";
 							break;
 						}
-						if (!bound) reason = "session-binding-missing";
+						if (!bound && !reason) reason = "session-binding-missing";
 					}
 					continue;
 				} catch {
@@ -741,7 +802,11 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			.digest("hex");
 		return {
 			status:
-				reason === "session-binding-missing" ? "available" : reason ? "unavailable" : "available",
+				reason === "session-binding-missing" || reason === "workspace-registration-missing"
+					? "available"
+					: reason
+						? "unavailable"
+						: "available",
 			reason,
 			generation,
 			members,
@@ -903,7 +968,20 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 						member.projectId === projectId
 							? next.implementation
 							: next.members?.find((row) => row.projectId === member.projectId)?.ownership;
-					if (ownership?.state !== "completed" || !member.baseCommit) stop();
+					if (ownership?.state !== "completed") stop();
+					if (member.baseCommit === null) {
+						const registered = await options.findWorkspace({ workspaceId: ownership.workspaceId });
+						if (!registered) {
+							const repaired = await options.registerExistingWorktreeAtPath?.(
+								member.projectId,
+								member.worktreePath,
+								ownership.branch,
+								ownership.workspaceId,
+							);
+							verifyWorkspace(repaired ?? null, ownership, member.worktreePath, member.projectId);
+						}
+						continue;
+					}
 					if (member.projectId === projectId) {
 						next.implementationHistory = [
 							...(next.implementationHistory ?? []),
@@ -930,7 +1008,8 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 						row.base = member.baseCommit;
 					}
 				}
-				await options.save(key, next);
+				if (diagnosis.members.some((member) => member.baseCommit !== null))
+					await options.save(key, next);
 				return prepareImplementation(key, next);
 			});
 		},
@@ -938,7 +1017,9 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
 				if (ownership?.state !== "completed" || !ownership.workspaceId) stop();
-				return verifyImplementation(ownership, await worktreePathFor(record, projectId));
+				const path = await worktreePathFor(record, projectId);
+				if (path !== ownership.worktreePath) stop();
+				return verifyImplementation(ownership, path);
 			});
 		},
 		design(reference: IssueReference): Promise<IssueSessionLaunch> {

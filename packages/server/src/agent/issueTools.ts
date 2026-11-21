@@ -89,6 +89,10 @@ export interface IssueToolHost {
 			closeIssue?: boolean;
 		},
 	): Promise<unknown>;
+	runOperation?(
+		sessionId: string,
+		input: Static<typeof PrepareConfirmationSchema>,
+	): Promise<unknown>;
 	executeConfirmation?(
 		sessionId: string,
 		operationId: string,
@@ -416,6 +420,23 @@ export function createIssueExecuteConfirmationTool(): ToolDefinition<
 		},
 	};
 }
+export function createIssueRunOperationTool(): ToolDefinition<
+	typeof PrepareConfirmationSchema,
+	unknown
+> {
+	return {
+		name: "issue_run_operation",
+		label: "Run Issue Operation",
+		parameters: PrepareConfirmationSchema,
+		description:
+			"Run an explicitly requested Issue mutation in this bound session without an extra confirmation card. Omit action for stage publication; projectId/title/body for Draft delivery; use update-body, ready-mr, merge-mr or close-issue only when explicitly requested. Exact-lease push uses the observed remote head and exact new SHA. The host validates current identity/state and journals every write. Reusing the same operationId returns a completed result or refuses a changed/uncertain operation without resending. Set recovery:'reconcile' with the original operationId to adopt a freshly observed successful result; this never sends a write and never unlocks when success cannot be proven. Inspection and cross-repository state operations use issue_prepare_confirmation.",
+		async execute(_id, params, _signal, _update, ctx) {
+			if (!host.runOperation) throw unavailable();
+			const result = await host.runOperation(ctx.sessionManager.getSessionId(), params);
+			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+		},
+	};
+}
 export function issueToolsExtension(pi: ExtensionAPI): void {
 	pi.registerTool(createIssueContextTool());
 	pi.registerTool(createIssueDeleteNoteTool());
@@ -423,4 +444,5 @@ export function issueToolsExtension(pi: ExtensionAPI): void {
 	pi.registerTool(createIssueJoinRepositoryTool());
 	pi.registerTool(createIssuePrepareConfirmationTool());
 	pi.registerTool(createIssueExecuteConfirmationTool());
+	pi.registerTool(createIssueRunOperationTool());
 }

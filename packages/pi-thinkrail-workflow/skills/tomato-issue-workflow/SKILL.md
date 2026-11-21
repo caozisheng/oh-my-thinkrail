@@ -32,8 +32,9 @@ framework.
   verification and review. Implementation startup itself is sufficient permission to begin; do not
   demand a design receipt as an implementation gate. Clarify only conflicts or a change to agreed
   design.
-- Authorization is operation-specific. Stage confirmation, delivery, ready, merge, Issue body update
-  and Issue close do not imply one another. **Issue closure always needs its own authorization.**
+- Explicit user intent is scoped to the requested operation: stage reporting, delivery, exact-lease push,
+  ready, merge, body update or closure do not imply any other action. Do not add a second authorization
+  prompt when the user already made the requested action clear.
 - Stage records are not delivery gates. If implementation, exact commit, validation and applicable
   delivery authorization meet their requirements, a failed or uncertain stage update is reported and
   reconciled separately; it does not block eligible delivery or imply stage completion.
@@ -62,24 +63,28 @@ crosses phases. Each document owns its flow and hands off by name.
 | 10 — Refusals and recovery | `refusals-and-recovery.md` | Classifying a refusal or uncertain remote operation |
 | 11 — Decouple stage and delivery | `stage-delivery-decoupling.md` | Stage recording fails around implementation delivery |
 
-For every action, separate host capability from authorization: a provider primitive is not a confirmed
-workflow operation. If a required capability is missing, identify it before promising completion and
-provide a tracked manual path where applicable; never bypass the host.
+Use host operations, not raw provider primitives. If a required capability is missing, identify it
+before promising completion and give a practical manual path where applicable.
 
-## Stage confirmation and delivery
+## Direct host operations
 
-When `issue_prepare_confirmation` and `issue_execute_confirmation` are available, prepare the complete
-stage report with a fresh operationId, present the exact returned questions unchanged, and execute only
-a real submitted `Looks right` response using that card's toolCallId. A refusal, skip, discussion,
-custom answer or changed preview grants no authority and must not trigger repeated prompting. Stage
-confirmation does not authorize delivery.
+When advertised by the installed host, use `issue_run_operation` with the same operation payload
+shape as `issue_prepare_confirmation`. Explicit user intent authorizes the requested stage report,
+ordinary push/Draft PR/MR, exact force-with-lease update, ready, merge, Issue body update or close;
+run it directly without an extra questionnaire or "Looks right" gate. There is no independent
+high-risk confirmation. Ask only for genuinely missing intent or material ambiguity, not to repeat
+an already explicit request. An implementation launch alone does not request every later mutation.
 
-After implementation and validation, check task-scoped checkout completeness using
-[`delivery-worktree.md`](delivery-worktree.md). Offer delivery separately per changed repository with
-the exact prepared title/body and optional target branch; the unchanged card authorizes ordinary non-force
-push and Draft PR/MR creation or reuse. It does not authorize ready, merge, commit or closure. Changed
-content requires a fresh card. For uncertain execution, inspect with the original operationId and stop
-when receipt-backed recovery is unavailable.
+Keep operations scoped to that intent: delivery does not imply ready, merge or close. The host still
+validates exact Issue/repository/request identities, current snapshots, SHA and lease, trust, bindings
+and immutable journal state. Check checkout completeness in `delivery-worktree.md`. Never blindly
+resend a possibly dispatched write; inspect/reconcile its original operationId first.
+
+Do not assume this session has the direct tool. Only when `issue_run_operation` is unavailable,
+use advertised legacy `issue_prepare_confirmation` / `issue_execute_confirmation`: pass the returned
+card unchanged and execute its actual submitted receipt/toolCallId. On `confirmation_mismatch`, inspect
+the original operation; if still prepared with no dispatch, correct receipt binding without another
+user prompt. If neither path is available, report the capability gap; no shell/provider API bypass.
 
 ## Ending
 
@@ -89,5 +94,5 @@ identity mismatch, or failed/uncertain handoff end as **blocked — required Iss
 unavailable**.
 
 For an explicitly requested rebased update of an existing opened same-repository PR/MR only, see
-`draft-delivery.md` for the separately confirmed `pushMode: "force-with-lease"` exception. Autonomous
+`draft-delivery.md` for the explicit `pushMode: "force-with-lease"` exception. Autonomous
 policy, unconditional force and automatic retries never authorize history replacement.

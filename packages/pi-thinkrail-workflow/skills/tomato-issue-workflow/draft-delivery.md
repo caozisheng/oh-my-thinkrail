@@ -10,24 +10,24 @@ Use for a requested Draft PR/MR push/create/update. A stage label or stage-repor
 
 1. Read fresh repository identity, source/target branches, commit and provider capability facts.
 2. Check for the same active request and verify repository, source and target identity before reuse.
-3. For an unapproved automation policy, prepare and present the exact host delivery card; execute only its submitted receipt.
+3. Run the requested delivery through advertised `issue_run_operation` without another questionnaire; use legacy fallback in `SKILL.md` only if unavailable.
 4. Push only the authorized exact commit, non-force by default; create a Draft request or update the matching active request, never a duplicate.
 5. Read back request identity, target and head SHA; report creation/update and CI state separately.
 
 ## Host capabilities
 
-The confirmed host delivery operation covers ordinary non-force push and Draft PR/MR create/reuse/update. It does not grant ready, merge, close or Issue-body update. Check actual provider support before promising the full lifecycle.
+The host delivery operation covers ordinary non-force push and Draft PR/MR create/reuse/update. It does not grant ready, merge, close or Issue-body update. Check actual provider support before promising the full lifecycle.
 
 Only for an explicitly requested update of an existing opened same-repository PR/MR after rebasing,
-prepare `pushMode: "force-with-lease"` with that repository's exact delivery inputs. Present the returned
-card unchanged: it shows the canonical remote/ref, frozen old SHA, replacement SHA and history risk.
-This requires its own submitted confirmation, never autonomous policy selection. Missing heads, forks,
-request/head disagreement and concurrent updates are hard refusals even with a warning card. Never use
-implicit leases, unconditional force, shell bypass or automatic retry. This mode cannot create a request.
+run `pushMode: "force-with-lease"` with exact delivery inputs. Explicit intent is sufficient, without
+independent high-risk confirmation. The host freezes the canonical remote/ref, old SHA and replacement
+SHA. Missing heads, forks, request/head disagreement and concurrent updates are hard refusals. Never
+use implicit leases, unconditional force, shell bypass or automatic retry. This mode cannot create a
+request and must not be selected autonomously.
 
 ## Completion, questions and recovery
 
-A completed stage record is not proof of delivery, and a failed stage record does not block independently eligible delivery. Changed repository, branch, request or commit invalidates the prior card. Do not adopt a request that appeared after confirmation. A possibly dispatched write is read back and reconciled under the original operationId; never blindly retry.
+A completed stage record is not proof of delivery, and a failed stage record does not block independently eligible delivery. Changed repository, branch, request or commit invalidates the frozen operation. Do not adopt a request that appeared after the operation snapshot. For refusals or uncertain dispatch, follow `refusals-and-recovery.md` under the original operationId; never blindly resend.
 
 ## Handoff
 

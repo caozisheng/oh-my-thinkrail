@@ -31,9 +31,17 @@ const reference = {
 };
 let snapshot: { sha: string; tree: string; branch: string };
 let upstreamMerged = false;
+let issueBody = "";
+let bodyWrites = 0;
+let failBodyWrite = false;
+let remoteReads = 0;
 
 beforeEach(async () => {
 	upstreamMerged = false;
+	issueBody = "";
+	bodyWrites = 0;
+	failBodyWrite = false;
+	remoteReads = 0;
 	dir = mkdtempSync(join(tmpdir(), "issues-composition-"));
 	const primaryPath = join(dir, "repo");
 	repositoryPath = join(primaryPath, ".worktrees", "issue-7");
@@ -103,18 +111,24 @@ beforeEach(async () => {
 	host = createIssuesHost({
 		dir,
 		credentials,
-		fetch: (async (url) => {
+		fetch: (async (url, init) => {
 			const address = String(url);
+			if (!init?.method || init.method === "GET") remoteReads++;
+			if (address.includes("/issues/7") && init?.method === "PUT") {
+				issueBody = JSON.parse(String(init.body)).description;
+				bodyWrites++;
+				if (failBodyWrite) throw new Error("response lost after dispatch");
+			}
 			if (address.includes("/api/v4/projects/43"))
 				return new Response(JSON.stringify({ id: 43, path_with_namespace: "group/downstream" }));
 			if (upstreamMerged && address.includes("/repository/merge_base?"))
 				return new Response(JSON.stringify({ id: snapshot.sha }));
-			if (address.includes("/api/v4/issues/7"))
+			if (address.includes("/api/v4/issues/7") || address.includes("/api/v4/projects/42/issues/7"))
 				return new Response(
 					JSON.stringify({
 						iid: 7,
 						title: "Fixture",
-						description: "",
+						description: issueBody,
 						state: "opened",
 						labels: [],
 						updated_at: "2026-01-01T00:00:00Z",
@@ -523,3 +537,113 @@ for (const [mode, reason] of [
 		expect(result).not.toHaveProperty("receipt");
 	}, 20_000);
 }
+
+test("direct body operation freezes and writes without a questionnaire; legacy execution stays gated", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue tool unavailable");
+	const prepare = host.agentSessions.prepareConfirmation;
+	const execute = host.agentSessions.executeConfirmation;
+	if (!prepare || !execute) throw new Error("Legacy Issue tools unavailable");
+	await run("session", { operationId: "direct-body", action: "update-body", body: "Updated" });
+	expect(issueBody).toBe("Updated");
+	expect(bodyWrites).toBe(1);
+	const state = await prepare("session", {
+		operationId: "direct-body",
+		inspect: true,
+	});
+	expect(state).toMatchObject({ status: "completed" });
+	await prepare("session", {
+		operationId: "legacy-body",
+		action: "update-body",
+		body: "Legacy",
+	});
+	await expect(execute("session", "legacy-body", "fake-receipt")).rejects.toThrow();
+	expect(bodyWrites).toBe(1);
+});
+
+test("direct operations reject inspection automation and foreign sessions; absent recovery is read-only", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue tool unavailable");
+	for (const input of [
+		{ operationId: "inspect", inspect: true },
+		{ operationId: "automate", action: "advance-automation" as const, projectId: "repo" },
+		{ operationId: "read", action: "read-delivery-state" as const },
+	])
+		await expect(run("session", input)).rejects.toThrow();
+	expect(await run("session", { operationId: "recover", recovery: "reconcile" })).toEqual({
+		status: "missing",
+	});
+	await expect(
+		run("foreign", { operationId: "foreign", action: "update-body", body: "No" }),
+	).rejects.toThrow();
+	expect(bodyWrites).toBe(0);
+});
+
+test("direct completed replay returns the original receipt before fresh remote reads", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue tool unavailable");
+	const input = { operationId: "replay-body", action: "update-body" as const, body: "Updated" };
+	const result = await run("session", input);
+	const reads = remoteReads;
+	issueBody = "Later external edit";
+	expect(
+		await run("session", { body: "Updated", action: "update-body", operationId: "replay-body" }),
+	).toEqual(result);
+	expect(remoteReads).toBe(reads);
+	expect(bodyWrites).toBe(1);
+	for (const changed of [
+		{ ...input, body: "Different" },
+		{ ...input, action: "close-issue" as const, reason: "Done", acceptance: "Verified" },
+		{ ...input, expectedSha: "different" },
+	])
+		await expect(run("session", changed)).rejects.toThrow("payload_changed");
+	expect(bodyWrites).toBe(1);
+});
+
+test("direct uncertain replay never reads fresh facts or resends a dispatched write", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue tool unavailable");
+	const input = { operationId: "uncertain-body", action: "update-body" as const, body: "Updated" };
+	failBodyWrite = true;
+	await expect(run("session", input)).rejects.toThrow();
+	expect(bodyWrites).toBe(1);
+	const reads = remoteReads;
+	failBodyWrite = false;
+	await expect(run("session", input)).rejects.toThrow("uncertain_intent");
+	await expect(run("session", { ...input, body: "Different" })).rejects.toThrow("payload_changed");
+	expect(remoteReads).toBe(reads);
+	expect(bodyWrites).toBe(1);
+});
+
+test("direct uncertain write reconciles exact observed success without another remote write", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue tool unavailable");
+	const input = { operationId: "reconcile-body", action: "update-body" as const, body: "Updated" };
+	failBodyWrite = true;
+	await expect(run("session", input)).rejects.toThrow();
+	expect(bodyWrites).toBe(1);
+	failBodyWrite = false;
+	const recovered = await run("session", {
+		operationId: input.operationId,
+		recovery: "reconcile" as const,
+	});
+	expect(recovered).toMatchObject({ stage: "update-body", digest: expect.any(String) });
+	expect(bodyWrites).toBe(1);
+	expect(await run("session", input)).toEqual(recovered);
+	expect(bodyWrites).toBe(1);
+});
+
+test("direct preparation failures never issue continuation cards or ask for fresh cards", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue tool unavailable");
+	try {
+		await run("session", { operationId: "stage-refusal", report: "Implementation done" });
+		throw new Error("Expected refusal");
+	} catch (error) {
+		expect(error).toHaveProperty("code", "ISSUE_CONFIRMATION_BLOCKED");
+		expect(error).not.toHaveProperty("questions");
+		expect(error).not.toHaveProperty("continuationId");
+		expect(String(error)).not.toMatch(/card|questionnaire|refreshed confirmation/i);
+	}
+	expect(bodyWrites).toBe(0);
+});

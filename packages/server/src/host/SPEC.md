@@ -16,12 +16,27 @@ only a confirmed 204 response counts as success. Provider errors are uncertain w
 retried. This irreversible comment action is intentionally direct and does not create a confirmation card.
 
 `issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
-sessions. Their fixed previews reuse `ask_user_question`; transcript verification admits only the exact
-submitted `Looks right` response. The private `issue-confirmations` journal snapshots bounded payloads,
+sessions. Agent-issued `runOperation` is a direct host capability: invocation in the bound session is its
+authority, not an agent-supplied boolean or transcript receipt. It runs normal frozen preflight and journal
+preparation, strips confirmation questions, then executes with a host-generated scoped call token and
+rechecks session, frozen payload and pending recovery state. The existing journal payload also freezes
+`directRequest` (the JSON caller request); no separate direct-operation journal owns replay. Exact request
+replay returns the completed receipt before fresh remote snapshot preparation, while any changed input
+under the same operation ID refuses. Prepared retries reuse that frozen payload and a deterministic
+session/operation/payload-scoped host token. An uncertain intent never resends, even when current remote
+facts appear successful; inspection and explicit recovery remain required. Legacy payloads without direct
+request metadata cannot be adopted by direct replay. Direct preparation failures return static errors,
+never questionnaire/continuation cards or instructions to obtain replacement cards. It supports stage
+reports, delivery (including explicit force-with-lease), body updates, ready/merge and close. Recovery is
+separate: `recovery:"reconcile"` uses fresh read-only observation and adopts only the exact successful
+result for the original intent; it cannot resend or unlock when evidence is missing, ambiguous or changed.
+Inspection, delivery-state and automation operations remain on their separately governed host routes.
+The legacy prepare/execute flow remains available for existing transcripts and still requires exact
+`Looks right` receipt verification. The private `issue-confirmations` journal snapshots bounded payloads,
 reserves exclusive immutable intents before mutation, and makes completed receipts idempotent. A read-only
 inspection reports missing/prepared/uncertain/completed status. Deterministic preflight happens before
-intent reservation; after reservation, uncertain mutation stays fenced and requires remote inspection and
-explicit user-directed recovery.
+intent reservation; after reservation, uncertain mutation stays fenced unless readback proves and adopts
+its original successful result.
 
 Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live
 provider identity. Auxiliary-repository delivery ports remain scoped to the bound Issue IID rather than a
@@ -37,7 +52,8 @@ file necessity. No stash, deletion, commit or local ignore mutation is performed
 path override or merge/close capability.
 
 Explicit `pushMode: "force-with-lease"` extends only the existing per-repository delivery operation for
-an opened same-repository PR/MR update. Absence preserves ordinary push and legacy previews/payloads.
+an opened same-repository PR/MR update. Explicit user request supplies intent; no extra card is required
+on the direct host path. Absence preserves ordinary push and legacy previews/payloads.
 The host reads the exact full source ref from the canonical authenticated push repository, freezes its
 full SHA, and hard-requires equality with the existing request head. Missing observation capability,
 missing/malformed branch heads, forks, closed/locked requests and identity mismatches fail closed,
@@ -46,8 +62,9 @@ replacement risk. Before intent and dispatch the host revalidates checkout, remo
 and the frozen remote head; Git uses `--force-with-lease=refs/heads/<branch>:<oldSha>` with the fixed
 commit refspec. This is never an implicit tracking-ref lease, naked force, creation mode or autonomous
 policy choice. Unrelated actions, inspection and recovery reject the parameter. There is no automatic
-retry or replacement operation-id bypass; dispatched uncertainty keeps the existing fence and recovery
-only observes/adopts the original result without pushing again.
+retry or replacement operation-id bypass; dispatched uncertainty keeps the existing fence. Direct
+`recovery:"reconcile"` may adopt only the original result after exact fresh readback, without another push;
+otherwise the fence remains. Legacy questionnaire recovery remains for existing transcripts.
 
 Delivery refusals expose `ISSUE_DELIVERY_REFUSED` with closed, non-sensitive reason tags and a concrete
 next action. Read-only preflight failures occur before intent reservation and remain eligible for a
@@ -58,8 +75,8 @@ the user to approve a retry cannot repair a receipt that the host could not veri
 limited to the explicit `ISSUE_CONFIRMATION_BLOCKED` and `ISSUE_DELIVERY_REFUSED` refusal codes; invalid
 input (`RANGE_INVALID`) and unclassified/resource errors return static sanitized failures without cards.
 A continuation returns a sanitized cause tag, fixed input snapshot and exact questions. A real receipt
-authorizes one memoized attempt; concurrent/replayed calls share it. A successful prepare continuation
-returns a new normal/warned operation card needing separate approval, not remote mutation. A failed
+authorizes one memoized attempt; concurrent/replayed calls share it. A successful legacy prepare continuation
+returns a new normal/warned card, not remote mutation. A failed
 continued attempt is terminal and never produces another card. Snapshots expire with host restart or after
 30 minutes, are bounded to 100, and can be disabled by `THINKRAIL_ISSUE_CONTINUATIONS=0`. Continuation
 IDs carry their phase so a missing prepare card can direct the user to correct input and prepare again
@@ -1559,7 +1576,7 @@ worktree adoption, push, MR, merge or CI capability is introduced.
 
 #### Implementation start (v108)
 
-`issues.implementationRecovery` and `issues.recoverImplementation` (v134) expose a read-only, credential-free recovery diagnosis and an explicit snapshot-bound implementation restart. Eligibility requires every selected member's checkout, Git registration, and workspace registration to be absent with no pending side effect. The execution repeats the diagnosis inside the existing launch fence and preserves the old branch/session ownership before preparing new checkouts. `issues.implementationHistory` reads only recorded session ids from archived Issue transcript files and never attaches them. Ordinary `workspace.remove` keeps its existing transcript purge policy; Issue-bound removal uses the agent's transcript-preserving archive port and a path lifecycle barrier.
+`issues.implementationRecovery` and `issues.recoverImplementation` (v134) expose a read-only, credential-free recovery diagnosis and a snapshot-bound recovery. Fully missing resources may be rebuilt from the recorded branch/base under the existing restart rules. If the exact recorded checkout and healthy Git worktree remain but only the workspace row is missing, implementation re-entry repairs that registration in place with the original workspace ID; it never creates or resets the checkout. Conflicting, prunable or ambiguous resources remain unavailable with their files/history preserved. `issues.implementationHistory` reads only recorded session ids from archived Issue transcript files and never attaches them. Ordinary `workspace.remove` keeps its existing transcript purge policy; Issue-bound removal uses the agent's transcript-preserving archive port and a path lifecycle barrier.
 
 `issues.startImplementation({ projectId, reference })` → `IssueSessionLaunch` is the one action behind the
 confirmed implementation button. It is registered at the v108 implementation floor:

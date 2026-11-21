@@ -16,12 +16,12 @@ Use when a task changes or delivers more than one repository with an API, ABI, p
 
 ## Register and refresh delivery state
 
-Use `issue_prepare_confirmation` by its advertised schema:
+These are host-observed state registration and read operations, so keep them on `issue_prepare_confirmation`; `issue_run_operation` is for requested mutations only:
 
-1. Read `{operationId, action:"read-delivery-state"}`. Its `participating` list supplies host-observed worktree IDs, branch, SHA and tree; `revision` is the CAS token.
-2. Record `{operationId, action:"record-delivery-state", expectedRevision:revision, deliveryState:{repositories:[...]}}`. Include **every** participating repository, each with `projectId`, `worktreeId`, `sourceBranch`, selected `targetBranch`, `policy`, `dependsOn` (local project IDs), `checkoutSha`, `checkoutTree`, `validations` and ISO `updatedAt`. Map the observed `branch/sha/tree` to those checkout fields. Use `validations:[]` absent applicable checks; never invent results. Select policy and dependency order from agreed intent, not a default inference.
+1. Read `issue_prepare_confirmation({operationId, action:"read-delivery-state"})`. Its `participating` list supplies host-observed worktree IDs, branch, SHA and tree; `revision` is the CAS token.
+2. Record with `issue_prepare_confirmation({operationId, action:"record-delivery-state", expectedRevision:revision, deliveryState:{repositories:[...]}})`. Include **every** participating repository, each with `projectId`, `worktreeId`, `sourceBranch`, selected `targetBranch`, `policy`, `dependsOn` (local project IDs), `checkoutSha`, `checkoutTree`, `validations` and ISO `updatedAt`. Map the observed `branch/sha/tree` to those checkout fields. Use `validations:[]` absent applicable checks; never invent results. Select policy and dependency order from agreed intent, not a default inference.
 3. For an upstream MR, add `mergeRequestId` (the IID from its URL/receipt) to that repository's metadata. The host fetches and verifies the MR; supplied state, SHA or URL is not merge evidence. Refresh registration after new repositories join or checkout/target changes. Read again on revision conflict; never overwrite concurrent decisions or erase extra repository history.
-4. Call `{operationId, action:"preflight-dependencies", projectId:downstreamLocalProjectId}` before pairing changes and again on the final downstream tree. The host reads actual upstream merge/target facts and executes configured compatibility checks. Registration itself grants no push, merge or evidence authority.
+4. Call `issue_prepare_confirmation({operationId, action:"preflight-dependencies", projectId:downstreamLocalProjectId})` before pairing changes and again on the final downstream tree. The host reads actual upstream merge/target facts and executes configured compatibility checks. Registration itself grants no push, merge or evidence authority.
 
 ## Host-executed compatibility checks
 

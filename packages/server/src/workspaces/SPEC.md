@@ -45,6 +45,14 @@ unsettle, `setWorkspaceDiffBase`, `forgetWorkspace` / `removeWorkspace` (delete 
 registered under the chats root is neither offered by `listExistingWorktrees` nor admitted by
 `openExistingWorktree` (the projects barrel's reserved-root check, before any Git read).
 
+## Issue registration recovery
+
+The server-only `registerExistingWorktreeAtPath(projectId, path, branch, workspaceId)` restores an Issue's
+missing managed workspace row with its recorded ID. It requires one healthy Git registry entry at the
+exact path/branch, no active creation and no conflicting workspace/project ownership. It neither creates
+nor resets the checkout, changes refs, or removes files. Ordinary `openExistingWorktree` still records
+user-attached worktrees as external; this recovery seam is not a general adoption operation.
+
 ## Boundary
 
 - **Owns:** `listGitWorktrees(projectId)` (**async**, server-only authoritative Git registry read through
@@ -465,7 +473,7 @@ registered under the chats root is neither offered by `listExistingWorktrees` no
   `interruptWorkspaceCreations`, `replayPendingHandoffs`, `stopWorkspaceCreations`,
   `setWorkspaceCreationHandoff`, `CreationHandoff`,
   `setWorkspaceCreationPublisher`, `WorkspaceCreationEvent`, `creationOwnsPath`, `listExistingWorktrees`,
-  `openExistingWorktree`,
+  `openExistingWorktree`, `registerExistingWorktreeAtPath`,
   `listWorkspaces`, `listWorkspaceRecords`, `defaultWorkspaceOf`, `listAllWorkspaceRecords`, `resolveWorkspacePath`, `forgetWorkspace`,
   `reclaimWorktree`, `removeWorkspace`, `nestedWorkspaces`, `ExplicitPlacement`,
   `workspaceDiffStats`, `workspaceDiffKey`, `getWorkspace`, `renameWorkspace`, `syncWorkspaceBranch`, `branchMoveOwed`,

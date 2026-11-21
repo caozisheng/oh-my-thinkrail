@@ -224,20 +224,75 @@ export async function openExistingWorktree(
 		throw new Error("This worktree is already open under another ThinkRail project");
 	}
 
+	return registerExistingWorktree(project, entry.path, entry.branch, baseBranch);
+}
+
+/** Register an already-existing Git worktree without changing its checkout or branch. */
+export async function registerExistingWorktreeAtPath(
+	projectId: string,
+	requestedPath: string,
+	branch: string,
+	workspaceId?: string,
+): Promise<Workspace> {
+	const project = openProjectById(projectId);
+	if (!requestedPath || !branch)
+		throw new Error("An existing worktree path and branch are required");
+	assertOutsideChatsRoot(requestedPath, "registered as an Issue workspace");
+	const wantedPath = canonicalPath(requestedPath);
+	if (wantedPath === canonicalPath(project.path))
+		throw new Error("The project root cannot be registered as an Issue worktree");
+	if (creationPaths().has(wantedPath))
+		throw new Error("This worktree is still being created by ThinkRail");
+	const entries = await gitWorktreeEntries(project.path);
+	if (creationPaths().has(wantedPath))
+		throw new Error("This worktree is still being created by ThinkRail");
+	const matches = entries.filter((candidate) => canonicalPath(candidate.path) === wantedPath);
+	if (matches.length !== 1 || matches[0]?.prunable || matches[0]?.branch !== branch)
+		throw new Error("The existing worktree path or branch does not match its Git registration");
+	const projectOwner = loadProjects().find(
+		(candidate) => candidate.id !== projectId && canonicalPath(candidate.path) === wantedPath,
+	);
+	if (projectOwner) throw new Error("This worktree belongs to another project");
+	const existing = loadWorkspaces().find(
+		(workspace) => canonicalPath(workspace.worktreePath) === wantedPath,
+	);
+	if (existing) {
+		if (
+			existing.projectId === projectId &&
+			existing.branch === branch &&
+			(!workspaceId || existing.id === workspaceId)
+		)
+			return existing;
+		throw new Error("This worktree is already registered to another workspace or project");
+	}
+	if (workspaceId && loadWorkspaces().some((workspace) => workspace.id === workspaceId))
+		throw new Error("The requested workspace id is already in use");
+	const baseBranch = resolveDefaultBranch(project.path);
+	return registerExistingWorktree(project, matches[0].path, branch, baseBranch, workspaceId);
+}
+
+function registerExistingWorktree(
+	project: Project,
+	worktreePath: string,
+	branch: string,
+	baseBranch: string,
+	workspaceId?: string,
+): Workspace {
 	const displayName =
-		toDisplayName(basename(entry.path)) ?? toDisplayName(entry.branch) ?? "Existing worktree";
+		toDisplayName(basename(worktreePath)) ?? toDisplayName(branch) ?? "Existing worktree";
 	const workspace: Workspace = {
-		id: randomUUID(),
-		projectId,
-		kind: "external",
+		id: workspaceId ?? randomUUID(),
+		projectId: project.id,
+		...(workspaceId ? {} : { kind: "external" as const }),
 		name: displayName,
-		branch: entry.branch,
-		worktreePath: entry.path,
+		branch,
+		worktreePath,
 		baseBranch,
 		renamed: true,
 		initialTerminalPending: true,
 		lastActiveAt: Date.now(),
 	};
+	const all = loadWorkspaces();
 	all.push(workspace);
 	saveWorkspaces(all);
 	emit({ kind: "created", workspace });

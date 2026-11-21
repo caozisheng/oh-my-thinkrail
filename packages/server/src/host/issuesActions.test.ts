@@ -60,6 +60,73 @@ test("recovery refuses a stale frozen base and reports missing old transcript ex
 	expect(history.entries[0]?.messages).toBeNull();
 });
 
+test("explicit recovery repairs a lost workspace row without replacing checkout or session", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const first = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const workspace = listWorkspaceRecords("one").find((row) => row.id === first.workspaceId);
+	if (!workspace) throw new Error("missing Issue workspace");
+	const { forgetWorkspace } = await import("../workspaces");
+	forgetWorkspace(workspace.id);
+	const before = git(workspace.worktreePath, "rev-parse", "HEAD");
+	const prompts = f.prompts.length;
+	const diagnosis = await f.host.implementationRecovery(f.target);
+	expect(diagnosis).toMatchObject({
+		status: "available",
+		reason: "workspace-registration-missing",
+		requiresRestart: false,
+		baseCommit: null,
+		members: [
+			{
+				projectId: "one",
+				worktreePath: workspace.worktreePath,
+				branch: workspace.branch,
+				baseCommit: null,
+			},
+		],
+	});
+	expect(listWorkspaceRecords("one").find((row) => row.id === workspace.id)).toBeUndefined();
+	const resumed = await f.host.recoverImplementation({
+		...f.target,
+		locale: "en",
+		snapshot: diagnosis.snapshot,
+		restart: false,
+	});
+	expect(resumed).toEqual(first);
+	expect(git(workspace.worktreePath, "rev-parse", "HEAD")).toBe(before);
+	expect(git(workspace.worktreePath, "branch", "--show-current")).toBe(workspace.branch);
+	expect(listWorkspaceRecords("one").find((row) => row.id === first.workspaceId)).toMatchObject({
+		id: workspace.id,
+		worktreePath: workspace.worktreePath,
+		branch: workspace.branch,
+	});
+	expect(f.created).toBe(1);
+	expect(f.prompts).toHaveLength(prompts);
+});
+
+test("a mismatched checkout branch blocks registration recovery", async () => {
+	const f = fixture();
+	await f.host.connect({ projectId: "one", input: f.input });
+	const first = await f.host.beginImplementation({ ...f.target, locale: "en" });
+	const workspace = listWorkspaceRecords("one").find((row) => row.id === first.workspaceId);
+	if (!workspace) throw new Error("missing Issue workspace");
+	const { forgetWorkspace } = await import("../workspaces");
+	forgetWorkspace(workspace.id);
+	git(workspace.worktreePath, "switch", "-c", "unrelated");
+	const diagnosis = await f.host.implementationRecovery(f.target);
+	expect(diagnosis.status).toBe("unavailable");
+	expect(diagnosis.reason).toBe("resources-remain");
+	await expect(
+		f.host.recoverImplementation({
+			...f.target,
+			locale: "en",
+			snapshot: diagnosis.snapshot,
+			restart: false,
+		}),
+	).rejects.toThrow();
+	expect(f.created).toBe(1);
+});
+
 test("a stale prunable worktree registration blocks recovery", async () => {
 	const f = fixture();
 	await f.host.connect({ projectId: "one", input: f.input });

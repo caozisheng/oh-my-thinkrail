@@ -4,7 +4,7 @@ Entry: implementation is complete enough to assess delivery while stage report/l
 
 ## Trigger and entry state
 
-Use whenever implementation stage prepare, continuation, execution or receipt recovery fails around an otherwise deliverable implementation.
+Use whenever implementation stage operation, execution or recovery fails around an otherwise deliverable implementation.
 
 ## Automatic steps
 
@@ -16,7 +16,7 @@ Use whenever implementation stage prepare, continuation, execution or receipt re
 
 ## Host capabilities
 
-Stage confirmation and Draft delivery use separate host operations. A stage label/report is a lifecycle record, not a delivery readiness gate. The host must still enforce delivery's own authorization and immutable operation rules.
+Stage reporting and Draft delivery use separate host operations. A stage label/report is a lifecycle record, not a delivery readiness gate. The host must still enforce delivery's own authorization and immutable operation rules.
 
 ## Completion, questions and recovery
 

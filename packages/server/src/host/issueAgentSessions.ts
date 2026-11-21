@@ -49,6 +49,7 @@ export interface IssueAgentSessionHostOptions {
 			closeIssue?: boolean;
 		},
 	): Promise<unknown>;
+	runOperation?: IssueToolHost["runOperation"];
 	executeConfirmation?(
 		sessionId: string,
 		operationId: string,
@@ -161,6 +162,10 @@ export function createIssueAgentSessionHost(options: IssueAgentSessionHostOption
 				path: joined.path,
 				workspaceId: joined.workspaceId,
 			};
+		},
+		runOperation: (sessionId, input) => {
+			if (!options.runOperation) stop();
+			return options.runOperation(sessionId, input);
 		},
 		prepareConfirmation: (sessionId, input) => {
 			if (!options.prepareConfirmation) stop();

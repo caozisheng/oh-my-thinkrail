@@ -14,6 +14,7 @@ import {
 	createIssueJoinRepositoryTool,
 	createIssuePrepareConfirmationTool,
 	createIssueRecordSummaryTool,
+	createIssueRunOperationTool,
 	type IssueToolHost,
 	issueToolsExtension,
 	setIssueToolHost,
@@ -308,6 +309,21 @@ test("continuation execution forwards the real receipt and continuation identity
 	expect(calls).toEqual([["own-session", "op", "real-receipt", "continuation"]]);
 });
 
+test("direct Issue operations use the bound session without questionnaire UI", async () => {
+	const { host, calls } = fakeHost();
+	host.runOperation = async (...args) => {
+		calls.push(args);
+		return { status: "completed" };
+	};
+	setIssueToolHost(host);
+	const tool = createIssueRunOperationTool();
+	const params = { operationId: "direct", report: "Implementation verified" };
+	expect(Check(tool.parameters, params)).toBe(true);
+	const result = await tool.execute("call", params, undefined, undefined, ctx);
+	expect(calls).toEqual([["own-session", params]]);
+	expect(result.details).toEqual({ status: "completed" });
+});
+
 test("extension registers the issue tools without injecting global issue instructions", () => {
 	const tools: Array<{ name: string; promptGuidelines?: string[] }> = [];
 	const hooks: string[] = [];
@@ -322,6 +338,7 @@ test("extension registers the issue tools without injecting global issue instruc
 		"issue_join_repository",
 		"issue_prepare_confirmation",
 		"issue_execute_confirmation",
+		"issue_run_operation",
 	]);
 	expect(tools.every((tool) => !tool.promptGuidelines?.length)).toBe(true);
 	expect(hooks).toEqual([]);
@@ -358,6 +375,7 @@ test("the shared resource loader registers issue tools as a named inline extensi
 			"issue_join_repository",
 			"issue_prepare_confirmation",
 			"issue_execute_confirmation",
+			"issue_run_operation",
 		]);
 		setIssueToolHost(fakeHost().host);
 		const tool = extension?.tools.get("issue_context");
