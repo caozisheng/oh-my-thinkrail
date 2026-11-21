@@ -165,6 +165,33 @@ describe("pi-thinkrail-workflow extension", () => {
 		}
 	});
 
+	test("keeps Issue summary publication best-effort without weakening write safety", () => {
+		const skill = readFileSync(
+			new URL("./skills/tomato-issue-workflow/SKILL.md", import.meta.url),
+			"utf8",
+		);
+		const entry = readFileSync(
+			new URL("./skills/tomato-issue-workflow/issue-session.md", import.meta.url),
+			"utf8",
+		);
+		const recovery = readFileSync(
+			new URL("./skills/tomato-issue-workflow/refusals-and-recovery.md", import.meta.url),
+			"utf8",
+		);
+		expect(skill).toContain(
+			"Summary publication is best-effort, not a work or session-completion gate",
+		);
+		expect(skill).toContain("Do not ask for recovery authorization merely to end the session");
+		expect(skill).toContain("never blindly replay it or switch IDs to bypass uncertainty");
+		expect(skill).toContain(
+			"Return to the caller even when publication is unavailable, failed or uncertain",
+		);
+		expect(skill).not.toContain("if either is unavailable, stop before work");
+		expect(entry).toContain("Missing summary capability does not block work");
+		expect(entry).not.toContain("return to the caller after publishing");
+		expect(recovery).toContain("summary publication follows the best-effort ending in `SKILL.md`");
+	});
+
 	test("documents executable registration and reason-specific cross-repository recovery", () => {
 		const pairing = readFileSync(
 			new URL("./skills/tomato-issue-workflow/cross-repository.md", import.meta.url),

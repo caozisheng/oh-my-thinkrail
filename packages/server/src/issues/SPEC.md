@@ -449,10 +449,12 @@ callers must finish all note pagination before calling. Completeness cannot be p
 before arguments, as required by the SDK parser), names the stage and
 response locale, and instructs reading the entire context. Design delegates to the existing ThinkRail
 brainstorming process without implementation; implementation uses existing plans/TODOs, verification
-and review without a design approval gate. Both require confirmed `issue_record_summary` publication
-to the bound Issue comments before conclusions or yielding, including blocked/partial work, with key
-decisions, results, validation and next steps only. Failed context reads, mismatched Issue identity,
-and failed/uncertain publication block success. The prompt adds no agent-side completeness gate;
+and review without a design approval gate. Both attempt best-effort `issue_record_summary` publication
+to the bound Issue comments before yielding, including blocked/partial work, with key decisions,
+results, validation and next steps only. Failed context reads and mismatched Issue identity block work;
+missing summary capability or failed/uncertain publication does not block work or session completion.
+The chat handoff separates work outcome from publication status; recovery is deferred unless explicitly
+requested, preserving the original operation ID/body and prohibiting blind replay. The prompt adds no agent-side completeness gate;
 [[submodule-tomato-issue-workflow]] owns how the agent uses returned context and relevant references.
 The startup reminder requires full referenced design/plan artifacts with ordered, confirmed parts;
 [[submodule-tomato-issue-workflow]] owns the detailed publication rules. This is an agent instruction,

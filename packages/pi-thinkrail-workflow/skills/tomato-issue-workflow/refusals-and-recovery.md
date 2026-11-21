@@ -4,7 +4,7 @@ Entry: a host/provider operation may have been dispatched without a definitive r
 
 ## Trigger and entry state
 
-Use only when dispatch or remote outcome is uncertain. Clear preparation/execution refusals are reported directly unless the host supplies a specific correctable cause.
+Use only when dispatch or remote outcome is uncertain and recovery is needed for the requested operation. Unavailable or uncertain summary publication follows the best-effort ending in `SKILL.md`; do not enter recovery or ask for authorization merely to end the session. Clear preparation/execution refusals are reported directly unless the host supplies a specific correctable cause.
 
 ## Automatic steps
 
@@ -25,4 +25,4 @@ Never classify service unavailability as an authorization error without evidence
 
 ## Handoff
 
-When resolved, return to the owning use case with fresh facts. Otherwise publish a partial/blocked Issue handoff naming failure phase, observed evidence, what was not run and the next safe action.
+When resolved, return to the owning use case with fresh facts. Otherwise return a partial/blocked chat handoff naming failure phase, observed evidence, what was not run and the next safe action; use `SKILL.md`'s best-effort publication, never a recursive summary-recovery gate.

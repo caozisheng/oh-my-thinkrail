@@ -8,7 +8,7 @@ Start only from the explicit launch, never from a referenced Issue or label. Req
 
 ## Automatic steps
 
-1. Verify `issue_context` and `issue_record_summary` are available before work.
+1. Require `issue_context` before work. Missing summary capability does not block work.
 2. Read fresh Issue description, returned comments and references. Verify returned identity matches the launch.
 3. Read each bound repository's instructions and relevant owning specs; do not combine or execute repository configuration.
 4. On resume, reread host context and structured operation state relevant to the next action.
@@ -23,4 +23,4 @@ A valid session has matching Issue identity, explicit stage and usable context. 
 
 ## Handoff
 
-Route to `plan-and-targets.md` when target/scope decisions remain; otherwise route to `design-and-implementation.md`, `validation.md`, or the requested delivery use case. On blocked/partial work, return to the caller after publishing via `issue_record_summary`.
+Route to `plan-and-targets.md` when target/scope decisions remain; otherwise route to `design-and-implementation.md`, `validation.md`, or the requested delivery use case. On blocked/partial work, return to the caller with the chat handoff and best-effort publication status under `SKILL.md`'s ending.

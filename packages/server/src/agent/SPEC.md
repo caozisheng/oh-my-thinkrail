@@ -1163,6 +1163,10 @@ recovery; they are not the default execution path when the direct capability is 
     path. Skip, custom/multi/discuss, nonempty notes and superseding user replies are refused. Pending
     acknowledgements are not answers. Host composition owns durable one-time consumption and effects.
 
+    Summary publication is best-effort: its description and sanitized recovery-required error separate
+    publication status from work/session completion. They instruct the agent to stop sending, hand back
+    in chat, and defer recovery unless explicitly requested, not ask for authorization merely to yield.
+    Claiming remote publication still requires a confirmed note ID; the journal safety contract is unchanged.
     Summary `recovery` is exactly `reconcile` or `retry-confirmed-unpublished`. Both require explicit
     HUMAN confirmation in tool instructions and the Tomato skill; selecting the enum represents that
     confirmation, not agent inference. Reconciliation uses the original operation/body and never publishes;

@@ -39,4 +39,4 @@ Design approval in the request covers only the design; it does not authorize imp
 
 ## Handoff
 
-Design: publish a concise Issue handoff and return to the caller. Implementation: route to `validation.md` and `stage-delivery-decoupling.md`; do not let a failed stage record block separately eligible delivery.
+Design: attempt a concise Issue handoff and return to the caller; summary publication is best-effort under `SKILL.md`. Implementation: route to `validation.md` and `stage-delivery-decoupling.md`; do not let a failed stage record block separately eligible delivery.

@@ -32,4 +32,4 @@ This path never recovers an uncertain remote mutation.
 
 Return to **Direct host operations** for direct execution from explicit intent (legacy fallback only if unavailable).
 If required file decisions remain unresolved, retain the files, provide the actionable question and
-return for the required partial/blocked Issue handoff; never bypass authorization.
+return with a partial/blocked chat handoff and best-effort publication under `SKILL.md`; never bypass authorization.

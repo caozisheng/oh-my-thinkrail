@@ -61,10 +61,14 @@ token. It includes:
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.
-  The skill requires confirmed summary publication before handoff; automatic turn-end posting is not enforced.
+  Summary publication is best-effort: missing tools or failed/uncertain posting do not block work or ending
+  the session. The chat handoff reports work results and publication status separately; automatic turn-end
+  posting is not enforced.
   Referenced design documents and implementation plans are included in full as Issue comments; long documents
   use ordered, individually confirmed parts. Background specs are not attached merely because they were read.
-  If publication is uncertain, reuse the original operation ID and exact summary with
+  Publication stops on failure or uncertainty, including remaining document parts, without forcing a
+  recovery questionnaire just to end the session. For explicitly requested recovery, reuse the original
+  operation ID and exact summary with
   `issue_record_summary`'s `recovery: "reconcile"` to recover a unique matching published comment.
   Both recovery modes require explicit **human confirmation**; selecting the recovery enum represents
   that confirmation, never an agent inference. For `reconcile`, the human confirms adopting the exact-body

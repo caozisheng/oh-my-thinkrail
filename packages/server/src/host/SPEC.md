@@ -1812,4 +1812,5 @@ matching the tool's 1–128 ASCII alphanumeric/dot/underscore/colon/hyphen contr
 ID and exact body digest to the session before one authenticated note write. Confirmed retries return
 only the note ID; changed bodies or uncertain writes require reconciliation. Trust, project path,
 workspace path and remote identity are checked around asynchronous work. No automatic turn-end
-publication exists: the skill and startup prompt require confirmed summary publication before handoff.
+publication exists: the skill and startup prompt attempt best-effort summary publication without making
+it a work or session-completion gate. Uncertain writes remain fenced independently of session completion.
