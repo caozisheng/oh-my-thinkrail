@@ -37,6 +37,21 @@ export function locateDesktopLauncher(
 	return launcher;
 }
 
+export function extractWindowsSetupArchive(archive: string, destination: string): void {
+	const quote = (path: string) => `'${path.replaceAll("'", "''")}'`;
+	const result = Bun.spawnSync(
+		[
+			"powershell",
+			"-NoProfile",
+			"-NonInteractive",
+			"-Command",
+			`$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory(${quote(archive)}, ${quote(destination)})`,
+		],
+		{ stdout: "inherit", stderr: "inherit" },
+	);
+	if (!result.success) throw new Error(`Windows ZIP extraction exited ${result.exitCode}`);
+}
+
 export function windowsSetupExecutableSuffix(channel: string): string {
 	return channel === "stable" ? "-Setup.exe" : `-Setup-${channel}.exe`;
 }

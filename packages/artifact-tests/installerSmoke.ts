@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { removeTree } from "@thinkrail/shared/removeTree";
-import { locateWindowsSetupExecutable } from "./src/artifact";
+import { extractWindowsSetupArchive, locateWindowsSetupExecutable } from "./src/artifact";
 import { hostEnvironment } from "./src/artifactProbes";
 import { readSettledJson, waitForDocument } from "./src/documents";
 import { assertInstallerSmokeEnvironment } from "./src/installerEnvironment";
@@ -85,12 +85,7 @@ function installerExecutable(): string {
 	const packageDir = join(root, "package");
 	mkdirSync(packageDir, { recursive: true });
 	if (process.platform === "win32") {
-		run([
-			"powershell",
-			"-NoProfile",
-			"-Command",
-			`Expand-Archive -LiteralPath '${artifact.replaceAll("'", "''")}' -DestinationPath '${packageDir.replaceAll("'", "''")}' -Force`,
-		]);
+		extractWindowsSetupArchive(artifact, packageDir);
 		return locateWindowsSetupExecutable(packageDir, channel);
 	}
 	run(["tar", "-xzf", artifact, "-C", packageDir]);

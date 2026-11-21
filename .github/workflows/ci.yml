@@ -215,11 +215,19 @@ jobs:
           bun-version-file: package.json
           no-cache: true
       - run: bun install --frozen-lockfile
+      - run: bun test packages/artifact-tests/src/artifact.test.ts
       - name: Download the Electrobun toolchain
         shell: bash
         run: bash .github/scripts/prepare-electrobun.sh
       - run: bun run desktop:build
       - run: bun run smoke:desktop
+      - name: Package and smoke stable installer
+        shell: bash
+        run: |
+          set -eu
+          export PATH="$(cygpath -u "$SYSTEMROOT")/System32:$PATH"
+          bun run desktop:package:stable
+          bun run smoke:desktop:installer apps/desktop/artifacts/win-x64-oh-my-thinkrail-Setup.zip stable
 
   desktop-shard:
     name: Desktop smoke & e2e shard ${{ matrix.shard }}/4
