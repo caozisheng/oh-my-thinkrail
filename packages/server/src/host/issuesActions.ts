@@ -485,6 +485,7 @@ export function createIssuesActions(
 					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
 					baseRef: (id) => checked(() => freshBaseRef(memberProject(id).path)),
 					headCommit: (path) => checked(() => resolveCommitOid(path, "HEAD")),
+					workspaceRecords: () => checked(() => launches.list()),
 					recoveryBase: (id, branch) =>
 						checked(async () => {
 							const path = memberProject(id).path;

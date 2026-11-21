@@ -661,7 +661,7 @@ test("arbitrary existing checkout without an ownership record is never adopted",
 	const path = join(f.root, ".worktrees", "issue-42");
 	f.trees.push({ path, branch: "issue-42" });
 	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
-	expect([...f.records.values()].every(row => !row.implementation)).toBe(true);
+	expect([...f.records.values()].every((row) => !row.implementation)).toBe(true);
 	expect(f.events).not.toContain("create");
 });
 
@@ -674,7 +674,7 @@ test("remote cross-binding never reuses the same IID workspace", async () => {
 	]) {
 		await expect(f.coordinator().implementation(other)).rejects.toThrow();
 	}
-	expect([...f.records.values()].filter(row => row.implementation)).toHaveLength(1);
+	expect([...f.records.values()].filter((row) => row.implementation)).toHaveLength(1);
 });
 
 test("local project participates in record key and record identity is checked", async () => {
@@ -709,7 +709,7 @@ for (const occupied of ["directory", "file"] as const) {
 		if (occupied === "directory") await mkdir(path);
 		else await writeFile(path, "user data");
 		await expect(f.coordinator().implementation(ref)).rejects.toThrow();
-		expect([...f.records.values()].every(row => !row.implementation)).toBe(true);
+		expect([...f.records.values()].every((row) => !row.implementation)).toBe(true);
 		expect(f.events).not.toContain("create");
 	});
 }
@@ -1135,79 +1135,111 @@ test("a recorded removal settles on the next action: finished when unchanged, re
 });
 
 for (const length of [40, 64]) {
- test(`freezes the primary ${length}-digit HEAD before creation and late joins`, async () => {
-  const f = await fixture();
-  let head = "b".repeat(length);
-  const reads: string[] = [];
-  f.options.headCommit = (path) => { reads.push(path); return head; };
-  const launch = await f.coordinator().implementation(ref);
-  expect(reads).toEqual([f.root]);
-  expect([...f.records.values()][0]).toHaveProperty("naming.primaryHead", head);
-  head = "c".repeat(length);
-  await f.coordinator().addRepository(ref, "api");
-  const api = required(f.workspaces.find(ws => ws.projectId === "api"));
-  expect(api.worktreePath).toMatch(/-b{12}$/);
-  expect(await f.coordinator().implementation(ref)).toEqual(launch);
-  expect(f.createdNames).toEqual(["issue-42", "issue-42"]);
- });
+	test(`freezes the primary ${length}-digit HEAD before creation and late joins`, async () => {
+		const f = await fixture();
+		let head = "b".repeat(length);
+		const reads: string[] = [];
+		f.options.headCommit = (path) => {
+			reads.push(path);
+			return head;
+		};
+		const launch = await f.coordinator().implementation(ref);
+		expect(reads).toEqual([f.root]);
+		expect([...f.records.values()][0]).toHaveProperty("naming.primaryHead", head);
+		head = "c".repeat(length);
+		await f.coordinator().addRepository(ref, "api");
+		const api = required(f.workspaces.find((ws) => ws.projectId === "api"));
+		expect(api.worktreePath).toMatch(/-b{12}$/);
+		expect(await f.coordinator().implementation(ref)).toEqual(launch);
+		expect(f.createdNames).toEqual(["issue-42", "issue-42"]);
+	});
 }
 for (const head of [null, "", "a".repeat(39), "g".repeat(40)]) {
- test(`invalid primary HEAD ${head} refuses before any create`, async () => {
-  const f = await fixture();
-  f.options.headCommit = () => head;
-  await expect(f.coordinator().implementation(ref)).rejects.toThrow();
-  expect(f.events).not.toContain("create");
- });
+	test(`invalid primary HEAD ${head} refuses before any create`, async () => {
+		const f = await fixture();
+		f.options.headCommit = () => head;
+		await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+		expect(f.events).not.toContain("create");
+	});
 }
 test("legacy implementation keeps old member paths on late join", async () => {
- const f = await fixture();
- await f.coordinator().implementation(ref);
- const entry = required([...f.records.entries()][0]);
- const { naming: _naming, ...legacy } = entry[1];
- f.records.set(entry[0], legacy);
- f.options.headCommit = path => path === f.root ? null : "a".repeat(40);
- await f.coordinator().addRepository(ref, "api");
- expect(f.workspaces.find(ws => ws.projectId === "api")?.worktreePath).toMatch(/issue-42-[a-f0-9]{16}$/);
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	const entry = required([...f.records.entries()][0]);
+	const { naming: _naming, ...legacy } = entry[1];
+	f.records.set(entry[0], legacy);
+	f.options.headCommit = (path) => (path === f.root ? null : "a".repeat(40));
+	await f.coordinator().addRepository(ref, "api");
+	expect(f.workspaces.find((ws) => ws.projectId === "api")?.worktreePath).toMatch(
+		/issue-42-[a-f0-9]{16}$/,
+	);
 });
 test("failed creation retries its frozen member name after HEAD changes", async () => {
- const f = await fixture();
- await f.coordinator().setRepositories(ref, ["api"]);
- f.failCreate();
- await expect(f.coordinator().implementation(ref)).rejects.toThrow();
- const pending = required([...f.records.values()][0]).members?.[0]?.ownership;
- expect(pending?.worktreePath).toMatch(/-a{12}$/);
- f.options.headCommit = () => "b".repeat(40);
- f.failCreate(false);
- await f.coordinator().implementation(ref);
- expect(f.workspaces[0]?.worktreePath).toBe(pending?.worktreePath);
+	const f = await fixture();
+	await f.coordinator().setRepositories(ref, ["api"]);
+	f.failCreate();
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	const pending = required([...f.records.values()][0]).members?.[0]?.ownership;
+	expect(pending?.worktreePath).toMatch(/-a{12}$/);
+	f.options.headCommit = () => "b".repeat(40);
+	f.failCreate(false);
+	await f.coordinator().implementation(ref);
+	expect(f.workspaces[0]?.worktreePath).toBe(pending?.worktreePath);
 });
 
 test("proven SHA prefix collision lengthens once and persists the reservation before create", async () => {
- const f = await fixture();
- await f.coordinator().implementation(ref);
- const key = required([...f.records.keys()][0]);
- const row = required(f.records.get(key));
- const digest = (await import("node:crypto")).createHash("sha256").update(key).digest("hex").slice(0,16);
- const occupied = join(f.root, ".worktrees", `issue-42-${digest}-${"a".repeat(12)}`);
- await mkdir(occupied, {recursive:true});
- f.trees.push({path:occupied, branch:"issue-42-foreign"});
- f.options.workspaceRecords = () => [{...row, naming: {version:1, primaryHead:"a".repeat(12)+"b".repeat(28), prefixLengths:[{projectId:"api",length:12}]}, repositoryProjectIds:["api"], members:[{projectId:"api",ownership:{state:"pending", worktreePath:occupied,branch:"issue-42-foreign"}}]}];
- const create = f.options.createWorkspaceAtPath;
- f.options.createWorkspaceAtPath = (...args) => {
-  if (args[0] === "api") expect(f.records.get(key)?.members?.[0]?.ownership?.worktreePath).toBe(args[1]);
-  return create(...args);
- };
- await f.coordinator().addRepository(ref,"api");
- expect(f.workspaces.find(ws=>ws.projectId === "api")?.worktreePath).toMatch(/-a{13}$/);
- expect(f.records.get(key)?.naming?.prefixLengths).toEqual([{projectId:"api",length:13}]);
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	const key = required([...f.records.keys()][0]);
+	const row = required(f.records.get(key));
+	const digest = (await import("node:crypto"))
+		.createHash("sha256")
+		.update(key)
+		.digest("hex")
+		.slice(0, 16);
+	const occupied = join(f.root, ".worktrees", `issue-42-${digest}-${"a".repeat(12)}`);
+	await mkdir(occupied, { recursive: true });
+	f.trees.push({ path: occupied, branch: "issue-42-foreign" });
+	f.options.workspaceRecords = () => [
+		{
+			...row,
+			naming: {
+				version: 1,
+				primaryHead: "a".repeat(12) + "b".repeat(28),
+				prefixLengths: [{ projectId: "api", length: 12 }],
+			},
+			repositoryProjectIds: ["api"],
+			members: [
+				{
+					projectId: "api",
+					ownership: { state: "pending", worktreePath: occupied, branch: "issue-42-foreign" },
+				},
+			],
+		},
+	];
+	const create = f.options.createWorkspaceAtPath;
+	f.options.createWorkspaceAtPath = (...args) => {
+		if (args[0] === "api")
+			expect(f.records.get(key)?.members?.[0]?.ownership?.worktreePath).toBe(args[1]);
+		return create(...args);
+	};
+	await f.coordinator().addRepository(ref, "api");
+	expect(f.workspaces.find((ws) => ws.projectId === "api")?.worktreePath).toMatch(/-a{13}$/);
+	expect(f.records.get(key)?.naming?.prefixLengths).toEqual([{ projectId: "api", length: 13 }]);
 });
 test("unknown occupancy refuses without selecting a longer SHA", async () => {
- const f = await fixture();
- await f.coordinator().implementation(ref);
- const key = required([...f.records.keys()][0]);
- const digest = (await import("node:crypto")).createHash("sha256").update(key).digest("hex").slice(0,16);
- await mkdir(join(f.root,".worktrees",`issue-42-${digest}-${"a".repeat(12)}`),{recursive:true});
- await expect(f.coordinator().addRepository(ref,"api")).rejects.toThrow();
- expect(f.workspaces).toHaveLength(1);
- expect(f.records.get(key)?.naming?.prefixLengths).toEqual([]);
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	const key = required([...f.records.keys()][0]);
+	const digest = (await import("node:crypto"))
+		.createHash("sha256")
+		.update(key)
+		.digest("hex")
+		.slice(0, 16);
+	await mkdir(join(f.root, ".worktrees", `issue-42-${digest}-${"a".repeat(12)}`), {
+		recursive: true,
+	});
+	await expect(f.coordinator().addRepository(ref, "api")).rejects.toThrow();
+	expect(f.workspaces).toHaveLength(1);
+	expect(f.records.get(key)?.naming?.prefixLengths).toEqual([]);
 });

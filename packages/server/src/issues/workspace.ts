@@ -68,7 +68,11 @@ export interface IssueWorkspaceRecord {
 	repositoryProjectIds?: string[];
 	members?: IssueWorkspaceMember[];
 	layout?: IssueWorkspaceLayout;
-	naming?: { version: 1; primaryHead: string; prefixLengths: { projectId: string; length: number }[] };
+	naming?: {
+		version: 1;
+		primaryHead: string;
+		prefixLengths: { projectId: string; length: number }[];
+	};
 	/** Durable uncertainty fence; only provable reconciliation of the recorded stage may clear it. */
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
@@ -279,7 +283,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	function locked(record: IssueWorkspaceRecord): boolean {
-		return record.implementation !== undefined || record.members !== undefined;
+		return record.naming !== undefined || record.implementation !== undefined || record.members !== undefined;
 	}
 
 	function segments(path: string): string[] {
@@ -316,9 +320,11 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return join(await slotFor(record), ...segments(own));
 		}
 		const number = record.reference.number;
-		const length = record.naming?.prefixLengths.find((entry) => entry.projectId === id)?.length ?? 12;
+		const length =
+			record.naming?.prefixLengths.find((entry) => entry.projectId === id)?.length ?? 12;
 		const suffix = record.naming ? `-${record.naming.primaryHead.slice(0, length)}` : "";
-		const name = id === projectId ? `issue-${number}` : `issue-${number}-${digest(record)}${suffix}`;
+		const name =
+			id === projectId ? `issue-${number}` : `issue-${number}-${digest(record)}${suffix}`;
 		return join(await projectRoot(id), ".worktrees", name);
 	}
 
@@ -535,13 +541,31 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			const registered = await options.findWorkspace({ worktreePath: path });
 			if (!state.occupied && !state.trees.length && !registered) return path;
 			const owners = ((await options.workspaceRecords?.()) ?? []).filter((row) =>
-				row.members?.some((member) => member.projectId === id && member.ownership?.worktreePath === path),
+				row.members?.some(
+					(member) => member.projectId === id && member.ownership?.worktreePath === path,
+				),
 			);
 			const owner = owners.length === 1 ? owners[0] : undefined;
-			if (!owner?.naming || keyFor(owner.projectId, owner.reference) !== keyFor(projectId, record.reference) ||
+			if (
+				!owner?.naming ||
+				keyFor(owner.projectId, owner.reference) !== keyFor(projectId, record.reference) ||
 				owner.naming.primaryHead === naming.primaryHead ||
-				owner.naming.primaryHead.slice(0, entry.length) !== naming.primaryHead.slice(0, entry.length) ||
-				entry.length >= naming.primaryHead.length) stop();
+				owner.naming.primaryHead.slice(0, entry.length) !==
+					naming.primaryHead.slice(0, entry.length) ||
+				entry.length >= naming.primaryHead.length
+			)
+				stop();
+			const ownership = owner.members?.find((member) => member.projectId === id)?.ownership;
+			if (
+				!ownership ||
+				!state.occupied ||
+				state.trees.length !== 1 ||
+				state.trees[0]?.branch !== ownership.branch ||
+				state.trees[0].prunable
+			)
+				stop();
+			if (registered) verifyWorkspace(registered, ownership, path, id);
+			else if (ownership.state === "completed") stop();
 			entry.length++;
 		}
 	}
@@ -970,6 +994,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		setRepositories(reference: IssueReference, projectIds: string[]) {
 			return run(reference, async (key, record) => {
 				if (
+					record.naming ||
 					record.implementation ||
 					record.members ||
 					!isIssueRepositoriesInput({ projectId, reference, projectIds })

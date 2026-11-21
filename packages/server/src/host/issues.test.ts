@@ -104,7 +104,7 @@ test("the group home's Issue records carry titles the host saw in an Issues list
 			reference,
 			implementation: {
 				state: "completed",
-				worktreePath: "/w",
+				worktreePath: join(dir, "w"),
 				branch: "issue-7-abc",
 				workspaceId: "w1",
 			},
