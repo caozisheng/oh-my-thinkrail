@@ -73,6 +73,7 @@ export interface IssueImplementationRecoveryMember {
 	projectId: string;
 	worktreePath: string;
 	branch: string;
+	/** Null means repair registration for the intact checkout, not rebuild it. */
 	baseCommit: string | null;
 }
 export interface IssueImplementationRecovery {
@@ -83,6 +84,7 @@ export interface IssueImplementationRecovery {
 		| "resources-remain"
 		| "pending-operation"
 		| "session-binding-missing"
+		| "workspace-registration-missing"
 		| null;
 	baseCommit: string | null;
 	members: IssueImplementationRecoveryMember[];
@@ -128,7 +130,8 @@ export function isIssueImplementationRecovery(
 			value.reason === "not-completed" ||
 			value.reason === "resources-remain" ||
 			value.reason === "pending-operation" ||
-			value.reason === "session-binding-missing") &&
+			value.reason === "session-binding-missing" ||
+			value.reason === "workspace-registration-missing") &&
 		(value.baseCommit === null ||
 			/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(String(value.baseCommit))) &&
 		Array.isArray(value.members) &&

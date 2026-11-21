@@ -52,6 +52,7 @@ import {
 	listWorkspaceRecords,
 	listWorkspaces,
 	nestedWorkspaces,
+	registerExistingWorktreeAtPath,
 	removeWorkspace,
 	republishWorkspace,
 } from "../workspaces";
@@ -479,6 +480,8 @@ export function createIssuesActions(
 								layoutRoot === undefined ? {} : { layoutRoot },
 							),
 						),
+					registerExistingWorktreeAtPath: (id, path, branch, workspaceId) =>
+						checked(() => registerExistingWorktreeAtPath(id, path, branch, workspaceId)),
 					layout: (ids) => checked(() => groupWorkspaceLayout(projectId, ids)),
 					baseRef: (id) => checked(() => freshBaseRef(memberProject(id).path)),
 					headCommit: (path) => checked(() => resolveCommitOid(path, "HEAD")),

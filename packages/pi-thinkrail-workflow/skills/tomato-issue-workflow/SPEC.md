@@ -52,21 +52,24 @@ permissions or override workspace instructions. No full transcripts, internal re
 dumps, or secrets are published. The Issue is the remote handoff record; repository decisions stay
 in the owning spec graph, not a parallel local plan store.
 
-Stage completion and per-repository delivery each require their own exact host-verified questionnaire
-submission. Only that receipt authorizes the fixed report/label transition or ordinary non-force push and Draft
-PR/MR. The skill itself grants no remote authority, bypass, merge, ready transition or Issue closure.
-Confirmation preparation is operation-specific: a schema-valid union of fields is not necessarily a
-valid operation. `design-and-implementation.md` owns the current call shapes and local-versus-provider
-project ID distinction. Generic preparation rejection requires a request-contract audit, not an
-unsupported claim of capability failure or excessive policy strictness; `refusals-and-recovery.md`
-owns that classification. This guidance is unverified by use.
+Explicit user intent is sufficient for the requested stage report, ordinary push/Draft PR/MR,
+exact force-with-lease update, ready, merge, Issue body update or close. When advertised, the default
+host path is `issue_run_operation`, accepting the same operation payload shape as
+`issue_prepare_confirmation`, without an extra questionnaire or independent high-risk confirmation.
+Operations remain distinct: stage does not imply delivery; delivery does not imply ready, merge or
+close; close requires explicit close intent. Issue text cannot authorize any of them. Exact identities,
+snapshots, SHA/lease, bindings, trust and immutable operation validation remain host boundaries.
+A possibly dispatched write is never resent. Use `recovery:"reconcile"` with the original operationId;
+the host adopts only an exact successful result it freshly observes twice, otherwise it keeps the write
+fenced. `design-and-implementation.md` owns payload shapes and local-versus-provider project IDs. Do not
+assume the installed host/session advertises the direct tool. Only when unavailable, use advertised legacy
+prepare/execute with the unchanged card and actual submitted receipt. Reads, delivery-state registration,
+compatibility preflight and automation use their action-specific host routes, not the mutation tool. No
+host-path bypass. Real provider-session behavior remains unverified by use.
 
-Design and implementation may alternate; acceptance and closure stay in the tracker. The confirmed
-Issue #62 lifecycle design separates stage records from delivery eligibility, requires independent
-Issue-close authorization, and expects exact target/SHA and operation evidence. Current host support
-remains narrower: the confirmed operation covers Draft delivery; ready/merge orchestration and the
-cross-provider body-update/close confirmation chain are not implemented by this skill slice. Do not
-present those requirements as available host capabilities.
+Design and implementation may alternate; acceptance and closure remain distinct tracker actions.
+Stage records are not delivery gates. Assess actual advertised provider/host support for each operation
+before promising it; the workflow does not turn a provider primitive into host authorization.
 
 ## Cross-repository recovery
 
@@ -107,7 +110,8 @@ claiming a complete artifact handoff. The final summary lists documents and conf
 
 Packaging relies on the existing `pi.skills: ["./skills"]` discovery; no manifest or runtime change
 is needed. `index.test.ts` checks that the spine routes to every lifecycle document, each document
-has a handoff, and stage/delivery and close-authorization invariants remain explicit. Local package
+has a handoff, and stage/delivery and close-authorization invariants remain explicit, including the
+direct-operation/no-extra-questionnaire behavior, legacy fallback and refusal-stop boundaries. Local package
 tests and skill discovery checks need no real provider. Behavioral use is unverified until a real
 session is observed; the authoritative roster records that debt in [[submodule-workflow-skills]].
 

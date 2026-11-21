@@ -1,7 +1,6 @@
 # Verify delivery completeness
 
-Entry: implementation is ready for a per-repository delivery card. Return to **Stage confirmation
-and delivery** in `SKILL.md` after checking necessary changes; the workspace need not be clean.
+Entry: implementation is ready for a per-repository delivery operation. Return to **Direct host operations** in `SKILL.md` after checking necessary changes; the workspace need not be clean.
 This path never recovers an uncertain remote mutation.
 
 1. Identify the exact selected repository, worktree, HEAD and branch. Inspect staged, unstaged and
@@ -9,8 +8,8 @@ This path never recovers an uncertain remote mutation.
    private `.env` contents. Classify remaining files using task context, not a filename whitelist.
 2. Verify and commit necessary task changes within existing commit authority using explicit paths or
    selected hunks. For lockfiles, check dependency manifests, pinned tooling and reproducibility;
-   neither assume a lockfile is unrelated nor include it blindly. If HEAD changes, the delivery card
-   must show the actual new commit. Do not claim the earlier SHA is still the delivery version.
+   neither assume a lockfile is unrelated nor include it blindly. If HEAD changes, the delivery operation
+   must use the actual new commit. Do not claim the earlier SHA is still the delivery version.
 3. If necessity is uncertain, use `ask_user_question` with sanitized filenames and implications:
    include the change after review/verification, keep it local and exclude it from this delivery,
    or continue investigating. Do not silently exclude doubtful implementation files or merely report
@@ -24,13 +23,13 @@ This path never recovers an uncertain remote mutation.
    sanitized exclusions without exposing secrets. Tests using local configuration may support joint
    manual testing; tests depending on uncommitted code do not establish the same result for the
    committed version. Run affected checks against the delivery commit or state the validation limit.
-6. Prepare the delivery card for that committed SHA. Remaining staged, unstaged and untracked files
-   are excluded from push and must not permanently block a card. If an older host still refuses
+6. Run the requested delivery operation for that committed SHA. Remaining staged, unstaged and untracked files
+   are excluded from push and must not permanently block delivery. If an older host still refuses
    `checkout-dirty`, report an upgrade requirement and preserve files; do not weaken it via shell.
    After a known pre-mutation prepare refusal, reuse the original operationId and exact input when
    retrying. Immutable journal rejection still blocks replacement IDs; an execute failure, timeout
    or uncertain intent requires the separate uncertainty rules, never automatic replay.
 
-Return to **Stage confirmation and delivery** for the exact host card and real human submission.
+Return to **Direct host operations** for direct execution from explicit intent (legacy fallback only if unavailable).
 If required file decisions remain unresolved, retain the files, provide the actionable question and
 return for the required partial/blocked Issue handoff; never bypass authorization.

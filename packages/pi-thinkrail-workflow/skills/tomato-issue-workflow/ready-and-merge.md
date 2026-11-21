@@ -1,21 +1,23 @@
 # 06 — Ready and merge
 
-Entry: a Draft/active request is identified and the user-selected policy or separate confirmation explicitly authorizes ready/merge. Save fresh preconditions and the actual target-branch result.
+Entry: a Draft/active request is identified and the user explicitly requests ready/merge. Save fresh preconditions and the actual target-branch result.
 
 ## Trigger and entry state
 
-Use only when the requested scope includes marking ready or merging. Draft delivery confirmation alone is insufficient.
+Use only when the requested scope includes marking ready or merging. Draft delivery intent alone is insufficient.
 
 ## Automatic steps
 
 1. Read fresh request identity, repository, source/target, head SHA, CI/checks and required approvals.
 2. Confirm host/provider supports each requested mutation and read-back before promising completion.
-3. Recheck all frozen facts immediately before each mutation; ready and merge are distinct operations.
+3. Run each explicitly requested ready/merge operation through advertised `issue_run_operation` without another questionnaire. Recheck all frozen facts immediately before each mutation; ready and merge are distinct operations.
 4. After merge, read the request's merged state and the actual target branch SHA; verify target identity and record available merge SHA.
 
 ## Host capabilities
 
-The current confirmed delivery host operation does not authorize ready or merge. Issue/provider primitives, where present, are not an authorization path. GitHub and GitLab support must be assessed separately; no shell or direct provider API bypass is allowed.
+Use the installed host's advertised operation schema. `SKILL.md` owns direct execution and legacy
+fallback only when unavailable. Provider primitives are not a bypass; report missing operations.
+GitHub and GitLab support must be assessed separately; no shell or direct provider API bypass.
 
 ## Completion, questions and recovery
 

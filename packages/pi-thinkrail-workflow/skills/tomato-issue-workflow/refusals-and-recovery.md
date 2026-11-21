@@ -1,19 +1,19 @@
 # 10 — Refusals and recovery
 
-Entry: a host/provider operation was refused, failed or may have been dispatched without a definitive result. Save the classified failure phase, evidence and next action; return to the operation's owning use case only when safe.
+Entry: a host/provider operation may have been dispatched without a definitive result. Save the observed state and next action; return to the owning use case only when safe. A clear pre-execution refusal is reported, not turned into a recovery workflow.
 
 ## Trigger and entry state
 
-Use for deterministic preflight rejection, provider outage, execution refusal, delayed receipt or uncertain remote write.
+Use only when dispatch or remote outcome is uncertain. Clear preparation/execution refusals are reported directly unless the host supplies a specific correctable cause.
 
 ## Automatic steps
 
-1. Read the exact host reason code and failure stage; distinguish preflight, service unavailable, not dispatched, confirmed success and uncertain dispatch.
+1. Read the host result. For `confirmation_mismatch`, inspect the original operation: if it remains prepared and no mutation was dispatched, fix the call-to-receipt binding and execute the already-authorized operation without another user prompt. If dispatch may have occurred, inspect remote state and use receipt-backed recovery. For other clear pre-execution refusals, report the cause and correct the identified input/policy issue before running a corrected operation; do not ask the same question without a material change.
 2. For `Invalid Issue request` or another generic preparation rejection, first audit the request against the chosen action's advertised schema and operation contract: action, required and forbidden fields, field meanings, and authoritative ID source. Correct only a demonstrated request mismatch, refresh facts and prepare again with a fresh operationId if no intent was reserved.
 3. Do not treat repeated generic rejection as evidence that the capability is unavailable, that the gate is too strict, or that a particular field caused the refusal. State that the cause is unknown unless the host provides a specific reason.
 4. For safe local/readonly conditions within existing authorization, correct the cause, refresh facts and rerun preflight. `delivery-state-incomplete` means repository registration is incomplete, not that upstream merge evidence was inspected or compatibility failed: use `cross-repository.md`'s registration recipe. Classify missing MR identity separately from absent compatibility configuration, failed checks and stale versions; never tell the user that repeating an MR link will synchronize state.
-5. For uncertain dispatch, inspect the existing operation and read current remote state; retain its original operationId.
-6. Adopt an observed result only through the host's receipt-backed recovery capability and its real user confirmation.
+5. Inspect the existing operation with its original operationId. Read remote state only when dispatch may have occurred; a prepared/no-dispatch result can proceed without another user prompt.
+6. Adopt an observed result only through the host's advertised receipt-backed recovery capability; do not invent a recovery path. If unavailable, stop and report the uncertainty.
 
 ## Host capabilities
 
@@ -21,7 +21,7 @@ Preparation rejection before intent reservation is distinct from uncertain execu
 
 ## Completion, questions and recovery
 
-Never classify service unavailability as an authorization error without evidence. A generic `Issue tools are unavailable for this session` cannot identify a particular lost binding, trust failure or provider outage by itself. A plain diagnostic chat does not inherit another chat's Issue association; report that distinction without rebinding sessions or modifying journals. Never repeat an operation merely because an error, timeout or absent comment was observed. Ask the user only for the specific missing identity, policy, permission or recovery confirmation. If the host lacks safe recovery, name that missing capability and stop.
+Never classify service unavailability as an authorization error without evidence. A generic `Issue tools are unavailable for this session` cannot identify a particular lost binding, trust failure or provider outage by itself. A plain diagnostic chat does not inherit another chat's Issue association; report that distinction without rebinding sessions or modifying journals. Do not repeat a mutation after possible dispatch. Fix receipt-binding errors without a redundant user prompt when the journal confirms the operation is still prepared; for a real authorization/payload change, refresh the operation within explicit intent. Ask only for genuinely missing user intent, not to diagnose a host bug. If an uncertain remote outcome cannot be reconciled, state the exact blocker and offer a practical manual path rather than implying all submission is impossible.
 
 ## Handoff
 

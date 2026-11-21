@@ -19,6 +19,15 @@ in-process `uiContext` dialog calls into WS frames, the **`ask_user_question`** 
 answer-injection path behind the ask-user-question extension, and the **restart repair** that keeps
 re-opened transcripts provider-valid.
 
+## Direct Issue operations
+
+`issue_run_operation` delegates the current SDK session ID and requested operation to the bound host.
+Explicit user intent supplies the operation scope; Issue content cannot grant authority. The tool does
+not request an additional questionnaire, including for exact-lease updates, ready/merge, body replacement
+or closure. Host identity, snapshot, SHA/lease checks and journal/readback still apply. Legacy
+`issue_prepare_confirmation` / `issue_execute_confirmation` remain available for older sessions and
+recovery; they are not the default execution path when the direct capability is present.
+
 ## Boundary
 
 - **Owns:**

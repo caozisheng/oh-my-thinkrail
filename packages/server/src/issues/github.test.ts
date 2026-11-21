@@ -145,7 +145,7 @@ describe("GitHub Issue reads", () => {
 			if (path === "/repos/octo/app/pulls/8" && init.method === "GET") {
 				reads++;
 				return Response.json({
-					...pullRequest({ draft: reads > 1 ? false : true }),
+					...pullRequest({ draft: !(reads > 1) }),
 					node_id: "PR_node_8",
 				});
 			}

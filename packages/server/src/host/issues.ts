@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -84,6 +84,7 @@ import {
 } from "./issueSessions";
 import { createIssueStageActions, type StagePayload, stageQuestions } from "./issueStageActions";
 import { createIssuesActions, type IssueActionSessions, privateDirectory } from "./issuesActions";
+import { reconcileDirectOperation } from "./issuesDirectRecovery";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
@@ -381,10 +382,15 @@ export function createIssuesHost(
 			repository.role === "reference" ? [] : [{ ...repository, role: repository.role }],
 		);
 	}
-	function stages() {
+	type DirectVerification = (
+		sessionId: string,
+		payload: { sessionId: string; operationId: string },
+		toolCallId: string,
+	) => Promise<void>;
+	function stages(verifyDirect?: DirectVerification, store = journal()) {
 		return createIssueStageActions({
 			binding: confirmationBinding,
-			journal: journal(),
+			journal: store,
 			access: async (binding) => {
 				await restore(binding.projectId, true);
 				const issues = await service();
@@ -399,23 +405,25 @@ export function createIssuesHost(
 			},
 			repositories: participatingRepositories,
 			checkout: trustedCheckout,
-			verifyAnswer: async (sessionId, payload, toolCallId) => {
-				const binding = await confirmationBinding(sessionId);
-				const ws = getWorkspace(binding.workspaceId);
-				const { messages } = await getSessionMessages(
-					sessionId,
-					binding.workspaceId,
-					ws.worktreePath,
-				);
-				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, stageQuestions(payload)))
-					invalidReceipt();
-			},
+			verifyAnswer:
+				verifyDirect ??
+				(async (sessionId, payload, toolCallId) => {
+					const binding = await confirmationBinding(sessionId);
+					const ws = getWorkspace(binding.workspaceId);
+					const { messages } = await getSessionMessages(
+						sessionId,
+						binding.workspaceId,
+						ws.worktreePath,
+					);
+					if (!isTrustedQuestionnaireReceipt(messages, toolCallId, stageQuestions(payload)))
+						invalidReceipt();
+				}),
 		});
 	}
-	function bodies() {
+	function bodies(verifyDirect?: DirectVerification, store = journal()) {
 		return createIssueBodyActions({
 			binding: confirmationBinding,
-			journal: journal(),
+			journal: store,
 			access: async (binding) => {
 				await restore(binding.projectId, true);
 				const issues = await service();
@@ -428,17 +436,19 @@ export function createIssuesHost(
 					},
 				};
 			},
-			verifyAnswer: async (sessionId, payload, toolCallId) => {
-				const binding = await confirmationBinding(sessionId);
-				const ws = getWorkspace(binding.workspaceId);
-				const { messages } = await getSessionMessages(
-					sessionId,
-					binding.workspaceId,
-					ws.worktreePath,
-				);
-				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueBodyQuestions(payload)))
-					invalidReceipt();
-			},
+			verifyAnswer:
+				verifyDirect ??
+				(async (sessionId, payload, toolCallId) => {
+					const binding = await confirmationBinding(sessionId);
+					const ws = getWorkspace(binding.workspaceId);
+					const { messages } = await getSessionMessages(
+						sessionId,
+						binding.workspaceId,
+						ws.worktreePath,
+					);
+					if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueBodyQuestions(payload)))
+						invalidReceipt();
+				}),
 		});
 	}
 	function closes(
@@ -447,10 +457,12 @@ export function createIssuesHost(
 			payload: IssueClosePayload,
 			authorization: unknown,
 		) => Promise<void>,
+		verifyDirect?: DirectVerification,
+		store = journal(),
 	) {
 		return createIssueCloseActions({
 			binding: confirmationBinding,
-			journal: journal(),
+			journal: store,
 			access: async (binding) => {
 				await restore(binding.projectId, true);
 				const issues = await service();
@@ -464,17 +476,19 @@ export function createIssuesHost(
 				};
 			},
 			...(authorize ? { authorize } : {}),
-			verifyAnswer: async (sessionId, payload, toolCallId) => {
-				const binding = await confirmationBinding(sessionId);
-				const ws = getWorkspace(binding.workspaceId);
-				const { messages } = await getSessionMessages(
-					sessionId,
-					binding.workspaceId,
-					ws.worktreePath,
-				);
-				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueCloseQuestions(payload)))
-					invalidReceipt();
-			},
+			verifyAnswer:
+				verifyDirect ??
+				(async (sessionId, payload, toolCallId) => {
+					const binding = await confirmationBinding(sessionId);
+					const ws = getWorkspace(binding.workspaceId);
+					const { messages } = await getSessionMessages(
+						sessionId,
+						binding.workspaceId,
+						ws.worktreePath,
+					);
+					if (!isTrustedQuestionnaireReceipt(messages, toolCallId, issueCloseQuestions(payload)))
+						invalidReceipt();
+				}),
 		});
 	}
 	function deliveryStateActions() {
@@ -536,24 +550,28 @@ export function createIssuesHost(
 			payload: MergeRequestPayload,
 			authorization: unknown,
 		) => Promise<void>,
+		verifyDirect?: DirectVerification,
+		store = journal(),
 	) {
 		return createIssueMergeRequestActions({
 			binding: confirmationBinding,
-			journal: journal(),
+			journal: store,
 			repositories: participatingRepositories,
 			access: repositoryAccess,
 			...(authorize ? { authorize } : {}),
-			verifyAnswer: async (sessionId, payload, toolCallId) => {
-				const binding = await confirmationBinding(sessionId);
-				const ws = getWorkspace(binding.workspaceId);
-				const { messages } = await getSessionMessages(
-					sessionId,
-					binding.workspaceId,
-					ws.worktreePath,
-				);
-				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, mergeRequestQuestions(payload)))
-					invalidReceipt();
-			},
+			verifyAnswer:
+				verifyDirect ??
+				(async (sessionId, payload, toolCallId) => {
+					const binding = await confirmationBinding(sessionId);
+					const ws = getWorkspace(binding.workspaceId);
+					const { messages } = await getSessionMessages(
+						sessionId,
+						binding.workspaceId,
+						ws.worktreePath,
+					);
+					if (!isTrustedQuestionnaireReceipt(messages, toolCallId, mergeRequestQuestions(payload)))
+						invalidReceipt();
+				}),
 		});
 	}
 	function deliveries(
@@ -562,10 +580,12 @@ export function createIssuesHost(
 			payload: DeliveryPayload,
 			authorization: unknown,
 		) => Promise<void>,
+		verifyDirect?: DirectVerification,
+		store = journal(),
 	) {
 		return createIssueDeliveryActions({
 			binding: confirmationBinding,
-			journal: journal(),
+			journal: store,
 			checkout: trustedCheckout,
 			repositories: participatingRepositories,
 			access: async (binding) => {
@@ -649,17 +669,19 @@ export function createIssuesHost(
 					throw new CodedError("RESOURCE_UNAVAILABLE", "Issue push requires reconciliation.");
 			},
 			...(authorize ? { authorize } : {}),
-			verifyAnswer: async (sessionId, payload, toolCallId) => {
-				const binding = await confirmationBinding(sessionId);
-				const ws = getWorkspace(binding.workspaceId);
-				const { messages } = await getSessionMessages(
-					sessionId,
-					binding.workspaceId,
-					ws.worktreePath,
-				);
-				if (!isTrustedQuestionnaireReceipt(messages, toolCallId, deliveryQuestions(payload)))
-					invalidReceipt();
-			},
+			verifyAnswer:
+				verifyDirect ??
+				(async (sessionId, payload, toolCallId) => {
+					const binding = await confirmationBinding(sessionId);
+					const ws = getWorkspace(binding.workspaceId);
+					const { messages } = await getSessionMessages(
+						sessionId,
+						binding.workspaceId,
+						ws.worktreePath,
+					);
+					if (!isTrustedQuestionnaireReceipt(messages, toolCallId, deliveryQuestions(payload)))
+						invalidReceipt();
+				}),
 		});
 	}
 	async function repositoryDependencyGate(sessionId: string) {
@@ -966,312 +988,427 @@ export function createIssuesHost(
 			if (!isTrustedQuestionnaireReceipt(messages, toolCallId, questions)) invalidReceipt();
 		},
 	});
-	const agentSessions = createIssueAgentSessionHost({
-		service,
-		prepareConfirmation: async (sessionId, params) => {
-			const request = structuredClone(params);
+	async function prepareConfirmation(
+		sessionId: string,
+		params: Parameters<NonNullable<IssueAgentSessionHostOptions["prepareConfirmation"]>>[1],
+		direct = false,
+	) {
+		const request = structuredClone(params);
+		const store = journal();
+		if (direct) {
+			const prepare = store.prepare;
+			store.prepare = (id, operationId, payload) => {
+				if (!record(payload)) invalid();
+				return prepare(id, operationId, { ...payload, directRequest: request });
+			};
+		}
+		if (
+			request.pushMode !== undefined &&
+			(request.pushMode !== "force-with-lease" ||
+				!request.projectId ||
+				request.action ||
+				request.inspect ||
+				request.recovery ||
+				request.report)
+		)
+			invalid();
+		if (request.action === "read-delivery-state") {
 			if (
-				request.pushMode !== undefined &&
-				(request.pushMode !== "force-with-lease" ||
-					!request.projectId ||
-					request.action ||
-					request.inspect ||
-					request.recovery ||
-					request.report)
+				request.inspect ||
+				request.continueDespiteChecks ||
+				request.recovery ||
+				request.report ||
+				request.projectId ||
+				request.title ||
+				request.body !== undefined ||
+				request.targetBranch ||
+				request.deliveryState !== undefined ||
+				request.expectedRevision !== undefined
 			)
 				invalid();
-			if (request.action === "read-delivery-state") {
-				if (
-					request.inspect ||
-					request.continueDespiteChecks ||
-					request.recovery ||
-					request.report ||
-					request.projectId ||
-					request.title ||
-					request.body !== undefined ||
-					request.targetBranch ||
-					request.deliveryState !== undefined ||
-					request.expectedRevision !== undefined
-				)
-					invalid();
-				await confirmationBinding(sessionId);
-				return deliveryStateActions().read(sessionId);
-			}
-			if (request.action === "record-delivery-state") {
-				if (
-					request.inspect ||
-					request.continueDespiteChecks ||
-					request.recovery ||
-					request.report ||
-					request.projectId ||
-					request.title ||
-					request.body !== undefined ||
-					request.targetBranch ||
-					!Number.isSafeInteger(request.expectedRevision) ||
-					request.deliveryState === undefined
-				)
-					invalid();
-				await confirmationBinding(sessionId);
-				return deliveryStateActions().record(
-					sessionId,
-					request.expectedRevision as number,
-					request.deliveryState,
+			await confirmationBinding(sessionId);
+			return deliveryStateActions().read(sessionId);
+		}
+		if (request.action === "record-delivery-state") {
+			if (
+				request.inspect ||
+				request.continueDespiteChecks ||
+				request.recovery ||
+				request.report ||
+				request.projectId ||
+				request.title ||
+				request.body !== undefined ||
+				request.targetBranch ||
+				!Number.isSafeInteger(request.expectedRevision) ||
+				request.deliveryState === undefined
+			)
+				invalid();
+			await confirmationBinding(sessionId);
+			return deliveryStateActions().record(
+				sessionId,
+				request.expectedRevision as number,
+				request.deliveryState,
+			);
+		}
+		if (request.action === "preflight-dependencies") {
+			if (!exact(request, ["operationId", "action", "projectId"]) || !request.projectId) invalid();
+			await confirmationBinding(sessionId);
+			try {
+				const receipt = await (await repositoryDependencyGate(sessionId)).preflight(
+					request.projectId,
 				);
+				return { status: "passed", operationId: request.operationId, receipt };
+			} catch (error) {
+				if (!(error instanceof CodedError) || error.code !== "ISSUE_DELIVERY_REFUSED") throw error;
+				return {
+					status: "blocked",
+					operationId: request.operationId,
+					reason: error.message,
+					nextAction:
+						"Do not update downstream pairing. For delivery-state-incomplete, read-delivery-state then record-delivery-state with every participating repository and expectedRevision. For missing-upstream-request, register its mergeRequestId for provider verification. For compatibility configuration errors, configure .thinkrail/issue-compatibility.json in the trusted downstream worktree. Other refusals require resolving the named mismatch; a link or independent CI is not compatibility evidence.",
+				};
 			}
-			if (request.action === "preflight-dependencies") {
-				if (!exact(request, ["operationId", "action", "projectId"]) || !request.projectId)
+		}
+		if (request.action === "advance-automation") {
+			if (!exact(request, ["operationId", "action", "projectId"]) || !request.projectId) invalid();
+			await confirmationBinding(sessionId);
+			return automationActions().advance(sessionId, request.operationId, request.projectId);
+		}
+		const run: typeof continuations.run = direct
+			? async (_sessionId, _operationId, _phase, _snapshot, attempt) => attempt(false)
+			: continuations.run;
+		return run(sessionId, request.operationId, "prepare", request, async (continued) => {
+			const input = {
+				...request,
+				...(continued && !request.inspect && !request.recovery
+					? { continueDespiteChecks: true }
+					: {}),
+			};
+			if (input.recovery === "reconcile") {
+				if (input.continueDespiteChecks || input.action) invalid();
+				if (
+					input.inspect ||
+					input.report ||
+					input.projectId ||
+					input.title ||
+					input.body !== undefined ||
+					input.targetBranch ||
+					input.continueDespiteChecks
+				)
 					invalid();
 				await confirmationBinding(sessionId);
+				const store = journal();
+				const state = await store.inspect(sessionId, input.operationId);
+				if (state.status !== "uncertain") return state;
+				const payload = state.payload as ConfirmationPayload;
+				const observed = await observeOperation(sessionId, payload);
+				const frozen = await store.prepareRecovery(sessionId, input.operationId, observed);
+				return {
+					status: "recovery-prepared",
+					...frozen,
+					questions: recoveryQuestions(input.operationId, frozen.candidateDigest, observed),
+				};
+			}
+			if (input.inspect) {
+				if (input.action) invalid();
+				if (
+					input.report ||
+					input.projectId ||
+					input.title ||
+					input.body !== undefined ||
+					input.targetBranch ||
+					input.continueDespiteChecks
+				)
+					invalid();
+				await confirmationBinding(sessionId);
+				let state: IssueConfirmationInspection | undefined;
 				try {
-					const receipt = await (await repositoryDependencyGate(sessionId)).preflight(
-						request.projectId,
-					);
-					return { status: "passed", operationId: request.operationId, receipt };
+					state = await journal().inspect?.(sessionId, input.operationId);
 				} catch (error) {
-					if (!(error instanceof CodedError) || error.code !== "ISSUE_DELIVERY_REFUSED")
-						throw error;
-					return {
-						status: "blocked",
-						operationId: request.operationId,
-						reason: error.message,
-						nextAction:
-							"Do not update downstream pairing. For delivery-state-incomplete, read-delivery-state then record-delivery-state with every participating repository and expectedRevision. For missing-upstream-request, register its mergeRequestId for provider verification. For compatibility configuration errors, configure .thinkrail/issue-compatibility.json in the trusted downstream worktree. Other refusals require resolving the named mismatch; a link or independent CI is not compatibility evidence.",
-					};
+					if (error instanceof CodedError && error.code === "ISSUE_CONFIRMATION_BLOCKED")
+						return {
+							status: "blocked",
+							reason: error.message,
+							nextAction: "Resolve the journal cause shown above, then inspect again.",
+						};
+					throw error;
+				}
+				if (!state) invalid();
+				if (state.status === "missing") return state;
+				let questions: ReturnType<typeof stageQuestions> | undefined;
+				try {
+					const payload = state.payload as ConfirmationPayload;
+					if (
+						payload?.stage === "delivery" ||
+						payload?.stage === "design" ||
+						payload?.stage === "implementation" ||
+						payload?.stage === "update-body" ||
+						payload?.stage === "close-issue" ||
+						payload?.stage === "merge-mr" ||
+						payload?.stage === "issue-automation-policy"
+					)
+						questions = questionsFor(payload);
+				} catch {
+					questions = undefined;
+				}
+				return {
+					status: state.status,
+					digest: state.digest,
+					...(questions ? { questions } : {}),
+					...(state.status === "completed" ? { result: state.result } : {}),
+					...(state.failure ? { failure: state.failure } : {}),
+					nextAction: !questions
+						? "The frozen payload cannot be displayed. Preserve this operation and inspect its local application schema before continuing."
+						: state.status === "prepared"
+							? "This operation has no mutation intent. Use its frozen card, or prepare a distinct newly reviewed operation for changed content."
+							: state.status === "completed"
+								? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
+								: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
+				};
+			}
+			if (input.action === "authorize-automation") {
+				const keys = [
+					"operationId",
+					"action",
+					"projectId",
+					"title",
+					"body",
+					"mode",
+					"closeIssue",
+					...(input.closeIssue === true ? ["reason", "acceptance"] : []),
+				];
+				if (
+					!exact(input, keys) ||
+					!input.projectId ||
+					typeof input.title !== "string" ||
+					typeof input.body !== "string" ||
+					!["draft", "auto-merge", "manual"].includes(String(input.mode)) ||
+					typeof input.closeIssue !== "boolean" ||
+					(input.closeIssue && (!input.reason || !input.acceptance))
+				)
+					invalid();
+				return automationActions().prepare(sessionId, {
+					operationId: input.operationId,
+					projectId: input.projectId,
+					title: input.title,
+					body: input.body,
+					mode: input.mode as IssueAutomationPolicy["mode"],
+					closeIssue: input.closeIssue,
+					reason: input.reason ?? "",
+					acceptance: input.acceptance ?? "",
+				});
+			}
+			if (input.action === "ready-mr" || input.action === "merge-mr") {
+				if (
+					input.report ||
+					!input.projectId ||
+					!Number.isSafeInteger(input.mergeRequestId) ||
+					!input.targetBranch ||
+					!input.expectedSha ||
+					input.body !== undefined ||
+					input.title ||
+					input.deliveryState !== undefined ||
+					input.expectedRevision !== undefined ||
+					input.continueDespiteChecks
+				)
+					invalid();
+				return mergeRequests(undefined, undefined, store).prepare(sessionId, input.action, {
+					operationId: input.operationId,
+					projectId: input.projectId,
+					iid: input.mergeRequestId as number,
+					targetBranch: input.targetBranch,
+					expectedSha: input.expectedSha,
+				});
+			}
+			if (input.action === "close-issue") {
+				if (
+					!input.reason ||
+					!input.acceptance ||
+					input.body !== undefined ||
+					input.projectId ||
+					input.title ||
+					input.report ||
+					input.targetBranch ||
+					input.continueDespiteChecks
+				)
+					invalid();
+				return closes(undefined, undefined, store).prepare(sessionId, {
+					operationId: input.operationId,
+					reason: input.reason,
+					acceptance: input.acceptance,
+				});
+			}
+			if (input.action === "update-body") {
+				if (
+					input.body === undefined ||
+					input.projectId ||
+					input.title ||
+					input.report ||
+					input.targetBranch ||
+					input.continueDespiteChecks
+				)
+					invalid();
+				return bodies(undefined, store).prepare(sessionId, {
+					operationId: input.operationId,
+					body: input.body,
+				});
+			}
+			if (input.projectId) {
+				if (!input.title || input.body === undefined || input.report) invalid();
+				try {
+					return await deliveries(undefined, undefined, store).prepare(sessionId, {
+						operationId: input.operationId,
+						projectId: input.projectId,
+						title: input.title,
+						body: input.body,
+						...(input.targetBranch ? { targetBranch: input.targetBranch } : {}),
+						...(input.pushMode ? { pushMode: input.pushMode } : {}),
+						...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
+					});
+				} catch (error) {
+					if (!direct && error instanceof CodedError && error.code === "ISSUE_DELIVERY_REFUSED")
+						return {
+							status: "blocked",
+							reason: error.message,
+							canContinue: error.message.includes("[issue-not-open]"),
+							nextAction: error.message.includes("[issue-not-open]")
+								? "Prepare with continueDespiteChecks:true to obtain a one-shot warned card."
+								: "Correct the invalid or unavailable execution prerequisite described above, then prepare a fresh exact card. This condition is not made valid by a policy override.",
+						};
+					throw error;
 				}
 			}
-			if (request.action === "advance-automation") {
-				if (!exact(request, ["operationId", "action", "projectId"]) || !request.projectId)
-					invalid();
-				await confirmationBinding(sessionId);
-				return automationActions().advance(sessionId, request.operationId, request.projectId);
-			}
-			return continuations.run(
-				sessionId,
-				request.operationId,
-				"prepare",
-				request,
-				async (continued) => {
-					const input = {
-						...request,
-						...(continued && !request.inspect && !request.recovery
-							? { continueDespiteChecks: true }
-							: {}),
+			if (!input.report || input.title || input.body || input.targetBranch) invalid();
+			try {
+				return await stages(undefined, store).prepare(sessionId, {
+					operationId: input.operationId,
+					report: input.report,
+					...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
+				});
+			} catch (error) {
+				if (!direct && error instanceof CodedError && error.code === "ISSUE_CONFIRMATION_BLOCKED")
+					return {
+						status: "blocked",
+						reason: error.message,
+						canContinue: error.message.includes("Retry with continueDespiteChecks:true"),
+						nextAction: error.message.includes("Retry with continueDespiteChecks:true")
+							? "Prepare with continueDespiteChecks:true for a one-shot warned card if you choose to accept the displayed policy exception."
+							: "Inspect the original operation and current facts, then prepare a refreshed card if no intent is uncertain.",
 					};
-					if (input.recovery === "reconcile") {
-						if (input.continueDespiteChecks || input.action) invalid();
-						if (
-							input.inspect ||
-							input.report ||
-							input.projectId ||
-							input.title ||
-							input.body !== undefined ||
-							input.targetBranch ||
-							input.continueDespiteChecks
-						)
-							invalid();
-						await confirmationBinding(sessionId);
-						const store = journal();
-						const state = await store.inspect(sessionId, input.operationId);
-						if (state.status !== "uncertain") return state;
-						const payload = state.payload as ConfirmationPayload;
-						const observed = await observeOperation(sessionId, payload);
-						const frozen = await store.prepareRecovery(sessionId, input.operationId, observed);
-						return {
-							status: "recovery-prepared",
-							...frozen,
-							questions: recoveryQuestions(input.operationId, frozen.candidateDigest, observed),
-						};
-					}
-					if (input.inspect) {
-						if (input.action) invalid();
-						if (
-							input.report ||
-							input.projectId ||
-							input.title ||
-							input.body !== undefined ||
-							input.targetBranch ||
-							input.continueDespiteChecks
-						)
-							invalid();
-						await confirmationBinding(sessionId);
-						let state: IssueConfirmationInspection | undefined;
-						try {
-							state = await journal().inspect?.(sessionId, input.operationId);
-						} catch (error) {
-							if (error instanceof CodedError && error.code === "ISSUE_CONFIRMATION_BLOCKED")
-								return {
-									status: "blocked",
-									reason: error.message,
-									nextAction: "Resolve the journal cause shown above, then inspect again.",
-								};
-							throw error;
+				throw error;
+			}
+		});
+	}
+	const agentSessions = createIssueAgentSessionHost({
+		service,
+		prepareConfirmation,
+		runOperation: async (sessionId, params) => {
+			// Only this bound invocation grants authority; no caller flag or receipt does.
+			const request = JSON.parse(JSON.stringify(params)) as typeof params;
+			if (request.recovery === "reconcile") {
+				if (request.inspect !== undefined || request.action !== undefined) invalid();
+				await confirmationBinding(sessionId);
+				return reconcileDirectOperation({
+					sessionId,
+					operationId: request.operationId,
+					store: journal(),
+					observe: async (payload) => {
+						if (!record(payload) || typeof payload.stage !== "string") invalid();
+						switch (payload.stage) {
+							case "ready-mr":
+							case "merge-mr":
+								return mergeRequests().observe(
+									sessionId,
+									payload as unknown as MergeRequestPayload,
+								);
+							case "delivery":
+								return deliveries().observe(sessionId, payload as unknown as DeliveryPayload);
+							case "update-body":
+								return bodies().observe(sessionId, payload as unknown as IssueBodyPayload);
+							case "close-issue":
+								return closes().observe(sessionId, payload as unknown as IssueClosePayload);
+							case "design":
+							case "implementation":
+								return stages().observe(sessionId, payload as unknown as StagePayload);
+							default:
+								return invalid();
 						}
-						if (!state) invalid();
-						if (state.status === "missing") return state;
-						let questions: ReturnType<typeof stageQuestions> | undefined;
-						try {
-							const payload = state.payload as ConfirmationPayload;
+					},
+				});
+			}
+			if (
+				request.inspect !== undefined ||
+				(request.recovery !== undefined && request.recovery !== "reconcile") ||
+				(request.action !== undefined &&
+					!["update-body", "close-issue", "ready-mr", "merge-mr"].includes(request.action))
+			)
+				invalid();
+			await confirmationBinding(sessionId);
+			const store = journal();
+			const prior = await store.inspect(sessionId, request.operationId);
+			if (prior.status !== "completed" && (await store.getRecovery(sessionId, request.operationId)))
+				invalid();
+			if (prior.status !== "missing") {
+				if (!record(prior.payload) || !isDeepStrictEqual(prior.payload.directRequest, request))
+					throw new CodedError(
+						"ISSUE_CONFIRMATION_BLOCKED",
+						"Issue confirmation blocked (payload_changed). This operation ID is frozen to its original direct request.",
+					);
+				if (prior.status === "uncertain")
+					throw new CodedError(
+						"ISSUE_CONFIRMATION_BLOCKED",
+						"Issue confirmation blocked (uncertain_intent). Inspect and reconcile the original operation; it will not be resent.",
+					);
+				if (prior.status === "completed") return prior.result;
+			}
+			const prepared =
+				prior.status === "prepared"
+					? prior
+					: await prepareConfirmation(sessionId, request, true).catch((error: unknown) => {
 							if (
-								payload?.stage === "delivery" ||
-								payload?.stage === "design" ||
-								payload?.stage === "implementation" ||
-								payload?.stage === "update-body" ||
-								payload?.stage === "close-issue" ||
-								payload?.stage === "merge-mr" ||
-								payload?.stage === "issue-automation-policy"
+								error instanceof CodedError &&
+								["ISSUE_CONFIRMATION_BLOCKED", "ISSUE_DELIVERY_REFUSED"].includes(error.code)
 							)
-								questions = questionsFor(payload);
-						} catch {
-							questions = undefined;
-						}
-						return {
-							status: state.status,
-							digest: state.digest,
-							...(questions ? { questions } : {}),
-							...(state.status === "completed" ? { result: state.result } : {}),
-							...(state.failure ? { failure: state.failure } : {}),
-							nextAction: !questions
-								? "The frozen payload cannot be displayed. Preserve this operation and inspect its local application schema before continuing."
-								: state.status === "prepared"
-									? "This operation has no mutation intent. Use its frozen card, or prepare a distinct newly reviewed operation for changed content."
-									: state.status === "completed"
-										? "Return this receipt. For a later CI repair, prepare a new delivery operation targeting the same PR/MR."
-										: "A mutation may have been sent. Read the remote PR/MR or note first; do not resend or use another ID to bypass this intent.",
-						};
-					}
-					if (input.action === "authorize-automation") {
-						const keys = [
-							"operationId",
-							"action",
-							"projectId",
-							"title",
-							"body",
-							"mode",
-							"closeIssue",
-							...(input.closeIssue === true ? ["reason", "acceptance"] : []),
-						];
-						if (
-							!exact(input, keys) ||
-							!input.projectId ||
-							typeof input.title !== "string" ||
-							typeof input.body !== "string" ||
-							!["draft", "auto-merge", "manual"].includes(String(input.mode)) ||
-							typeof input.closeIssue !== "boolean" ||
-							(input.closeIssue && (!input.reason || !input.acceptance))
-						)
-							invalid();
-						return automationActions().prepare(sessionId, {
-							operationId: input.operationId,
-							projectId: input.projectId,
-							title: input.title,
-							body: input.body,
-							mode: input.mode as IssueAutomationPolicy["mode"],
-							closeIssue: input.closeIssue,
-							reason: input.reason ?? "",
-							acceptance: input.acceptance ?? "",
-						});
-					}
-					if (input.action === "ready-mr" || input.action === "merge-mr") {
-						if (
-							input.report ||
-							!input.projectId ||
-							!Number.isSafeInteger(input.mergeRequestId) ||
-							!input.targetBranch ||
-							!input.expectedSha ||
-							input.body !== undefined ||
-							input.title ||
-							input.deliveryState !== undefined ||
-							input.expectedRevision !== undefined ||
-							input.continueDespiteChecks
-						)
-							invalid();
-						return mergeRequests().prepare(sessionId, input.action, {
-							operationId: input.operationId,
-							projectId: input.projectId,
-							iid: input.mergeRequestId as number,
-							targetBranch: input.targetBranch,
-							expectedSha: input.expectedSha,
-						});
-					}
-					if (input.action === "close-issue") {
-						if (
-							!input.reason ||
-							!input.acceptance ||
-							input.body !== undefined ||
-							input.projectId ||
-							input.title ||
-							input.report ||
-							input.targetBranch ||
-							input.continueDespiteChecks
-						)
-							invalid();
-						return closes().prepare(sessionId, {
-							operationId: input.operationId,
-							reason: input.reason,
-							acceptance: input.acceptance,
-						});
-					}
-					if (input.action === "update-body") {
-						if (
-							input.body === undefined ||
-							input.projectId ||
-							input.title ||
-							input.report ||
-							input.targetBranch ||
-							input.continueDespiteChecks
-						)
-							invalid();
-						return bodies().prepare(sessionId, {
-							operationId: input.operationId,
-							body: input.body,
-						});
-					}
-					if (input.projectId) {
-						if (!input.title || input.body === undefined || input.report) invalid();
-						try {
-							return await deliveries().prepare(sessionId, {
-								operationId: input.operationId,
-								projectId: input.projectId,
-								title: input.title,
-								body: input.body,
-								...(input.targetBranch ? { targetBranch: input.targetBranch } : {}),
-								...(input.pushMode ? { pushMode: input.pushMode } : {}),
-								...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
-							});
-						} catch (error) {
-							if (error instanceof CodedError && error.code === "ISSUE_DELIVERY_REFUSED")
-								return {
-									status: "blocked",
-									reason: error.message,
-									canContinue: error.message.includes("[issue-not-open]"),
-									nextAction: error.message.includes("[issue-not-open]")
-										? "Prepare with continueDespiteChecks:true to obtain a one-shot warned card."
-										: "Correct the invalid or unavailable execution prerequisite described above, then prepare a fresh exact card. This condition is not made valid by a policy override.",
-								};
+								throw new CodedError(
+									error.code,
+									"Direct Issue operation refused. Inspect the original operation and resolve its prerequisites; never resend an uncertain intent.",
+								);
 							throw error;
-						}
-					}
-					if (!input.report || input.title || input.body || input.targetBranch) invalid();
-					try {
-						return await stages().prepare(sessionId, {
-							operationId: input.operationId,
-							report: input.report,
-							...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
 						});
-					} catch (error) {
-						if (error instanceof CodedError && error.code === "ISSUE_CONFIRMATION_BLOCKED")
-							return {
-								status: "blocked",
-								reason: error.message,
-								canContinue: error.message.includes("Retry with continueDespiteChecks:true"),
-								nextAction: error.message.includes("Retry with continueDespiteChecks:true")
-									? "Prepare with continueDespiteChecks:true for a one-shot warned card if you choose to accept the displayed policy exception."
-									: "Inspect the original operation and current facts, then prepare a refreshed card if no intent is uncertain.",
-							};
-						throw error;
-					}
-				},
-			);
+			if (!record(prepared) || typeof prepared.digest !== "string") {
+				if (!record(prepared)) return prepared;
+				const { questions: _questions, ...result } = prepared;
+				return result;
+			}
+			const frozen = await store.get(sessionId, request.operationId);
+			if (!frozen || frozen.digest !== prepared.digest) invalid();
+			const token = `issue-direct:${createHash("sha256")
+				.update(JSON.stringify([sessionId, request.operationId, frozen.digest]))
+				.digest("hex")}`;
+			const verifyDirect: DirectVerification = async (id, payload, callId) => {
+				if (
+					id !== sessionId ||
+					payload.sessionId !== sessionId ||
+					payload.operationId !== request.operationId ||
+					callId !== token ||
+					!isDeepStrictEqual(payload, frozen.payload)
+				)
+					invalidReceipt();
+				await confirmationBinding(sessionId);
+				if (await store.getRecovery(sessionId, request.operationId)) invalid();
+			};
+			const stage = (frozen.payload as { stage: string }).stage;
+			return stage === "ready-mr" || stage === "merge-mr"
+				? mergeRequests(undefined, verifyDirect).execute(sessionId, request.operationId, token)
+				: stage === "delivery"
+					? deliveries(undefined, verifyDirect).execute(sessionId, request.operationId, token)
+					: stage === "update-body"
+						? bodies(verifyDirect).execute(sessionId, request.operationId, token)
+						: stage === "close-issue"
+							? closes(undefined, verifyDirect).execute(sessionId, request.operationId, token)
+							: stage === "design" || stage === "implementation"
+								? stages(verifyDirect).execute(sessionId, request.operationId, token)
+								: invalid();
 		},
 		executeConfirmation: async (sessionId, operationId, toolCallId, continuationId) => {
 			if (continuationId)

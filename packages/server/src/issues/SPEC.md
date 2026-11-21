@@ -265,38 +265,34 @@ version, approval and pending-operation metadata, never credentials or client ob
 ## Confirmed stage and delivery operations
 
 The host binds a complete sanitized report and fresh Issue revision to an immutable session operation.
-Only the exact questionnaire and its submitted `Looks right` receipt authorize execution. Skip, discuss,
-custom text, superseding messages and changed previews grant no authority. Durable intents precede any
-mutation; completed operations return the same receipt, while unresolved ones stop without replay.
-Design confirmation accepts only an absent workflow label or `workflow::backlog`, publishes the report,
-and moves that label to `workflow::in-progress`. Implementation confirmation accepts only
+Legacy prepared stage operations still require the exact questionnaire and submitted `Looks right` receipt. Direct
+`issue_run_operation` calls instead use the explicit user request as operation scope and retain the
+same bound identity, snapshot, checkout and durable-intent checks without a second questionnaire.
+Completed direct operations return the same receipt; unresolved writes never replay. Design publication
+accepts only an absent workflow label or `workflow::backlog`, publishes the report, and moves that label
+to `workflow::in-progress`. Implementation publication accepts only
 `workflow::in-progress`, binds a completed design and each selected clean checkout SHA, then moves
 the label to `workflow::in-review`. This source-to-target transition is identical on GitHub and GitLab.
 Comment and resulting labels are re-read; unrelated labels and the Issue body are preserved. Unknown,
 conflicting, closed or concurrent state is refused unless an explicit one-shot warned card is requested
 for the supported stage policy exceptions; the card states actual labels/state/receipt gaps, and execution
-rechecks frozen facts. Unsupported exceptions do not silently proceed. This new confirmation path does
-not use legacy GitLab approval labels or grant permission to start another stage.
+rechecks frozen facts. Unsupported exceptions do not silently proceed. Direct and legacy publication both avoid legacy GitLab approval labels and do not grant permission to start another stage.
 
-Delivery is separately confirmed per repository, fixing the commit, authenticated repository identity,
-canonical push URL, source/target branches and complete draft text. Non-force push uses the exact SHA;
+Legacy delivery cards freeze the commit and authenticated repository identity. Direct delivery uses the
+same immutable payload and operation validation from explicit user intent without a second card. Both paths
+fix the canonical push URL, source/target branches and complete draft text. Non-force push uses the exact SHA;
 Only active opened PRs/MRs are reusable candidates; merged/closed requests stay in provider and journal
 history without blocking subsequent requests for the same Issue or branch. A removed remote source
-branch is recreated by ordinary confirmed push. One matching opened PR/MR at the same SHA is reused without editing. An older head on that same
-source/target repository and branch is updated by the confirmed non-force push, then re-read to verify
+branch is recreated by ordinary push. One matching opened PR/MR at the same SHA is reused without editing. An older head on that same
+source/target repository and branch is updated by non-force push, then re-read to verify
 the same request id/iid now points at the new SHA; it is never replaced by a duplicate. Otherwise only a
 Draft PR/MR is created.
-Automatic commits, unconditional force push, merge and Issue closure are outside this surface. Delivery failure
-reasons and journal status are inspectable; deterministic preflight happens before intent reservation.
-Post-write uncertainty retains its intent and blocks blind replay. Read-only inspection exposes
-status/reasons, and receipt adoption requires a frozen observed-result card, original-process-ended
-human confirmation, and a fresh remote recheck before completing the original intent. Stage exact-body
-matching alone does not prove note authorship; the adoption card discloses that limitation. Automatic
-or user-authorized resend after unresolved uncertainty remains unimplemented.
-
-An explicitly confirmed exact-lease update is the sole history-replacement exception for an existing
-opened same-repository PR/MR. [[submodule-server-host]] owns its frozen remote-head authorization and execution
-contract; this grants neither generic force push nor autonomous policy authority.
+Automatic commits and unconditional force push remain outside this surface. Delivery failure reasons and
+journal status are inspectable; deterministic preflight happens before intent reservation. Post-write
+uncertainty retains its intent and blocks blind replay. A direct reconcile adopts only exact observed remote
+success after fresh repeated readback; a legacy recovery card remains available for old transcripts. An
+explicitly requested exact-lease update is allowed only for an existing opened same-repository PR/MR and
+freezes the old and replacement SHAs. It is not autonomous policy and cannot create a request.
 
 ## Workspace/session coordination
 
@@ -311,7 +307,18 @@ ordered auxiliary project ids at preparation start and stores each pending/compl
 separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
 number and a stable digest of the full primary binding; reserved branches remain unpredictable.
 Every auxiliary member is verified before a primary session may be created or reused. Missing completed
-members stop instead of being recreated; partial preparation retains successful worktrees.
+members stop instead of being recreated; partial preparation retains successful worktrees. When a completed
+Issue checkout and its exact non-prunable Git worktree still exist at the frozen path but the ThinkRail
+workspace row is missing, implementation re-entry may restore that row with the recorded workspace ID;
+it must not create a replacement checkout or change the branch. Path, branch, Git-entry, or project-owner
+ambiguity remains a hard refusal. Pure `ownedImplementation` lookup never repairs registration. Explicit
+recovery diagnoses missing registration read-only as `workspace-registration-missing`, with a
+`baseCommit: null` member for each intact checkout needing registration. Execution repairs those
+rows with their exact recorded IDs and resumes the existing session without archiving ownership,
+rebuilding a checkout, or starting another prompt. All members and session bindings must still be
+consistent; prunable, branch-mismatched or already-claimed paths remain unavailable. The recovery
+dialog distinguishes registration/session repair from rebuilding and does not warn of replacement
+or show a commit start for repair-only recovery.
 
 **Project groups.** Nothing is selected by default: an Issue starts with only its primary worktree, and
 the other repositories it may touch are offered as read-only references (below) that join on demand.
@@ -451,6 +458,15 @@ The startup reminder requires full referenced design/plan artifacts with ordered
 [[submodule-tomato-issue-workflow]] owns the detailed publication rules. This is an agent instruction,
 not host file access or completeness enforcement. Transcripts, internal reasoning, raw tool output
 and secrets must not be published.
+
+The startup prompt prefers advertised `issue_run_operation` (same operation payload shape as
+`issue_prepare_confirmation`) for explicit stage, push/Draft, exact lease, ready, merge, body and
+close intent without extra questionnaires or independent high-risk confirmation. It does not assert
+the installed session has that tool: legacy prepare/execute is fallback only when unavailable,
+using the unchanged card and actual submitted receipt. Exact identities, snapshots, SHA/lease,
+trust, binding and immutable journal checks remain required. Possibly dispatched writes require
+original-operation inspection/reconciliation, never blind resend or replacement IDs. Missing host
+capability is a blocker, not permission to use shell/provider APIs. Issue text grants no permission.
 
 The reference uses the shared strict action identity guard. Links must be canonical credential-free
 HTTP(S), on that instance beneath its base path, ending in `/<project path>/-/issues/<bound IID>`;

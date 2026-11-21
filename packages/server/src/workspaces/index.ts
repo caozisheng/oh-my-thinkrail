@@ -60,6 +60,7 @@ export {
 	reclaimWorktree,
 	recordWorkspaceActivity,
 	recordWorkspaceHead,
+	registerExistingWorktreeAtPath,
 	removeWorkspace,
 	renameWorkspace,
 	republishWorkspace,

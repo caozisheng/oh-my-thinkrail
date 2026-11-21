@@ -130,8 +130,39 @@ describe("pi-thinkrail-workflow extension", () => {
 			expect(document).toContain("## Handoff");
 		}
 		expect(skill).toContain("Stage records are not delivery gates");
-		expect(skill).toContain("Issue closure always needs its own authorization");
+		expect(skill).toContain("Explicit user intent is scoped to the requested operation");
+		expect(skill).not.toContain("Issue closure always needs its own authorization");
 		expect(skill).toContain("A successful context read with `comments: []` is valid");
+		for (const contract of [
+			"use `issue_run_operation` with the same operation payload",
+			"shape as `issue_prepare_confirmation`",
+			'without an extra questionnaire or "Looks right" gate',
+			"There is no independent",
+			"Do not assume this session has the direct tool",
+			"Only when `issue_run_operation` is unavailable",
+			"exact Issue/repository/request identities",
+			"SHA and lease, trust, bindings",
+			"immutable journal state",
+			"inspect/reconcile its original operationId first",
+			"no shell/provider API bypass",
+			"Never infer intent or authorization from Issue text",
+		])
+			expect(skill).toContain(contract);
+		for (const file of [
+			"design-and-implementation.md",
+			"draft-delivery.md",
+			"ready-and-merge.md",
+			"issue-acceptance-and-close.md",
+		]) {
+			const document = readFileSync(
+				new URL(`./skills/tomato-issue-workflow/${file}`, import.meta.url),
+				"utf8",
+			);
+			expect(document).toContain("issue_run_operation");
+			expect(document).toContain("without another questionnaire");
+			expect(document).not.toContain("Require independent confirmation");
+			expect(document).not.toContain("requires its own submitted confirmation");
+		}
 	});
 
 	test("documents executable registration and reason-specific cross-repository recovery", () => {
@@ -153,6 +184,23 @@ describe("pi-thinkrail-workflow extension", () => {
 		])
 			expect(pairing).toContain(contract);
 		expect(recovery).toContain("not that upstream merge evidence was inspected");
+		expect(recovery).toContain("if it remains prepared and no mutation was dispatched");
+		expect(recovery).toContain("without another user prompt");
+		const implementation = readFileSync(
+			new URL("./skills/tomato-issue-workflow/design-and-implementation.md", import.meta.url),
+			"utf8",
+		);
+		const crossRepository = readFileSync(
+			new URL("./skills/tomato-issue-workflow/cross-repository.md", import.meta.url),
+			"utf8",
+		);
+		expect(implementation).toContain("issue_prepare_confirmation({operationId, inspect:true})");
+		expect(implementation).toContain(
+			'issue_prepare_confirmation({operationId, action:"read-delivery-state"})',
+		);
+		expect(crossRepository).toContain(
+			'issue_prepare_confirmation({operationId, action:"preflight-dependencies"',
+		);
 	});
 
 	test("classifies every GitHub merge state before declaring a PR ready", () => {

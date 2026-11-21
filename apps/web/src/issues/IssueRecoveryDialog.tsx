@@ -25,6 +25,7 @@ export function IssueRecoveryDialog({
 	const t = useT();
 	const [restartConfirmed, setRestartConfirmed] = useState(false);
 	const restartStep = diagnosis.requiresRestart && !restartConfirmed;
+	const repairOnly = diagnosis.members.every((member) => member.baseCommit === null);
 	const blockedReason =
 		diagnosis.reason === "missing-record"
 			? t("issues.recovery.reason.missing-record")
@@ -34,7 +35,9 @@ export function IssueRecoveryDialog({
 					? t("issues.recovery.reason.pending-operation")
 					: diagnosis.reason === "session-binding-missing"
 						? t("issues.recovery.reason.session-binding-missing")
-						: t("issues.recovery.reason.resources-remain");
+						: diagnosis.reason === "workspace-registration-missing"
+							? t("issues.recovery.reason.workspace-registration-missing")
+							: t("issues.recovery.reason.resources-remain");
 	return (
 		<Dialog
 			open
@@ -51,15 +54,21 @@ export function IssueRecoveryDialog({
 				</DialogHeader>
 				{diagnosis.status === "available" ? (
 					<>
-						<p className="tr-text-ui text-text-muted">{t("issues.recovery.evidence")}</p>
+						<p className="tr-text-ui text-text-muted">
+							{repairOnly ? blockedReason : t("issues.recovery.evidence")}
+						</p>
 						{diagnosis.members.map((member) => (
 							<div key={member.projectId} className="flex flex-col gap-4 tr-text-ui">
 								<span className="break-all">{member.worktreePath}</span>
 								<span className="break-all text-text-muted">{member.branch}</span>
-								<code className="tr-code-text break-all">{member.baseCommit}</code>
+								{member.baseCommit && (
+									<code className="tr-code-text break-all">{member.baseCommit}</code>
+								)}
 							</div>
 						))}
-						<p className="tr-text-ui text-feedback-warning">{t("issues.recovery.loss")}</p>
+						{!repairOnly && (
+							<p className="tr-text-ui text-feedback-warning">{t("issues.recovery.loss")}</p>
+						)}
 					</>
 				) : (
 					<p role="alert" className="tr-text-ui text-feedback-warning">

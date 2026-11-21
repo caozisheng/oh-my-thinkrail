@@ -57,6 +57,17 @@ async function fixture() {
 					: ws.worktreePath === query.worktreePath,
 			) ?? null,
 		listGitWorktrees: async () => trees,
+		registerExistingWorktreeAtPath: async (projectId, path, branch, workspaceId) => {
+			events.push("register-existing");
+			const ws: WorkspaceHandle = {
+				id: workspaceId ?? `ws-${workspaceSequence++}`,
+				projectId,
+				worktreePath: path,
+				branch,
+			};
+			workspaces.push(ws);
+			return ws;
+		},
 		createWorkspaceAtPath: async (projectId, path, branch, name) => {
 			events.push("create");
 			createdNames.push(name);
@@ -151,6 +162,64 @@ test("explicit recovery preserves old history and creates a fresh session from t
 		branch: old.branch,
 	});
 });
+
+test("implementation re-entry restores a missing workspace registration in place", async () => {
+	const f = await fixture();
+	const first = await f.coordinator().implementation(ref);
+	const ownership = required([...f.records.values()][0]).implementation;
+	if (ownership?.state !== "completed") throw new Error("missing ownership");
+	f.workspaces.length = 0;
+	f.options.restoreSessionBinding = true;
+	const beforeEvents = [...f.events];
+	const diagnosis = await f.coordinator().implementationRecovery(ref);
+	expect(diagnosis.status).toBe("available");
+	expect(diagnosis.reason).toBe("workspace-registration-missing");
+	const result = await f.coordinator().recoverImplementation(ref, {
+		projectId: "local",
+		reference: ref,
+		locale: "en",
+		snapshot: diagnosis.snapshot,
+		restart: false,
+	});
+	expect(result).toEqual(first);
+	expect(f.workspaces).toMatchObject([
+		{
+			id: ownership.workspaceId,
+			worktreePath: ownership.worktreePath,
+			branch: ownership.branch,
+		},
+	]);
+	expect(f.events.slice(beforeEvents.length)).toEqual(["register-existing"]);
+	expect(f.trees).toHaveLength(1);
+});
+
+for (const conflict of ["prunable", "branch", "path-owner", "session-binding"] as const) {
+	test(`missing workspace registration refuses ${conflict} conflicts without repair`, async () => {
+		const f = await fixture();
+		const first = await f.coordinator().implementation(ref);
+		const workspace = required(f.workspaces.pop());
+		f.options.restoreSessionBinding = true;
+		if (conflict === "prunable") required(f.trees[0]).prunable = true;
+		if (conflict === "branch") required(f.trees[0]).branch = "unrelated";
+		if (conflict === "path-owner") f.workspaces.push({ ...workspace, id: "unrelated" });
+		if (conflict === "session-binding")
+			f.bound.set(`implementation:${first.workspaceId}`, "unrelated");
+		const events = [...f.events];
+		const diagnosis = await f.coordinator().implementationRecovery(ref);
+		expect(diagnosis.status).toBe("unavailable");
+		expect(diagnosis.reason).toBe("resources-remain");
+		await expect(
+			f.coordinator().recoverImplementation(ref, {
+				projectId: "local",
+				reference: ref,
+				locale: "en",
+				snapshot: diagnosis.snapshot,
+				restart: false,
+			}),
+		).rejects.toThrow();
+		expect(f.events).toEqual(events);
+	});
+}
 
 test("recovery keeps a healthy primary while rebuilding only a missing member", async () => {
 	const f = await fixture();
@@ -728,6 +797,23 @@ test("owned implementation returns the verified managed workspace without touchi
 	expect(await lookupOnly(f).ownedImplementation(ref)).toEqual(required(f.workspaces[0]));
 	expect(f.events).toEqual([]);
 });
+
+for (const lookup of ["ownedImplementation", "contexts"] as const) {
+	test(`${lookup} never repairs a missing registration when session binding restore is enabled`, async () => {
+		const f = await fixture();
+		await f.coordinator().implementation(ref);
+		f.workspaces.length = 0;
+		f.options.restoreSessionBinding = true;
+		const c = lookupOnly(f);
+		await expect(
+			lookup === "ownedImplementation"
+				? c.ownedImplementation(ref)
+				: c.contexts(ref, "implementation"),
+		).rejects.toThrow("reconciliation");
+		expect(f.events).toEqual([]);
+		expect(f.workspaces).toEqual([]);
+	});
+}
 
 for (const corruption of [
 	"foreign",
