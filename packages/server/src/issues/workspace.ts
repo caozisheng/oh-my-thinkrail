@@ -283,7 +283,11 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	function locked(record: IssueWorkspaceRecord): boolean {
-		return record.naming !== undefined || record.implementation !== undefined || record.members !== undefined;
+		return (
+			record.naming !== undefined ||
+			record.implementation !== undefined ||
+			record.members !== undefined
+		);
 	}
 
 	function segments(path: string): string[] {
@@ -292,7 +296,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 
 	function digest(record: IssueWorkspaceRecord): string {
 		return createHash("sha256")
-			.update(keyFor(projectId, record.reference))
+			.update(keyFor(record.projectId, record.reference))
 			.digest("hex")
 			.slice(0, 16);
 	}
@@ -548,7 +552,8 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			const owner = owners.length === 1 ? owners[0] : undefined;
 			if (
 				!owner?.naming ||
-				keyFor(owner.projectId, owner.reference) !== keyFor(projectId, record.reference) ||
+				owner.reference.number !== record.reference.number ||
+				digest(owner) !== digest(record) ||
 				owner.naming.primaryHead === naming.primaryHead ||
 				owner.naming.primaryHead.slice(0, entry.length) !==
 					naming.primaryHead.slice(0, entry.length) ||
@@ -556,6 +561,18 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			)
 				stop();
 			const ownership = owner.members?.find((member) => member.projectId === id)?.ownership;
+			const ownerLength = owner.naming.prefixLengths.find(
+				(entry) => entry.projectId === id,
+			)?.length;
+			if (
+				!ownerLength ||
+				join(
+					await projectRoot(id),
+					".worktrees",
+					`issue-${owner.reference.number}-${digest(owner)}-${owner.naming.primaryHead.slice(0, ownerLength)}`,
+				) !== path
+			)
+				stop();
 			if (
 				!ownership ||
 				!state.occupied ||

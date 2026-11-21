@@ -337,8 +337,8 @@ of every participant **plus every other open group member found where it belongs
 freezes the members (even with an empty selection, so later joins share the slot); it is stored on the
 record as `layout`, its places are never moved, and a join only appends the place of a member imported
 after the freeze. A project outside the layout (a non-group project, or a member whose place drifted)
-joins with an ordinary per-repository path. A record without a layout and without selection keeps the
-exact single-repository shape (no `members`). With a layout every checkout, primary included, lives at
+joins with an ordinary per-repository path. A record without a layout and without selection keeps
+no `members`; new preparations still persist their naming identity for future joins. With a layout every checkout, primary included, lives at
 `<root>/.worktrees/<slot>/<place>`, so repositories keep their relative layout. The slot name is
 uniform — `issue-<IID>-<binding digest>` whichever member is primary (no member is special for sitting at
 the group folder; the folder is usually a plain non-Git folder) — and is frozen into `layout.slot` with the

@@ -1243,3 +1243,44 @@ test("unknown occupancy refuses without selecting a longer SHA", async () => {
 	expect(f.workspaces).toHaveLength(1);
 	expect(f.records.get(key)?.naming?.prefixLengths).toEqual([]);
 });
+
+test("a frozen length remains fixed on rejoin and refuses a new occupant", async () => {
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	await f.coordinator().addRepository(ref, "api");
+	const key = required([...f.records.keys()][0]);
+	const row = required(f.records.get(key));
+	row.members = [];
+	row.repositoryProjectIds = [];
+	f.records.set(key, row);
+	await expect(f.coordinator().addRepository(ref, "api")).rejects.toThrow();
+	expect(f.workspaces).toHaveLength(2);
+	expect(f.records.get(key)?.naming?.prefixLengths).toEqual([{ projectId: "api", length: 12 }]);
+});
+test("naming save failure creates no checkout and cannot silently downgrade", async () => {
+	const f = await fixture();
+	f.failSave(1);
+	await expect(f.coordinator().implementation(ref)).rejects.toThrow();
+	expect(f.records.size).toBe(0);
+	expect(f.workspaces).toHaveLength(0);
+});
+test("cleanup and rejoin keep the original member path after primary HEAD changes", async () => {
+	const f = await fixture();
+	await f.coordinator().implementation(ref);
+	await f.coordinator().addRepository(ref, "api");
+	const member = required(f.workspaces.find((ws) => ws.projectId === "api"));
+	f.options.memberUnchanged = () => true;
+	f.options.removeMember = async (ws) => {
+		f.workspaces.splice(f.workspaces.indexOf(ws), 1);
+		f.trees.splice(
+			f.trees.findIndex((tree) => tree.path === ws.worktreePath),
+			1,
+		);
+		await rm(ws.worktreePath, { recursive: true });
+		return true;
+	};
+	await f.coordinator().cleanupRepositories(ref);
+	f.options.headCommit = () => "b".repeat(40);
+	await f.coordinator().addRepository(ref, "api");
+	expect(f.workspaces.find((ws) => ws.projectId === "api")?.worktreePath).toBe(member.worktreePath);
+});
