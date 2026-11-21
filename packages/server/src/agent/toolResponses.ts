@@ -92,6 +92,7 @@ export function awaitingToolCallId(
 	pendingOnly = false,
 ): string | null {
 	const views = messages as readonly MessageView[];
+	let laterAssistant = false;
 	for (let i = views.length - 1; i >= 0; i--) {
 		const view = views[i];
 		if (!view) continue;
@@ -100,8 +101,9 @@ export function awaitingToolCallId(
 			const { id } = block;
 			if (id === undefined || block.name === undefined || !interactive.has(block.name)) continue;
 			if (!assessRespondability(messages, id, interactive).ok) continue;
-			if (!pendingOnly || hasPendingToolResult(messages, id)) return id;
+			if ((!pendingOnly && !laterAssistant) || hasPendingToolResult(messages, id)) return id;
 		}
+		if (view.role === "assistant") laterAssistant = true;
 	}
 	return null;
 }
