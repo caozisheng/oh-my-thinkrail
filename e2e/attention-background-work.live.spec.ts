@@ -54,11 +54,8 @@ async function expectHeldThenLit(
 	await finished();
 	await expect(trigger).toHaveAttribute("data-active-count", "0", { timeout: 180_000 });
 	await expect.poll(() => states().some(isIdleUnread), { timeout: 180_000 }).toBe(true);
-	await expect(row).toHaveAttribute("data-attention", "true", { timeout: 30_000 });
-	await expect(row.getByTestId("workspace-attention")).toHaveAttribute(
-		"aria-label",
-		"Needs attention",
-	);
+	await expect(row).not.toHaveAttribute("data-attention", "true");
+	await expect(row.getByTestId("workspace-attention")).toHaveCount(0);
 	await expect(row).not.toHaveAttribute("data-running", "true");
 
 	const after = states().slice(launchSettled);

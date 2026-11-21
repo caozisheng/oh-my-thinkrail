@@ -33,7 +33,7 @@ test("single-select: focus, roving keys, and Enter resolve the tool", {
 	await expect(workspaceRow).toHaveAttribute("data-attention", "true");
 	await expect(workspaceRow.getByTestId("workspace-attention")).toHaveAttribute(
 		"aria-label",
-		"Needs attention",
+		"Your input is needed",
 	);
 	await expect(workspaceRow).toHaveAttribute("data-running", "true");
 	await expect(workspaceRow.getByTestId("running-icon")).toHaveAttribute(
@@ -73,6 +73,8 @@ test("single-select: focus, roving keys, and Enter resolve the tool", {
 	await pressPlatformShortcut(page, "Enter");
 
 	await expect(page.getByTestId("chat-input")).toBeFocused();
+	await expect(workspaceRow.getByTestId("workspace-attention")).toHaveCount(0);
+	await expect(workspaceRow).not.toHaveAttribute("data-attention", "true");
 
 	const record = answeredRecord(page);
 	await expect(record).toBeVisible({ timeout: 60_000 });

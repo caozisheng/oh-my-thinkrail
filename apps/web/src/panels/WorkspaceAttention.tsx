@@ -3,7 +3,7 @@ import { useT } from "@thinkrail/locales/react";
 
 export function WorkspaceAttention() {
 	const t = useT();
-	const label = t("components.attentionDot.label");
+	const label = t("chat.attention.needed");
 	return (
 		<span
 			data-testid="workspace-attention"

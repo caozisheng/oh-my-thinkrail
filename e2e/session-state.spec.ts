@@ -28,7 +28,10 @@ async function expectAttentionDot(row: Locator): Promise<void> {
 	await expect(row).toHaveAttribute("data-attention", "true");
 	const isWorkspace = (await row.getAttribute("data-testid")) === "workspace-item";
 	const indicator = row.getByTestId(isWorkspace ? "workspace-attention" : "attention-dot");
-	await expect(indicator).toHaveAttribute("aria-label", "Needs attention");
+	await expect(indicator).toHaveAttribute(
+		"aria-label",
+		isWorkspace ? "Your input is needed" : "Needs attention",
+	);
 	if (isWorkspace) {
 		await expect(indicator).toHaveClass(/text-feedback-warning/);
 		await expect(row.getByTestId("attention-dot")).toHaveCount(0);
@@ -36,6 +39,12 @@ async function expectAttentionDot(row: Locator): Promise<void> {
 		await expect(indicator.locator('[aria-hidden="true"]')).toHaveClass(/bg-primary/);
 		await expect(row.getByTestId("workspace-attention")).toHaveCount(0);
 	}
+}
+
+async function expectNoCompletionMarker(row: Locator): Promise<void> {
+	await expect(row).not.toHaveAttribute("data-attention", /.+/);
+	await expect(row.getByTestId("workspace-attention")).toHaveCount(0);
+	await expect(row.getByTestId("attention-dot")).toHaveCount(0);
 }
 
 async function seedSentReviewComment(page: Page, sessionId: string): Promise<void> {
@@ -133,7 +142,7 @@ test("entering a workspace clears its visible unread result without a chat click
 	try {
 		await reconnectWithSeed(page);
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await enterDefaultWorkspace(page);
 		await expect(page.getByText("Visible workspace result.", { exact: true })).toBeVisible();
@@ -165,9 +174,9 @@ test("marking a workspace unread relights its result until the chat is left, and
 		await openWorkspaceMenu(workspace);
 		await expect(page.getByTestId("workspace-mark-read")).toHaveCount(0);
 		await page.getByTestId("workspace-mark-unread").click();
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 		await settleFrames(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await page.getByTestId("scope-workspace").click();
 		await expect(page.getByTestId("scope-workspace-mark-unread")).toHaveCount(0);
@@ -176,9 +185,9 @@ test("marking a workspace unread relights its result until the chat is left, and
 
 		await page.getByTestId("scope-workspace").click();
 		await page.getByTestId("scope-workspace-mark-unread").click();
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 		await goProjectHome(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 		await workspace.getByTestId("workspace-name").click();
 		await expect(page.getByText("Result to revisit.", { exact: true })).toBeVisible();
 		await expect(workspace).not.toHaveAttribute("data-attention", /.+/);
@@ -206,17 +215,17 @@ test("opening an unread finished chat at its latest edge clears it for every cli
 		await reconnectWithSeed(page);
 		const project = page.getByTestId("project-item").first();
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 		await expect(project.getByTestId("project-expand")).toHaveAttribute("data-expanded", "true");
 		await project.getByTestId("project-expand").click();
-		await expectAttentionDot(project);
+		await expectNoCompletionMarker(project);
 		const peer = await page.context().newPage();
 		await peer.goto("/");
 		await expect(peer.getByTestId("connection-status")).toHaveAttribute("data-status", "connected");
 		const peerProject = peer.getByTestId("project-item").first();
 		const peerExpand = peerProject.getByTestId("project-expand");
 		if ((await peerExpand.getAttribute("data-expanded")) === "true") await peerExpand.click();
-		await expectAttentionDot(peerProject);
+		await expectNoCompletionMarker(peerProject);
 
 		await enterDefaultWorkspace(page);
 		await openPersistedChat(page, "finished state receipt");
@@ -272,7 +281,7 @@ test("an unread result clears only once its chat is seen at the latest edge of a
 	try {
 		await reconnectWithSeed(page);
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await setWindowFocus(page, false);
 		await enterDefaultWorkspace(page);
@@ -282,7 +291,7 @@ test("an unread result clears only once its chat is seen at the latest edge of a
 		await expect(chatScroll).toHaveAttribute("data-follow-state", "following");
 		await settleFrames(page);
 		expect(acknowledgements()).toBe(0);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await chatScroll.evaluate((root) => {
 			const scroller = root.querySelector<HTMLElement>("[data-virtuoso-scroller]");
@@ -295,7 +304,7 @@ test("an unread result clears only once its chat is seen at the latest edge of a
 		await setWindowFocus(page, true);
 		await settleFrames(page);
 		expect(acknowledgements()).toBe(0);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await page.getByTestId("scroll-to-bottom").click();
 		await expect(chatScroll).toHaveAttribute("data-follow-state", "following");
@@ -321,7 +330,7 @@ test("a result finished under the open Resources inspector clears only once the 
 	try {
 		await reconnectWithSeed(page);
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await setWindowFocus(page, false);
 		await enterDefaultWorkspace(page);
@@ -333,7 +342,7 @@ test("a result finished under the open Resources inspector clears only once the 
 		await setWindowFocus(page, true);
 		await settleFrames(page);
 		expect(acknowledgements()).toBe(0);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await inspector.getByTestId("resources-inspector-close").click();
 		await expect(inspector).toHaveCount(0);
@@ -357,7 +366,7 @@ test("a result behind an open modal clears only once the modal closes", async ({
 	try {
 		await reconnectWithSeed(page);
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await setWindowFocus(page, false);
 		await enterDefaultWorkspace(page);
@@ -373,7 +382,7 @@ test("a result behind an open modal clears only once the modal closes", async ({
 		await setWindowFocus(page, true);
 		await settleFrames(page);
 		expect(acknowledgements()).toBe(0);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		await page.keyboard.press("Escape");
 		await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -401,7 +410,7 @@ test("opening a chat from a sent review comment clears its unread result", async
 	try {
 		await reconnectWithSeed(page);
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 
 		peer = await page.context().newPage();
 		await peer.goto("/");
@@ -409,7 +418,7 @@ test("opening a chat from a sent review comment clears its unread result", async
 		const peerProject = peer.getByTestId("project-item").first();
 		const peerExpand = peerProject.getByTestId("project-expand");
 		if ((await peerExpand.getAttribute("data-expanded")) === "true") await peerExpand.click();
-		await expectAttentionDot(peerProject);
+		await expectNoCompletionMarker(peerProject);
 
 		await seedSentReviewComment(page, session.id);
 		await enterDefaultWorkspace(page);
@@ -420,7 +429,7 @@ test("opening a chat from a sent review comment clears its unread result", async
 		await expect(
 			page.getByTestId("chat-message").filter({ hasText: "Review-opened finished result." }),
 		).toHaveCount(0);
-		await expectAttentionDot(peerProject);
+		await expectNoCompletionMarker(peerProject);
 
 		await revealWorkbenchTool(page, "review");
 		await expect(page.getByTestId("review-panel")).toBeVisible();
