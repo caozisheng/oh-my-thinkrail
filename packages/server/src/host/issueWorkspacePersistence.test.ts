@@ -616,3 +616,142 @@ test("pre-release guard follows required flushes and retains the fence on reject
 	expect(readdirSync(dir).filter((name) => name.endsWith(".lock"))).toHaveLength(1);
 	await expect(store.withLaunch("local", ref, async () => {})).rejects.toMatchObject(failure);
 });
+
+for (const length of [40, 64]) {
+	test(`frozen naming ${length}-digit OID round trips`, async () => {
+		const f = setup();
+		const row = {
+			...record,
+			naming: {
+				version: 1 as const,
+				primaryHead: "a".repeat(length),
+				prefixLengths: [{ projectId: "api", length: 13 }],
+			},
+		};
+		await f.store.withLaunch("local", ref, (p) => p.save(key(), row));
+		expect(
+			await createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, (p) => p.load(key())),
+		).toEqual(row);
+	});
+}
+for (const naming of [
+	{ version: 2, primaryHead: "a".repeat(40), prefixLengths: [] },
+	{ version: 1, primaryHead: "a".repeat(39), prefixLengths: [] },
+	{ version: 1, primaryHead: "g".repeat(40), prefixLengths: [] },
+	{ version: 1, primaryHead: "a".repeat(40), prefixLengths: [{ projectId: "api", length: 11 }] },
+	{ version: 1, primaryHead: "a".repeat(40), prefixLengths: [{ projectId: "api", length: 41 }] },
+	{ version: 1, primaryHead: "a".repeat(40), prefixLengths: [{ projectId: "api", length: 12.5 }] },
+	{ version: 1, primaryHead: "a".repeat(40), prefixLengths: [{ projectId: "local", length: 12 }] },
+	{ version: 1, primaryHead: "a".repeat(40), prefixLengths: [{ projectId: "../api", length: 12 }] },
+	{
+		version: 1,
+		primaryHead: "a".repeat(40),
+		prefixLengths: [
+			{ projectId: "api", length: 12 },
+			{ projectId: "api", length: 13 },
+		],
+	},
+	{ version: 1, primaryHead: "a".repeat(40), prefixLengths: [], extra: true },
+]) {
+	test(`invalid frozen naming is rejected ${JSON.stringify(naming)}`, async () => {
+		const f = setup();
+		await expect(
+			f.store.withLaunch("local", ref, (p) =>
+				p.save(key(), { ...record, naming } as IssueWorkspaceRecord),
+			),
+		).rejects.toMatchObject(failure);
+	});
+}
+
+test("real Git primary HEAD freezes independently of member branch start and survives restart", async () => {
+	const f = setup();
+	const primary = join(f.dir, "primary");
+	const auxiliary = join(f.dir, "auxiliary");
+	for (const path of [primary, auxiliary]) {
+		fs.mkdirSync(path);
+		const init = Bun.spawnSync(["git", "-C", path, "init", "-q"]);
+		expect(init.success).toBe(true);
+		expect(
+			Bun.spawnSync([
+				"git",
+				"-C",
+				path,
+				"-c",
+				"user.name=Test",
+				"-c",
+				"user.email=test@example.invalid",
+				"commit",
+				"--allow-empty",
+				"-qm",
+				path,
+			]).success,
+		).toBe(true);
+	}
+	const git = (path: string, ...args: string[]) => {
+		const result = Bun.spawnSync(["git", "-C", path, ...args]);
+		if (!result.success) throw new Error("fixture git failed");
+		return result.stdout.toString().trim();
+	};
+	const original = git(primary, "rev-parse", "HEAD");
+	const memberBase = git(auxiliary, "rev-parse", "HEAD");
+	const workspaces: import("../issues").WorkspaceHandle[] = [];
+	const launch = (joinMember = false) =>
+		createIssueWorkspacePersistence(f.dir).withLaunch("local", ref, async (ports) => {
+			const coordinator = createIssueWorkspaceCoordinator({
+				projectId: "local",
+				...ports,
+				projectPath: (id) => (id === "local" ? primary : auxiliary),
+				headCommit: (path) => git(path, "rev-parse", "HEAD"),
+				listGitWorktrees: (id) =>
+					workspaces
+						.filter((ws) => ws.projectId === id)
+						.map((ws) => ({ path: ws.worktreePath, branch: ws.branch })),
+				findWorkspace: (query) =>
+					workspaces.find((ws) =>
+						"workspaceId" in query
+							? ws.id === query.workspaceId
+							: ws.worktreePath === query.worktreePath,
+					) ?? null,
+				createWorkspaceAtPath: (id, path, branch, _name, _layout, base) => {
+					git(
+						id === "local" ? primary : auxiliary,
+						"worktree",
+						"add",
+						"-b",
+						branch,
+						path,
+						base ?? "HEAD",
+					);
+					const ws = { id: `ws-${workspaces.length}`, projectId: id, worktreePath: path, branch };
+					workspaces.push(ws);
+					return ws;
+				},
+				defaultWorkspace: () => {
+					throw new Error("unexpected design");
+				},
+				createSession: () => "session",
+				sessionExists: () => "idle",
+			});
+			if (joinMember) return coordinator.addRepository(ref, "api");
+			return coordinator.implementation(ref);
+		});
+	await launch();
+	git(
+		primary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.invalid",
+		"commit",
+		"--allow-empty",
+		"-qm",
+		"later",
+	);
+	expect(git(primary, "rev-parse", "HEAD")).not.toBe(original);
+	await launch(true);
+	const member = required(workspaces.find((ws) => ws.projectId === "api"));
+	expect(member.worktreePath.endsWith(`-${original.slice(0, 12)}`)).toBe(true);
+	expect(git(member.worktreePath, "rev-parse", "HEAD")).toBe(memberBase);
+	await launch();
+	expect(workspaces).toHaveLength(2);
+});

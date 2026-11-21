@@ -86,6 +86,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 				"repositoryProjectIds",
 				"members",
 				"layout",
+				"naming",
 			],
 		) ||
 		!id(value.projectId) ||
@@ -101,6 +102,35 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		})
 	)
 		stop();
+	if (Object.hasOwn(value, "naming")) {
+		const naming = value.naming;
+		if (
+			!object(naming) ||
+			!shape(naming, ["version", "primaryHead", "prefixLengths"]) ||
+			naming.version !== 1 ||
+			typeof naming.primaryHead !== "string" ||
+			!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(naming.primaryHead) ||
+			!Array.isArray(naming.prefixLengths) ||
+			naming.prefixLengths.length > 1024
+		)
+			stop();
+		const seen = new Set<string>();
+		for (const entry of naming.prefixLengths) {
+			if (
+				!object(entry) ||
+				!shape(entry, ["projectId", "length"]) ||
+				!id(entry.projectId) ||
+				entry.projectId === value.projectId ||
+				seen.has(entry.projectId) ||
+				!Number.isSafeInteger(entry.length) ||
+				typeof entry.length !== "number" ||
+				entry.length < 12 ||
+				entry.length > naming.primaryHead.length
+			)
+				stop();
+			seen.add(entry.projectId);
+		}
+	}
 	if (Object.hasOwn(value, "members")) {
 		if (
 			!Array.isArray(value.members) ||

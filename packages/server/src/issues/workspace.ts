@@ -68,6 +68,11 @@ export interface IssueWorkspaceRecord {
 	repositoryProjectIds?: string[];
 	members?: IssueWorkspaceMember[];
 	layout?: IssueWorkspaceLayout;
+	naming?: {
+		version: 1;
+		primaryHead: string;
+		prefixLengths: { projectId: string; length: number }[];
+	};
 	/** Durable uncertainty fence; only provable reconciliation of the recorded stage may clear it. */
 	sessionPending?: { stage: "design" | "implementation"; workspaceId: string };
 	design?: { workspaceId: string; sessionId?: string };
@@ -121,6 +126,8 @@ export interface IssueWorkspaceOptions {
 	baseRef?(projectId: string): Awaitable<string | undefined>;
 	/** The commit checked out at a just-created worktree. */
 	headCommit?(path: string): Awaitable<string | null>;
+	/** Validated durable ownership records, never destination directory contents. */
+	workspaceRecords?(): Awaitable<readonly IssueWorkspaceRecord[]>;
 	/** Other repositories an Issue may read (as `reference`) and join: their main checkouts. */
 	references?(): Awaitable<readonly { projectId: string; workspaceId: string; path: string }[]>;
 	/** True only when the worktree has no commits beyond `base` and no tracked or untracked change. */
@@ -276,7 +283,11 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 	}
 
 	function locked(record: IssueWorkspaceRecord): boolean {
-		return record.implementation !== undefined || record.members !== undefined;
+		return (
+			record.naming !== undefined ||
+			record.implementation !== undefined ||
+			record.members !== undefined
+		);
 	}
 
 	function segments(path: string): string[] {
@@ -285,7 +296,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 
 	function digest(record: IssueWorkspaceRecord): string {
 		return createHash("sha256")
-			.update(keyFor(projectId, record.reference))
+			.update(keyFor(record.projectId, record.reference))
 			.digest("hex")
 			.slice(0, 16);
 	}
@@ -313,7 +324,11 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			return join(await slotFor(record), ...segments(own));
 		}
 		const number = record.reference.number;
-		const name = id === projectId ? `issue-${number}` : `issue-${number}-${digest(record)}`;
+		const length =
+			record.naming?.prefixLengths.find((entry) => entry.projectId === id)?.length ?? 12;
+		const suffix = record.naming ? `-${record.naming.primaryHead.slice(0, length)}` : "";
+		const name =
+			id === projectId ? `issue-${number}` : `issue-${number}-${digest(record)}${suffix}`;
 		return join(await projectRoot(id), ".worktrees", name);
 	}
 
@@ -517,10 +532,67 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		return record;
 	}
 
+	async function reserveMemberPath(record: IssueWorkspaceRecord, id: string): Promise<string> {
+		const naming = record.naming;
+		if (!naming || placeOf(record, id) !== undefined) return worktreePathFor(record, id);
+		if (naming.prefixLengths.some((entry) => entry.projectId === id))
+			return worktreePathFor(record, id);
+		const entry = { projectId: id, length: 12 };
+		naming.prefixLengths.push(entry);
+		while (true) {
+			const path = await worktreePathFor(record, id);
+			const state = await implementationPathState(path, id);
+			const registered = await options.findWorkspace({ worktreePath: path });
+			if (!state.occupied && !state.trees.length && !registered) return path;
+			const owners = ((await options.workspaceRecords?.()) ?? []).filter((row) =>
+				row.members?.some(
+					(member) => member.projectId === id && member.ownership?.worktreePath === path,
+				),
+			);
+			const owner = owners.length === 1 ? owners[0] : undefined;
+			if (
+				!owner?.naming ||
+				owner.reference.number !== record.reference.number ||
+				digest(owner) !== digest(record) ||
+				owner.naming.primaryHead === naming.primaryHead ||
+				owner.naming.primaryHead.slice(0, entry.length) !==
+					naming.primaryHead.slice(0, entry.length) ||
+				entry.length >= naming.primaryHead.length
+			)
+				stop();
+			const ownership = owner.members?.find((member) => member.projectId === id)?.ownership;
+			const ownerLength = owner.naming.prefixLengths.find(
+				(entry) => entry.projectId === id,
+			)?.length;
+			if (
+				!ownerLength ||
+				join(
+					await projectRoot(id),
+					".worktrees",
+					`issue-${owner.reference.number}-${digest(owner)}-${owner.naming.primaryHead.slice(0, ownerLength)}`,
+				) !== path
+			)
+				stop();
+			if (
+				!ownership ||
+				!state.occupied ||
+				state.trees.length !== 1 ||
+				state.trees[0]?.branch !== ownership.branch ||
+				state.trees[0].prunable
+			)
+				stop();
+			if (registered) verifyWorkspace(registered, ownership, path, id);
+			else if (ownership.state === "completed") stop();
+			entry.length++;
+		}
+	}
+
 	async function prepareMember(key: string, record: IssueWorkspaceRecord, memberProjectId: string) {
 		const member = record.members?.find((candidate) => candidate.projectId === memberProjectId);
 		if (!member || member.removing) stop();
-		const path = await worktreePathFor(record, member.projectId);
+		const path = member.ownership
+			? await worktreePathFor(record, member.projectId)
+			: await reserveMemberPath(record, member.projectId);
 		let ownership = member.ownership;
 		const state = await implementationPathState(path, member.projectId);
 		const registered = await options.findWorkspace({ worktreePath: path });
@@ -651,7 +723,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 			if (fresh && entry && fresh.root === record.layout.root)
 				record.layout = { ...record.layout, paths: [...record.layout.paths, { ...entry }] };
 		}
-		const target = await worktreePathFor(record, memberId);
+		const target = await reserveMemberPath(record, memberId);
 		const describe = (id: string) => {
 			const place = placeOf(record, id);
 			return place === undefined ? id : place === "" ? "/" : place;
@@ -676,6 +748,12 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		key: string,
 		record: IssueWorkspaceRecord,
 	): Promise<IssueSessionLaunch> {
+		if (!record.naming && !record.implementation && !record.members && !record.layout) {
+			const primaryHead = await options.headCommit?.(await projectRoot());
+			if (!primaryHead || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(primaryHead)) stop();
+			record = { ...record, naming: { version: 1, primaryHead, prefixLengths: [] } };
+			await options.save(key, record);
+		}
 		record = await freezeMembers(key, record);
 		record = await settleRemovals(key, record);
 		let primary: CompletedWorkspace | undefined;
@@ -933,6 +1011,7 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		setRepositories(reference: IssueReference, projectIds: string[]) {
 			return run(reference, async (key, record) => {
 				if (
+					record.naming ||
 					record.implementation ||
 					record.members ||
 					!isIssueRepositoriesInput({ projectId, reference, projectIds })

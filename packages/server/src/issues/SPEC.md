@@ -305,7 +305,17 @@ validates that selected projects are open and available before saving or launchi
 no resource trust. Recovery preserves the selection together with both stage records. Optional `members` freezes the
 ordered auxiliary project ids at preparation start and stores each pending/completed ownership
 separately. Auxiliary paths are source-repository `.worktrees` direct children named with the Issue
-number and a stable digest of the full primary binding; reserved branches remain unpredictable.
+number and a stable digest of the full primary binding; new preparations append a primary HEAD prefix
+(default 12 hex digits) to standalone auxiliary paths. Before any checkout creation, `naming` freezes
+version 1, the full 40/64-digit HEAD of the primary main checkout, and selected per-member prefix
+lengths in the ownership record. This identity is independent of branch start refs, survives re-entry,
+late joins, cleanup/rejoin and explicit recovery, and is required even for primary-only preparation.
+Missing/invalid HEAD or failed persistence stops before checkout creation. Existing implementation,
+member or layout records without naming retain legacy paths without backfilling HEAD. Primary paths,
+group slots, layout places, display names and reserved branches do not change. A prefix may grow only
+when validated persisted ownership proves a different full SHA collided at the candidate path; unknown
+occupants still refuse. Length and pending ownership persist before creation and retries keep that
+choice. Reserved branches remain unpredictable.
 Every auxiliary member is verified before a primary session may be created or reused. Missing completed
 members stop instead of being recreated; partial preparation retains successful worktrees. When a completed
 Issue checkout and its exact non-prunable Git worktree still exist at the frozen path but the ThinkRail
@@ -327,8 +337,8 @@ of every participant **plus every other open group member found where it belongs
 freezes the members (even with an empty selection, so later joins share the slot); it is stored on the
 record as `layout`, its places are never moved, and a join only appends the place of a member imported
 after the freeze. A project outside the layout (a non-group project, or a member whose place drifted)
-joins with an ordinary per-repository path. A record without a layout and without selection keeps the
-exact single-repository shape (no `members`). With a layout every checkout, primary included, lives at
+joins with an ordinary per-repository path. A record without a layout and without selection keeps
+no `members`; new preparations still persist their naming identity for future joins. With a layout every checkout, primary included, lives at
 `<root>/.worktrees/<slot>/<place>`, so repositories keep their relative layout. The slot name is
 uniform — `issue-<IID>-<binding digest>` whichever member is primary (no member is special for sitting at
 the group folder; the folder is usually a plain non-Git folder) — and is frozen into `layout.slot` with the

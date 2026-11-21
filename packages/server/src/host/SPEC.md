@@ -1526,7 +1526,10 @@ callback; failures retain uncertainty for explicit reconciliation, never automat
 
 Server-only `repositories` / `setRepositories` actions use the same full-identity launch fence and
 strict selection DTOs. Saving requires open trusted member projects. Launch pins their source paths and
-rechecks availability/trust around every awaited port.
+rechecks availability/trust around every awaited port. The coordinator's naming HEAD comes from the
+primary main checkout through the guarded Git OID reader, independently of freshly fetched branch
+starts. Workspace persistence strictly validates the optional versioned naming identity and per-member
+prefix lengths; its validated ownership listing is the only source for prefix-collision proof.
 
 **Project groups.** `project.scanGroup` / `project.importGroup` delegate to `projects`
 (`scanProjectGroup` / `importProjectGroup`). For Issue actions the host supplies the coordinator's

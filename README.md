@@ -35,7 +35,10 @@ token. It includes:
   navigation finishes or an error is reported.
 - **Linked repositories**: an issue can name other open projects it also touches. Design reads their
   own checkouts; implementation then prepares a worktree in each of those repositories under its own
-  `.worktrees/`, starts a single session only when every one is ready, and tags each worktree in the
+  `.worktrees/`. New standalone associated checkouts use `issue-<IID>-<binding digest>-<primary HEAD prefix>`:
+  the primary main checkout's HEAD is frozen at first implementation preparation, so later joins and
+  retries keep the same version identity. Existing checkouts and project-group layouts keep their paths.
+  Implementation starts a single session only when every checkout is ready, and tags each worktree in the
   project rail with the issue number (`#23`, and `#23(master)` for the issue's primary worktree).
   Single-repository workspaces show no issue tag. The Issues list reads linked-repository indicators
   automatically on initial load and refresh. Changes, review and commits stay attributed per repository; commits
