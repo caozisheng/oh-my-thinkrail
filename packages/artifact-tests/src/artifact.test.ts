@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { binaryArtifactName } from "@thinkrail/cli/artifact";
 import { removeTree } from "@thinkrail/shared/removeTree";
 import {
 	binaryArtifactPath,
+	extractWindowsSetupArchive,
 	locateDesktopLauncher,
 	locateWindowsSetupExecutable,
 	windowsSetupExecutableSuffix,
@@ -192,6 +193,40 @@ test.each(["stable", "canary"])(
 		const root = packageDir(`Another${windowsSetupExecutableSuffix(channel)}`, join("other", name));
 		expect(() => locateWindowsSetupExecutable(root, channel)).toThrow(
 			`desktop ZIP does not contain ${name}`,
+		);
+	},
+);
+
+test.skipIf(process.platform !== "win32")(
+	"extracts the Windows installer ZIP without Expand-Archive",
+	() => {
+		const root = packageDir(
+			"source/oh-my-thinkrail-Setup.exe",
+			"source/.installer/payload.tar.zst",
+		);
+		const source = join(root, "source");
+		writeFileSync(join(source, "oh-my-thinkrail-Setup.exe"), "installer bytes");
+		writeFileSync(join(source, ".installer", "payload.tar.zst"), "update bytes");
+		const archive = join(root, "installer's archive.zip");
+		const packageRoot = join(root, "installer's extracted files");
+		mkdirSync(packageRoot);
+		const zipped = Bun.spawnSync(
+			[
+				"powershell",
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				`$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory('${source.replaceAll("'", "''")}', '${archive.replaceAll("'", "''")}')`,
+			],
+			{ stdout: "pipe", stderr: "pipe" },
+		);
+		expect(zipped.exitCode).toBe(0);
+		extractWindowsSetupArchive(archive, packageRoot);
+		expect(readFileSync(locateWindowsSetupExecutable(packageRoot, "stable"), "utf8")).toBe(
+			"installer bytes",
+		);
+		expect(readFileSync(join(packageRoot, ".installer", "payload.tar.zst"), "utf8")).toBe(
+			"update bytes",
 		);
 	},
 );

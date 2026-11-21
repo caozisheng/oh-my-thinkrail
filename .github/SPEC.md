@@ -165,7 +165,9 @@ Electrobun devkit. Its binary smoke also checks the compiled exe's icon and file
 ([[module-artifact-tests]]). A separate Windows desktop job builds the desktop app and runs the native
 desktop smoke, which checks the branded `bun.exe`, `launcher.exe` and uninstaller. Only a Windows build
 runs the desktop `postBuild` branding over Hutch's output ([[module-desktop]]). Before this job existed, a
-branding defect first failed in the nightly release build. Its path gate (`bun run test:windows-paths`) runs
+branding defect first failed in the nightly release build. That job also packages the stable installer with
+System32's native tar and runs first-install smoke on the disposable Windows runner, covering ZIP extraction
+and the real installer-to-app handoff before merge. Its path gate (`bun run test:windows-paths`) runs
 the suites that pin architecture Decision 22 on the one host where git prints `C:/…`, node prints `C:\…`,
 and `\` is not a file-name character: stored directories, chat lifecycle in Default and external workspaces,
 POSIX wire paths, git object names, picker roots, and `install.ps1`'s PATH check. A suite joins the gate only

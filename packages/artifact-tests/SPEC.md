@@ -134,6 +134,11 @@ Windows installer smoke is permitted only on disposable GitHub-hosted Actions ru
 writes real known-folder shortcuts and HKCU registration beyond HOME isolation. The guard runs before
 creating files or launching the installer. Other native smoke still isolates both HOME and USERPROFILE.
 
+Windows ZIP preparation calls .NET's two-argument `ZipFile.ExtractToDirectory` directly through Windows
+PowerShell, with terminating errors. It never loads `Microsoft.PowerShell.Archive`: a PowerShell 7
+module inherited through `PSModulePath` can call a .NET overload Windows PowerShell 5.1 does not have.
+The Windows CI desktop job exercises both expanded-app and stable first-install smoke before merge.
+
 Locators resolve the documented app/installer paths and channel-specific setup names, not the first
 matching artifact from an ambiguous directory. Windows setup suffixes retain the stable/canary distinction.
 A macOS run is not evidence of Windows/Linux native execution or download-time Gatekeeper acceptance.
