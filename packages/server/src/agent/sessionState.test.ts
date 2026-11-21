@@ -158,6 +158,29 @@ describe("deriveSessionState", () => {
 		});
 	});
 
+	test("a finished transcript does not revive a historical unexecuted question", () => {
+		const ask = entry(
+			"a-ask",
+			{
+				role: "assistant",
+				stopReason: "toolUse",
+				timestamp: 2,
+				content: [
+					{ type: "toolCall", id: "q1", name: "ask_user_question", arguments: QUESTION_ARGS },
+				],
+			} as unknown as Message,
+			"u1",
+		);
+		const state = deriveSessionState(
+			inputs({ entries: [user(), ask, assistant("finished", "stop", "a-ask")] }),
+		);
+		expect(state.needsInput).toBeNull();
+		expect(state.completion).toEqual({
+			completionId: "completion:finished",
+			outcome: "succeeded",
+		});
+	});
+
 	test("an attached session's transcript awaits only a pending-acked interactive call", () => {
 		const ask = entry(
 			"a-ask",
