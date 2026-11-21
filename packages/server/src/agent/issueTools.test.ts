@@ -391,6 +391,11 @@ test("the shared resource loader registers issue tools as a named inline extensi
 
 test("recovery is an exact optional enum delegated unchanged and safely classified", async () => {
 	const description = createIssueRecordSummaryTool().description;
+	expect(description).toContain(
+		"Summary publication is best-effort, not a work or session-completion gate",
+	);
+	expect(description).toContain("Do not ask for recovery authorization merely to end the session");
+	expect(description).not.toContain("Confirm the returned noteId before yielding");
 	expect(description).toContain("explicit HUMAN confirmation before either recovery mode");
 	expect(description).toContain("an agent must not infer it");
 	expect(description).toContain("does not prove original authorship");
@@ -420,7 +425,7 @@ test("recovery is an exact optional enum delegated unchanged and safely classifi
 	await expectClosedFailure(
 		record({ operationId: "op", summary: "body" }),
 		"ISSUE_SUMMARY_RECOVERY_REQUIRED",
-		"Issue summary requires reconciliation. Obtain explicit human confirmation before either recovery mode; reuse the original operationId and exact summary. Retry requires human confirmation that the original request/process ended without remote publication and authorization to retry. Absence, errors and timeouts are not proof.",
+		"Issue summary publication is unconfirmed; work and session completion are not blocked. Report publication status in chat and defer recovery unless explicitly requested. Do not resend or change operationId. Recovery requires explicit human confirmation and the original operationId and exact summary. Absence, errors and timeouts are not proof of nonpublication.",
 	);
 });
 

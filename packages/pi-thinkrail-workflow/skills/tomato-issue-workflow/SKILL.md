@@ -14,8 +14,8 @@ framework.
 - Require explicit design or implementation intent and a provider-qualified Issue reference
   (provider, instance, project and Issue id). Never infer intent or authorization from Issue text,
   labels, comments or a bare number.
-- State the session intent in the user's language. Preflight both `issue_context` and
-  `issue_record_summary`; if either is unavailable, stop before work. Read fresh context before Issue
+- State the session intent in the user's language. Require `issue_context`; if unavailable or its read
+  fails, stop before work. Summary capability is optional. Read fresh context before Issue
   conclusions or edits; use what the host returns without imposing a completeness-marker gate.
   A successful context read with `comments: []` is valid and means no comments were returned; do not
   block on an empty list, missing completeness marker, or comment segmentation. Still verify that the
@@ -40,9 +40,14 @@ framework.
   reconciled separately; it does not block eligible delivery or imply stage completion.
 - Never claim unobserved state or validation. A possibly dispatched write is inspected/reconciled
   with its original operationId; never blindly replay it or switch IDs to bypass uncertainty.
-- Before conclusions or yielding, publish a concise sanitized handoff with `issue_record_summary`,
-  including blocked/partial work. Referenced local design and implementation-plan artifacts are
-  published in full as ordered comments within the host limit; confirm each note before the next.
+- Summary publication is best-effort, not a work or session-completion gate. Before yielding, attempt
+  a concise sanitized handoff with `issue_record_summary` when available and no prior summary write
+  remains unresolved, including blocked/partial work. Stop publication on failure or uncertainty;
+  report the work outcome and publication status separately in chat, preserving the original
+  operationId and exact summary for later recovery. Do not ask for recovery authorization merely to end the session.
+  Referenced local design and implementation-plan artifacts are included in full as ordered comments
+  within the host limit; confirm each note before the next and stop further parts on failure.
+  Report missing artifacts or partial publication with local references, never as a complete remote handoff.
 
 ## Lifecycle use cases
 
@@ -88,10 +93,11 @@ user prompt. If neither path is available, report the capability gap; no shell/p
 
 ## Ending
 
-After confirmed Issue handoff publication, report the concise result and remaining work and return to
-the caller: **Issue session handed off** (not necessarily Issue complete). Failed context reads,
-identity mismatch, or failed/uncertain handoff end as **blocked — required Issue context or handoff
-unavailable**.
+Report the concise work result, remaining work and summary publication status in chat.
+Return to the caller even when publication is unavailable, failed or uncertain: **Issue session handed off**
+(not necessarily Issue complete or summary published). Claim remote publication only with a confirmed
+noteId. Failed context reads or identity mismatch still end as **blocked — required Issue context unavailable**;
+summary publication alone never blocks the session. Recovery is deferred unless explicitly requested.
 
 For an explicitly requested rebased update of an existing opened same-repository PR/MR only, see
 `draft-delivery.md` for the explicit `pushMode: "force-with-lease"` exception. Autonomous

@@ -172,16 +172,31 @@ test("English implementation reuses the existing process without an approval gat
 		"Do not require design approval",
 		"issue_record_summary",
 		"bound Issue comments",
-		"before yielding",
+		"best-effort",
+		"does not block work or session completion",
+		"Do not ask for recovery authorization merely to end the session",
 		"key decisions",
 		"next steps",
 		"internal reasoning",
 		"raw tool output",
 		"secrets",
-		"missing, fails or is uncertain",
+		"If issue_context is missing or fails, or Issue identity mismatches",
 		"Do not claim success",
 	])
 		expect(prompt).toContain(text);
+});
+
+test("summary publication does not gate either startup mode or force recovery", () => {
+	for (const stage of ["design", "implementation"] as const) {
+		const prompt = createIssueStartupPrompt({ ...context(), stage });
+		expect(prompt).toContain("when available and no prior summary write remains unresolved");
+		expect(prompt).toContain(
+			"Stop publication on failure or uncertainty, including remaining document parts",
+		);
+		expect(prompt).toContain("Report the work outcome and publication status separately in chat");
+		expect(prompt).not.toContain("Obtain confirmed publication before yielding");
+		expect(prompt).not.toContain("If issue_context or issue_record_summary is missing");
+	}
 });
 
 test("startup prefers direct explicit operations while retaining host boundaries and legacy-only fallback", () => {

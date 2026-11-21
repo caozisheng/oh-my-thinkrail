@@ -26,4 +26,4 @@ User acceptance of an exemption does not turn an unverified criterion into verif
 
 ## Handoff
 
-Report Issue acceptance and Issue closure as distinct states. After observed close read-back, or a documented capability blocker/manual path, return to the caller with the confirmed handoff.
+Report Issue acceptance and Issue closure as distinct states. After observed close read-back, or a documented capability blocker/manual path, return to the caller with the chat handoff and best-effort publication status under `SKILL.md`.
