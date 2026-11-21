@@ -37,6 +37,7 @@ import {
 	forkUpdatesEnabled,
 } from "./forkUpdate";
 import { createKeyStateReader } from "./keyState";
+import { readNativeClipboard } from "./nativeClipboard";
 import {
 	type DesktopDialogLabels,
 	type DesktopNotificationLabels,
@@ -451,6 +452,12 @@ async function start(): Promise<void> {
 						...(input.silent === undefined ? {} : { silent: input.silent }),
 					});
 				},
+				readClipboard: () =>
+					readNativeClipboard({
+						availableFormats: () => Utils.clipboardAvailableFormats(),
+						readImage: () => Utils.clipboardReadImage(),
+						readText: () => Utils.clipboardReadText(),
+					}),
 			},
 			messages: {
 				titleBarDoubleClick: () => {

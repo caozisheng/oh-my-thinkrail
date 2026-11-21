@@ -1,5 +1,6 @@
 import type {
 	ForkUpdateState,
+	NativeClipboardContent,
 	NativeCommand,
 	NativeNotificationInput,
 	NativeOpenFileRequest,
@@ -27,6 +28,7 @@ export type DesktopRpc = {
 			checkForkUpdate: { params: undefined; response: undefined };
 			openForkReleases: { params: undefined; response: undefined };
 			showNotification: { params: NativeNotificationInput; response: undefined };
+			readClipboard: { params: undefined; response: NativeClipboardContent };
 		};
 		messages: {
 			routeChanged: { hash: string };

@@ -298,6 +298,7 @@ import {
 	workspaceDiffStats,
 } from "../workspaces";
 import { ackSend } from "./ackSend";
+import { copyLocalAttachment } from "./attachments";
 import { sessionProviderAnalytics } from "./authAnalytics";
 import { startChatSession } from "./chatSession";
 import {
@@ -1562,6 +1563,7 @@ const handlers: WsHandlers = {
 	"themes.list": () => readUserThemes(),
 	"themes.reveal": () => revealDataFolder(themesDir()),
 	"fonts.list": () => readUserFonts(),
+	"attachments.copyLocal": (p) => copyLocalAttachment(p.workspaceId, p.path),
 	"fonts.installed": () => listInstalledFonts(),
 	"fonts.reveal": () => revealDataFolder(fontsDir()),
 	"speech.install": (p) => {

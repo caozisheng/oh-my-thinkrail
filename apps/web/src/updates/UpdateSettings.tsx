@@ -255,7 +255,7 @@ function NativeOrHostUpdateSettings({ updates }: { updates: NativeOrHostUpdates 
 					},
 		);
 	}
-	const [first, ...rest] = actions.map((action, index) => (
+	const [first, ...rest] = actions.map((action) => (
 		<Button
 			key={action.testId}
 			variant={action.primary ? "primary" : "outline"}
@@ -263,7 +263,6 @@ function NativeOrHostUpdateSettings({ updates }: { updates: NativeOrHostUpdates 
 			iconLeft={action.icon}
 			tabIndex={0}
 			disabled={action.disabled}
-			data-setting-side={index > 0 ? "" : undefined}
 			data-testid={action.testId}
 			onClick={action.onClick}
 		>
