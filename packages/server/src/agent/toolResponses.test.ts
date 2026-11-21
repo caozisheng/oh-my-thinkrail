@@ -620,6 +620,32 @@ test("assessRespondability: a pending, unresponded call is respondable and yield
 	expect(awaitingToolCallId(messages, INTERACTIVE, true)).toBe("tc");
 });
 
+test("awaitingToolCallId does not revive historical unexecuted calls after a later assistant", () => {
+	const finished = {
+		role: "assistant",
+		content: [],
+		stopReason: "stop",
+	} as unknown as AgentMessage;
+	for (const pendingOnly of [false, true]) {
+		expect(awaitingToolCallId([askCall("old"), finished], INTERACTIVE, pendingOnly)).toBeNull();
+		expect(
+			awaitingToolCallId(
+				[askCall("old"), pendingResult("old"), finished],
+				INTERACTIVE,
+				pendingOnly,
+			),
+		).toBe("old");
+		expect(
+			awaitingToolCallId(
+				[askCall("old"), pendingResult("old"), responseMessage("old"), finished],
+				INTERACTIVE,
+				pendingOnly,
+			),
+		).toBeNull();
+	}
+	expect(awaitingToolCallId([askCall("old"), askCall("new")], INTERACTIVE)).toBe("new");
+});
+
 test("assessRespondability: a call from a non-executable assistant is terminal", () => {
 	for (const stopReason of ["error", "aborted", "length"]) {
 		const messages = [askCall("tc-dead", args(), stopReason)];

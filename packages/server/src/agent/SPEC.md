@@ -806,6 +806,9 @@ recovery; they are not the default execution path when the direct capability is 
     A process restart deliberately changes only the continuation mechanism: attach-time repair writes the
     pending marker (`details {kind:"ack"}`, the host's `TOOL_RESPONSE_PENDING_TEXT`) for an eligible
     dangling call whose tool name is in the enabled `interactiveTools` map before `createAgentSession`;
+    transcript needs-input reconstruction admits an unexecuted call only from the latest assistant
+    message. Older calls require a persisted pending acknowledgement, so historical unexecuted questions
+    cannot relight the Projects marker after a later assistant completion;
     respondability likewise reports a call of any other tool as unknown, leaving the card answerable but the
     session idle. No argument-shape check: while ours is enabled it wins the name, and a disabled
     extension's tool is simply not interactive, so a foreign same-name call gets the ordinary error repair.
