@@ -55,12 +55,14 @@ import {
 	selectLayoutTabPlacement,
 	selectProjectIsRunning,
 	selectProjectNeedsAttention,
+	selectProjectNeedsInput,
 	selectReadyCompletionAck,
 	selectSkillsStale,
 	selectSupportsModelPicker,
 	selectUnnamedChatFirstPrompts,
 	selectWorkspaceIsRunning,
 	selectWorkspaceNeedsAttention,
+	selectWorkspaceNeedsInput,
 	selectWorkspaceReadAction,
 	specPathMatcher,
 	workspaceName,
@@ -215,9 +217,22 @@ test("Projects input markers ignore unread results while retaining pending quest
 	});
 	const state = { sessionStateByWorkspace: { w1: { question, result } } };
 	expect(selectWorkspaceNeedsAttention(state, "w1")).toBe(true);
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(true);
+	const opened = { ...state, activeWorkspaceId: "w1" };
+	expect(selectWorkspaceNeedsInput(opened, "w1")).toBe(true);
 	result.state = { ...result.state, completionUnread: false };
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(true);
 	question.state = { ...quiet };
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(false);
 	expect(selectProjectNeedsAttention(state, "p1")).toBe(false);
+	question.state = {
+		...quiet,
+		needsInput: { interactionId: "tool:q2", kind: "tool-response", toolCallId: "q2" },
+	};
+	result.state = { ...result.state, completionUnread: true };
+	question.state = { ...quiet };
+	expect(selectWorkspaceNeedsInput(state, "w1")).toBe(false);
+	expect(selectWorkspaceNeedsInput(state, "missing")).toBe(false);
 });
 
 test("Projects needs-input follows only the foreground chat placement", () => {
@@ -293,6 +308,8 @@ test("Projects needs-input follows only the foreground chat placement", () => {
 		},
 		historyOpenRequest: null,
 		obscuredChatSessions: {},
+		tabsByWorkspace: {},
+		activeTabByWorkspace: {},
 		sessionStateByWorkspace: {
 			w1: { s1: question("s1", "w1", "p1"), s3: question("s3", "w1", "p1") },
 			w2: { s2: question("s2", "w2", "p2") },
@@ -320,11 +337,10 @@ test("Projects needs-input follows only the foreground chat placement", () => {
 	expect(record?.workspaceId).toBe("w1");
 	expect(record?.projectId).toBe("p1");
 	expect(foreground({ g1: "file" })).toBeNull();
-	expect(foreground({ g1: "missing" })?.sessionId).toBe("s1");
+	expect(foreground({ g1: "missing" })).toBeNull();
 	expect(foreground({ g1: "chat:s1" }, "w2")?.sessionId).toBe("s2");
 	expect(foreground({ g1: "chat:s1" }, null)).toBeNull();
 	expect(selectForegroundNeedsInput({ ...state, obscuredChatSessions: { s1: true } })).toBeNull();
-	expect(selectForegroundNeedsInput({ ...state, activeWorkspaceId: "w2" })?.sessionId).toBe("s2");
 	expect(
 		selectForegroundNeedsInput({ ...state, historyOpenRequest: { sessionId: "s1" } }),
 	).toBeNull();
@@ -354,35 +370,8 @@ test("Projects markers clear on response even when another completion stays unre
 	};
 	const record: SessionStateRecord = { sessionId: "s", workspaceId: "w", projectId: "p", state };
 	const projection = { sessionStateByWorkspace: { w: { s: record } } };
-	const foreground = {
-		activeWorkspaceId: "w",
-		layoutDocumentsByWorkspace: {
-			w: {
-				version: 2 as const,
-				center: {
-					kind: "group" as const,
-					id: "center",
-					tabs: [{ id: "chat:s", kind: "chat" as const, sessionId: "s", name: "s" }],
-				},
-				left: { visible: false, width: 0.2, groups: [] },
-				right: { visible: false, width: 0.2, groups: [] },
-				bottom: { visible: false, height: 0.3, alignment: "center" as const, groups: [] },
-				toolRestoreTargets: {},
-			},
-		},
-		layoutAttentionByWorkspace: {
-			w: {
-				lastFocusedCenterGroupId: "center",
-				selectedByGroup: { center: "chat:s" },
-				lastFocusedSideGroupId: {},
-				navigationClockByGroup: { center: 0 },
-			},
-		},
-		obscuredChatSessions: {},
-		historyOpenRequest: null,
-		sessionStateByWorkspace: projection.sessionStateByWorkspace,
-	};
-	expect(selectForegroundNeedsInput(foreground)?.sessionId).toBe("s");
+	expect(selectWorkspaceNeedsInput(projection, "w")).toBe(true);
+	expect(selectProjectNeedsInput(projection, "p")).toBe(true);
 	record.state = {
 		...state,
 		needsInput: null,
@@ -390,14 +379,8 @@ test("Projects markers clear on response even when another completion stays unre
 		completionUnread: true,
 		completion: { completionId: "done", outcome: "succeeded" },
 	};
-	expect(
-		selectForegroundNeedsInput({
-			...foreground,
-			sessionStateByWorkspace: {
-				w: { s: { ...record, state: { ...record.state, needsInput: null } } },
-			},
-		}),
-	).toBeNull();
+	expect(selectWorkspaceNeedsInput(projection, "w")).toBe(false);
+	expect(selectProjectNeedsInput(projection, "p")).toBe(false);
 	expect(selectWorkspaceNeedsAttention(projection, "w")).toBe(true);
 });
 
