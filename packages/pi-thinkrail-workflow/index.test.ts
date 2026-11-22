@@ -190,6 +190,14 @@ describe("pi-thinkrail-workflow extension", () => {
 		expect(entry).toContain("Missing summary capability does not block work");
 		expect(entry).not.toContain("return to the caller after publishing");
 		expect(recovery).toContain("summary publication follows the best-effort ending in `SKILL.md`");
+		expect(recovery).toContain("A failed mutation authorizes no separate comment");
+		expect(recovery).toContain("do not infer remote state from a refusal");
+		const closing = readFileSync(
+			new URL("./skills/tomato-issue-workflow/issue-acceptance-and-close.md", import.meta.url),
+			"utf8",
+		);
+		expect(closing).toContain("Report closure only after that read-back confirms `closed`");
+		expect(closing).toContain("A close refusal does not authorize a comment");
 	});
 
 	test("documents executable registration and reason-specific cross-repository recovery", () => {

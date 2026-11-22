@@ -12,7 +12,7 @@ Use when updating the Issue body, assessing acceptance, or closing the Issue. A 
 2. If body update is requested, read the complete current body and prepare a complete replacement; preserve unrelated labels/fields.
 3. Run the explicitly requested body update through `issue_run_operation` without another questionnaire, bound to Issue identity, current-body snapshot and replacement. Re-read before writing; reject a changed snapshot and reread after success.
 4. If close is requested, first verify provider capability and expose incomplete/unverified criteria and exemptions with the reason.
-5. Run explicitly requested close through `issue_run_operation` without independent high-risk confirmation, bound to provider/instance/project/Issue, current state and reason; re-read before writing and read back closed state/time/receipt.
+5. Run explicitly requested close through `issue_run_operation` without an extra confirmation or comment, bound to provider/instance/project/Issue, current state and reason; re-read before writing and read back closed state/time/receipt. Report closure only after that read-back confirms `closed`.
 
 ## Host capabilities
 
@@ -22,7 +22,7 @@ and a tracked manual route; never bypass the host.
 
 ## Completion, questions and recovery
 
-User acceptance of an exemption does not turn an unverified criterion into verified evidence. Concurrent body or Issue state changes invalidate the frozen operation and require refreshed facts and a refreshed operation within explicit intent. Uncertain writes require read-only reconciliation, never blind replay.
+User acceptance of an exemption does not turn an unverified criterion into verified evidence. Concurrent body or Issue state changes invalidate the frozen operation and require refreshed facts and a refreshed operation within explicit intent. Uncertain writes require read-only reconciliation, never blind replay. A close refusal does not authorize a comment or prove the Issue remains open; report only the observed error and state. For generic `Invalid Issue request`, check the advertised schema and correct only a demonstrated mismatch; do not claim an unknown cause.
 
 ## Handoff
 

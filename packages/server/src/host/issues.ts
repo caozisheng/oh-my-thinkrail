@@ -88,8 +88,8 @@ import { reconcileDirectOperation } from "./issuesDirectRecovery";
 import { createIssueWorkflowPersistence } from "./issueWorkflowPersistence";
 import { createIssueWorkspacePersistence } from "./issueWorkspacePersistence";
 
-function invalid(): never {
-	throw new CodedError("RANGE_INVALID", "Invalid Issue request.");
+function invalid(message = "Invalid Issue request."): never {
+	throw new CodedError("RANGE_INVALID", message);
 }
 function invalidReceipt(): never {
 	const error = new CodedError(
@@ -1221,9 +1221,9 @@ export function createIssuesHost(
 				});
 			}
 			if (input.action === "close-issue") {
+				if (!input.reason || !input.acceptance)
+					invalid("Issue close requires non-empty reason and acceptance fields.");
 				if (
-					!input.reason ||
-					!input.acceptance ||
 					input.body !== undefined ||
 					input.projectId ||
 					input.title ||
@@ -1231,7 +1231,9 @@ export function createIssuesHost(
 					input.targetBranch ||
 					input.continueDespiteChecks
 				)
-					invalid();
+					invalid(
+						"Issue close does not accept body, projectId, title, report, targetBranch, or continueDespiteChecks.",
+					);
 				return closes(undefined, undefined, store).prepare(sessionId, {
 					operationId: input.operationId,
 					reason: input.reason,
