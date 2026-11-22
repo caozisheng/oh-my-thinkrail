@@ -128,6 +128,8 @@ roster's catalog reads ([[submodule-web-panels]]).
   **`hydrateExpandedProjects(projectIds)`** seeds the set at boot from the `panels/projectExpansion`
   persistence module — the store itself still touches no storage: that module owns the localStorage
   mirror (host-qualified key, best-effort writes, untrusted reads) and subscribes to changes.
+  **Projects needs-input projection.** Only the needs-input record for the selected center chat of the active workspace may light a workspace, project, or project-group marker. The selector uses the authoritative last-focused center selection and `selectChatAttended` obscuration/history rules; it never falls back to another chat tab. Hiding or closing that placement changes no host pending state, so reopening the same question restores its marker. Working and settling remain all-session projections.
+
   **Settled shelf.** `selectors.ts` owns **`selectWorkspacePartition(state, projectId, now)`** — the one
   derivation of a project's rows into `live` and `settled` (each settled row carrying its reason:
   `override`, `review merged|closed`, or `idle since`), consumed by the rail, the topbar's *Switch to*

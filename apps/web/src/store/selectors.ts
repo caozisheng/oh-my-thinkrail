@@ -588,21 +588,18 @@ export function selectWorkspaceNeedsAttention(
 	);
 }
 
-export function selectWorkspaceNeedsInput(
-	state: SessionStateProjection,
-	workspaceId: string,
-): boolean {
-	return Object.values(state.sessionStateByWorkspace[workspaceId] ?? {}).some(
-		(record) => record.state.needsInput !== null,
-	);
-}
+interface ForegroundNeedsInputState extends ChatAttentionState, SessionStateProjection {}
 
-export function selectProjectNeedsInput(state: SessionStateProjection, projectId: string): boolean {
-	return Object.values(state.sessionStateByWorkspace).some((records) =>
-		Object.values(records).some(
-			(record) => record.projectId === projectId && record.state.needsInput !== null,
-		),
-	);
+/** The sole needs-input record eligible to mark Projects: the currently displayed center chat. */
+export function selectForegroundNeedsInput(
+	state: ForegroundNeedsInputState,
+): SessionStateRecord | null {
+	const workspaceId = state.activeWorkspaceId;
+	if (!workspaceId) return null;
+	const tab = selectAttentionCenterTab(state, workspaceId);
+	if (tab?.kind !== "chat" || !selectChatAttended(state, workspaceId, tab.sessionId)) return null;
+	const record = state.sessionStateByWorkspace[workspaceId]?.[tab.sessionId];
+	return record && record.state.needsInput !== null ? record : null;
 }
 
 export function supportsWorkspaceReadState(protocolVersion: number | null): boolean {

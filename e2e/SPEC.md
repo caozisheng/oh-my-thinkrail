@@ -391,9 +391,7 @@ before any provider turn; PI's ordinary first-available fallback is never accept
 The same copy and hermetic environment seed the private restart host.
 
 **Session state** coverage seeds complete transcript states and drives normalized host blockers/runs to pin
-Projects rail presentation: only needs-input renders the static warning circle-question on workspace
-rows (accessible as “Your input is needed”); unread completion results render no Projects marker.
-Collapsed project/group rollups retain static green dots for pending input. Genuinely running sessions
+Projects rail presentation: only the foreground displayed chat with host needs-input renders the static warning circle-question on workspace rows (accessible as “Your input is needed”); unread completion results render no Projects marker. Collapsed project/group rollups retain static green dots for that same foreground pending input. Background/closed historical blockers stay unmarked; navigating away hides the marker without answering the question, and reopening restores it. Genuinely running sessions
 swap the workspace/project identity icon for the shared `RunningIcon` brand badge in the row's own
 colour, never a generic spinner. Running alone has no attention marker; queued, hidden/background, and
 explicitly stopped sessions stay quiet; a live blocked question keeps its marker while its orthogonal

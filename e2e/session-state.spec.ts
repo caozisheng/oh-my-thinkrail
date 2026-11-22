@@ -77,9 +77,7 @@ async function seedSentReviewComment(page: Page, sessionId: string): Promise<voi
 	}
 }
 
-test("an unresolved persisted question is level-triggered in project and workspace state", async ({
-	page,
-}) => {
+test("a persisted question marks Projects only while its chat is foreground", async ({ page }) => {
 	await openFixtureProject(page);
 	const args = {
 		questions: [
@@ -117,11 +115,30 @@ test("an unresolved persisted question is level-triggered in project and workspa
 		const project = page.getByTestId("project-item").first();
 		const expand = project.getByTestId("project-expand");
 		const workspace = defaultWorkspaceRow(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 		await expect(expand).toHaveAttribute("data-expanded", "true");
+		await expand.click();
+		await expectNoCompletionMarker(project);
+		await expand.click();
+		await enterDefaultWorkspace(page);
+		await openPersistedChat(page, "needs input state");
+		await expectAttentionDot(workspace);
 		await expand.click();
 		await expectAttentionDot(project);
 		await expand.click();
+		await expectAttentionDot(workspace);
+		await goProjectHome(page);
+		await expectNoCompletionMarker(workspace);
+		await enterDefaultWorkspace(page);
+		await openPersistedChat(page, "needs input state");
+		await expectAttentionDot(workspace);
+		const chatTab = page.getByTestId("editor-tab").filter({ hasText: "needs input state" });
+		await chatTab.getByTestId("editor-tab-close").click();
+		await expectNoCompletionMarker(workspace);
+		await workspace.getByRole("treeitem").click();
+		await expect(workspace).toHaveAttribute("data-active", "true");
+		await expectNoCompletionMarker(workspace);
+		await openPersistedChat(page, "needs input state");
 		await expectAttentionDot(workspace);
 	} finally {
 		rmSync(session.path, { force: true });
