@@ -256,6 +256,15 @@ test("dependency preflight names incomplete registration before merge or compati
 	});
 });
 
+test("direct Issue close reports actionable missing close fields without writing a note", async () => {
+	const run = host.agentSessions.runOperation;
+	if (!run) throw new Error("Direct Issue operation is unavailable");
+	await expect(
+		run("session", { operationId: "close-missing-fields", action: "close-issue" }),
+	).rejects.toThrow("Issue close requires non-empty reason and acceptance fields.");
+	expect(bodyWrites).toBe(0);
+});
+
 test("MR ready and merge are reached through the composed host routes", async () => {
 	const prepare = host.agentSessions.prepareConfirmation;
 	if (!prepare) throw new Error("Issue confirmation tool is unavailable");
