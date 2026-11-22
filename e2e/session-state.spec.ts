@@ -135,7 +135,8 @@ test("a persisted question marks Projects only while its chat is foreground", as
 		const chatTab = page.getByTestId("editor-tab").filter({ hasText: "needs input state" });
 		await chatTab.getByTestId("editor-tab-close").click();
 		await expectNoCompletionMarker(workspace);
-		await enterDefaultWorkspace(page);
+		await workspace.getByRole("treeitem").click();
+		await expect(workspace).toHaveAttribute("data-active", "true");
 		await expectNoCompletionMarker(workspace);
 		await openPersistedChat(page, "needs input state");
 		await expectAttentionDot(workspace);
