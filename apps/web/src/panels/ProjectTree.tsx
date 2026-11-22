@@ -80,13 +80,12 @@ import {
 	selectActiveWorkspace,
 	selectActiveWorkspaceProjectId,
 	selectAutoSettledCounts,
+	selectForegroundNeedsInput,
 	selectProjectIsRunning,
-	selectProjectNeedsInput,
 	selectRepoProjects,
 	selectSupportsOnboarding,
 	selectSupportsProjectGroupHome,
 	selectWorkspaceIsRunning,
-	selectWorkspaceNeedsInput,
 	selectWorkspacePartition,
 	selectWorkspaceReadAction,
 	settledReasonLabel,
@@ -186,6 +185,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 	const protocolVersion = useAppStore((s) => s.protocolVersion);
 	const supportsCreate = useAppStore(selectSupportsOnboarding);
 	const supportsSettling = useAppStore((s) => s.workspaceSettlingSupported);
+	const foregroundNeedsInput = useAppStore(selectForegroundNeedsInput);
 	const sessionStateByWorkspace = useAppStore((s) => s.sessionStateByWorkspace);
 	const settleIdleDays = useAppStore((s) => s.settleIdleDays);
 	const settledShelfExpanded = useAppStore((s) => s.settledShelfExpanded);
@@ -359,7 +359,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 
 	const stateProjection = { sessionStateByWorkspace };
 	const anyNeedsAttention = (list: readonly Project[]) =>
-		list.some((project) => selectProjectNeedsInput(stateProjection, project.id));
+		list.some((project) => foregroundNeedsInput?.projectId === project.id);
 
 	const renderProject = (project: Project, inGroup?: { path: string }) => {
 		const isExpanded = expandedProjectIds[project.id] === true;
@@ -399,7 +399,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 						: {})}
 					isSelected={selectedProjectId === project.id}
 					isExpanded={isExpanded}
-					needsAttention={!isExpanded && selectProjectNeedsInput(stateProjection, project.id)}
+					needsAttention={!isExpanded && foregroundNeedsInput?.projectId === project.id}
 					isRunning={!isExpanded && selectProjectIsRunning(stateProjection, project.id)}
 					workspaceCount={(list ?? []).filter((w) => !isDefaultWorkspace(w)).length}
 					onToggle={() => toggleExpand(project.id)}
@@ -434,7 +434,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 									settled={settled}
 									now={now}
 									isActive={activeWorkspaceId === ws.id}
-									needsAttention={selectWorkspaceNeedsInput(stateProjection, ws.id)}
+									needsAttention={foregroundNeedsInput?.workspaceId === ws.id}
 									isRunning={selectWorkspaceIsRunning(stateProjection, ws.id)}
 									canRename={canRenameWorkspace(protocolVersion, ws)}
 									canSettle={canSettleWorkspace(protocolVersion, ws)}

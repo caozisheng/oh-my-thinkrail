@@ -219,9 +219,8 @@ treatment.
   `ProjectTree` renders the panel-local, props-free `WorkspaceAttention` circle-question for workspace
   rows and the shared dependency-light `AttentionDot` for collapsed project/group rollups, both from
   normalized host-state selectors. The workspace marker occupies its own flex column between the
-  identity button and the hover-revealed kebab. It introduces no state or clearing policy: any session's
-  pending needs-input keeps it visible; opening or reading alone never clears it. Answering, cancelling,
-  or invalidating the last request clears it even if a completion remains unread. Unread completions
+  identity button and the hover-revealed kebab. It introduces no state or clearing policy: only the foreground displayed chat's host needs-input record is eligible. The store's foreground selector uses the active workspace and authoritative last-focused center tab, excluding an obscured chat or pending history overlay. Background and closed historical chats never light workspace, project, or group markers. Switching workspace/session or selecting a file, navigating Home, or closing the tab hides the marker without changing the underlying pending question or transcript; reopening the same question restores it. Collapsed project/group rollups apply the same foreground filter. Answering, cancelling,
+  or invalidating the request clears it even if a completion remains unread. Unread completions
   have no Projects marker; their read state, notifications, and settling policy remain independent. Search
   and projectless-chat attention remain unchanged. Workspace and collapsed-project rows
   expose `data-attention` only while positive. Separately, the shared `RunningIcon` replaces the

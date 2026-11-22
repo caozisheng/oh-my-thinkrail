@@ -116,13 +116,8 @@ test("the empty palette lists the chats waiting for you; arrows, Enter, click an
 		await page.reload();
 		await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", "connected");
 		const workspace = defaultWorkspaceRow(page);
-		await expect(workspace).toHaveAttribute("data-attention", "true");
-		await expect(workspace.getByTestId("workspace-attention")).toHaveCount(1);
-		await expect(workspace.getByTestId("workspace-attention")).toHaveAttribute(
-			"aria-label",
-			"Your input is needed",
-		);
-		await expect(workspace.getByTestId("attention-dot")).toHaveCount(0);
+		await expect(workspace).not.toHaveAttribute("data-attention", /.+/);
+		await expect(workspace.getByTestId("workspace-attention")).toHaveCount(0);
 
 		await page.getByTestId("open-search").click();
 		await expect(palette(page)).toBeVisible();
@@ -224,8 +219,8 @@ test("typing finds chats by title, a paste is cut to the host's query length, an
 	try {
 		await page.reload();
 		const workspace = defaultWorkspaceRow(page);
-		await expect(workspace).toHaveAttribute("data-attention", "true");
-		await expect(workspace.getByTestId("workspace-attention")).toHaveCount(1);
+		await expect(workspace).not.toHaveAttribute("data-attention", /.+/);
+		await expect(workspace.getByTestId("workspace-attention")).toHaveCount(0);
 		await openPalette(page);
 		await page.getByTestId("search-input").fill("unread result");
 		const chats = page.locator('[data-testid="search-row"][data-kind="chat"]');
