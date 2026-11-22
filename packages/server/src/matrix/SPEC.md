@@ -10,20 +10,15 @@ tags: [integration, matrix]
 
 ## Responsibility
 
-The local host's Matrix bot connection and its projection of ThinkRail projects and sessions into
-standard Matrix Spaces and rooms. Matrix is an external messaging surface, never the source of truth
-for project, workspace, session, transcript or agent state. The host remains the only pi runtime.
+The server-only Matrix SDK boundary for constructing clients and verifying a bot access token against
+a configured homeserver. This module does not yet own a live bridge, persist credentials, or project
+ThinkRail state into Matrix rooms.
 
 ## Boundary
 
-- **Owns:** Matrix SDK client lifecycle, bot credential reference, stable host-ID-to-room mappings,
-  durable Matrix event deduplication and projection cursors, and Matrix-specific command parsing and
-  formatting.
-- **Public surface:** a server-only barrel for host composition; Matrix credentials and SDK objects
-  never cross the contracts wire.
-- **Allowed deps:** `contracts` for Matrix DTOs, `persistence` for integration metadata and durable
-  inbox/outbox state, `projects`/`workspaces` for host registries, `agent` through its barrel for
-  session operations, `log` for closed-classifier diagnostics, and `matrix-js-sdk`.
+- **Owns:** SDK client creation and `/whoami` identity verification.
+- **Public surface:** a server-only barrel. Credentials and SDK objects never cross the contracts wire.
+- **Allowed deps:** `matrix-js-sdk` only.
 - **Forbidden:** importing `host`, `web`, launchers, or another agent runtime; deriving host session
   state from Matrix room names/events; writing pi transcripts directly; accepting control authority
   from room membership, display names or room metadata; persisting passwords or access tokens outside
@@ -31,14 +26,11 @@ for project, workspace, session, transcript or agent state. The host remains the
 
 ## Get right
 
-The bot uses a dedicated account and exactly one explicitly configured full MXID may control ThinkRail.
-Other room members may read mirrored room content but never issue commands. Homeservers and rooms are
-assumed able to read plaintext; encrypted rooms are unsupported and fail closed. Only active/needs-input
-sessions in open projects are automatically mapped; historical sessions require explicit mapping, and
-every mapped session is reconciled from its complete host display transcript.
+Homeserver input is limited to an HTTPS origin without userinfo, path, query or fragment. Token
+verification requires an exact configured MXID match and returns only the verified user/device identity;
+the access token is never part of that result. SDK logging is disabled at this boundary so authorization
+URLs and server responses cannot leak through its default logger.
 
-Messages received while the host is offline are not executed after restart; they are marked unprocessed
-and the authorized controller is asked to resend. Any live input is deduplicated by homeserver, room ID
-and Matrix event ID before dispatch. An uncertain host acceptance is never automatically replayed.
-Outbox retries reuse the same Matrix transaction ID. Homeserver URLs are HTTPS-only and all SDK network
-requests require bounded, redirect-safe Matrix API access.
+matrix-js-sdk is licensed Apache-2.0 and declares Node.js >=22 support. Bun import, server typecheck,
+CLI bundling and a mocked `/whoami` call have been exercised; a real homeserver sync and packaged CLI /
+desktop runtime have not.
