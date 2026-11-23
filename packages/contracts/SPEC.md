@@ -17,6 +17,15 @@ default, narrow cross-ring guards, the quit-confirmation rule both clients drive
 the palette ranks with — kept here so host-side search can rank with the same copy. The one package
 `apps/web` may depend on—which is what lets the UI ship independently of the host.
 
+## Matrix integration (v143)
+
+`MatrixConnectionInput` is write-only: exactly one of password or access token plus an explicit
+plaintext acknowledgment, HTTPS homeserver origin, dedicated bot MXID, controller MXID and an
+operation id. `MatrixStatus` never contains secret material. `matrix.status`, `.configure`,
+`.disconnect`, `.sync` and `matrix.changed` are gated at protocol v143; older clients omit the
+Matrix section. Connection status reports durable authentication and bridge progress, not remote
+room membership as proof of controller authorization.
+
 ## Issue integration
 
 Protocol v134 adds `issues.implementationRecovery`, `issues.recoverImplementation` and `issues.implementationHistory`. Recovery snapshots expose only local member ids, exact branch commit starts and an opaque SHA-256 snapshot; execution requires the same snapshot plus a separate restart boolean when the previous branch is absent. History DTOs are keyed by prior session id and return either transcript messages or explicit `null` availability; they grant no session/workspace commands.

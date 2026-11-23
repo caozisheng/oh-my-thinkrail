@@ -99,6 +99,7 @@ describe("settingsNavGroups", () => {
 			[
 				SettingsSection.Workspaces,
 				SettingsSection.Github,
+				SettingsSection.Integrations,
 				SettingsSection.Notifications,
 				SettingsSection.Privacy,
 				SettingsSection.Updates,

@@ -100,7 +100,7 @@ internals**. The edges between them are owned here (see the dependency graph), n
 | `images` | image bytes off the WebSocket: `ImageContent` → `WireImage` reference projection, the bounded reference cache, and `GET /images/…` | [images/SPEC.md](src/images/SPEC.md) |
 | `extensions` | the server registry of ThinkRail extensions (`@thinkrail/ext-*/server`): ordered descriptors + public specifiers, inline flattening, owner-scoped skill resolution | [extensions/SPEC.md](src/extensions/SPEC.md) |
 | `auth` | provider status/login plus native JetBrains Central lifecycle and quota orchestration | [auth/SPEC.md](src/auth/SPEC.md) |
-| `matrix` | server-only Matrix SDK client creation and bot identity verification | [matrix/SPEC.md](src/matrix/SPEC.md) |
+| `matrix` | host-owned Matrix bot lifecycle and room/message projection through injected host ports | [matrix/SPEC.md](src/matrix/SPEC.md) |
 | `assist` | ad-hoc one-shot tasks (plan summaries, PR descriptions) on a cheap model, best-effort | [assist/SPEC.md](src/assist/SPEC.md) |
 | `analytics` | always-on basic events + sanitized error reports, and preference-controlled optional insights → PostHog sink (privacy contract in its spec) | [analytics/SPEC.md](src/analytics/SPEC.md) |
 | `feedback` | host-scoped usage count, addressed survey invitation lifecycle and the launched PostHog survey | [feedback/SPEC.md](src/feedback/SPEC.md) |
@@ -117,6 +117,10 @@ the host from env via `bootHost` for dev/e2e.
 ## Internal dependency graph
 
 `host` is the **only composition root** — it wires each feature's handlers into the WS registry.
+
+`host` also composes `matrix` with persistence/vault and project/workspace/agent ports. `matrix` imports
+no sibling feature; its host catalog and control adapters enforce the same trust and session ownership
+checks as web operations.
 
 - `host` → `projects`, `workspaces`, `git`, `github`, `branch-review`, `pr`, `fs`, `spec`, `todos`, `reviews`, `changes`, `turns`, `watch`, `terminal`, `dialog`, `editors`, `agent`, `auth`, `assist`, `settings`, `environment`, `locales`, `themes`, `fonts`, `speech`, `history`, `search`, `templates`, `issues`, `analytics`, `feedback`, `artifacts`, `trash` (a chat's folder), `log`, `persistence` (`dataDir`, for the crash report), `images` (the `/images` route, its source seam, and forgetting a deleted chat)
 - `search` → `contracts`, `git` (`gitAsyncStream` for `ls-files` and `grep`), `log`; `history`, `spec` and `todos` for types only — `host/search.ts` injects every reader (projects, workspace records, the history index's `sessions()`, spec snapshots, stored plans, the file check `fs.readableFileSize` and the text check `fs.classifyBytes`), the Default provisioning (`workspaces.listWorkspaces`) and the root watch (`watch.ensureWatch`, prewarm); it opens no file itself but the bounded text search's direct read of a chat folder's walked files (`git grep` reads a repository's) — files and specs preview client-side over `fs.readFile`

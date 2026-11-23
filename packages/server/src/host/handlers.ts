@@ -346,6 +346,7 @@ import {
 	setIssueWorkspaceArchiver,
 } from "./issues";
 import { dropLogin, recordLoginStart } from "./loginAnalytics";
+import { matrixConfigure, matrixDisconnect, matrixStatus, matrixSync } from "./matrix";
 import {
 	mcpAdd,
 	mcpApprove,
@@ -1138,6 +1139,10 @@ const handlers: WsHandlers = {
 	},
 	"github.authStatus": () => githubAuthStatus(),
 	"github.refresh": () => githubRefresh(),
+	"matrix.status": (_p, ctx) => matrixStatus(ctx),
+	"matrix.configure": (p, ctx) => matrixConfigure(p, ctx),
+	"matrix.disconnect": (_p, ctx) => matrixDisconnect(ctx),
+	"matrix.sync": (_p, ctx) => matrixSync(ctx),
 	"pr.preview": (params, ctx) =>
 		previewPr(
 			params.sessionId && !params.source && !supportsBranchStatus(ctx.protocolVersion)

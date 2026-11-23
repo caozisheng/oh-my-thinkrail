@@ -9,6 +9,7 @@ import {
 	isCustomEndpointId,
 	JBCENTRAL_QUOTA_PROTOCOL_VERSION,
 	KEYBINDINGS_PROTOCOL_VERSION,
+	MATRIX_PROTOCOL_VERSION,
 	MCP_USER_SERVERS_PROTOCOL_VERSION,
 	OTHER_AGENT_SKILLS_PROTOCOL_VERSION,
 	PI_PACKAGES_PROTOCOL_VERSION,
@@ -580,6 +581,14 @@ export const SETTING = {
 		label: "settings.github.cli",
 		description: "settings.github.description",
 		keywords: ["gh", "auth", "login"],
+	},
+	matrixIntegration: {
+		id: "matrix-integration",
+		section: SettingsSection.Integrations,
+		label: "settings.matrix.title",
+		description: "settings.matrix.description",
+		keywords: ["matrix", "bot", "homeserver", "element", "chat"],
+		requiresProtocolVersion: MATRIX_PROTOCOL_VERSION,
 	},
 	notifications: {
 		id: "notifications-enabled",

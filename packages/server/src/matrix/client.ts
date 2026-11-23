@@ -1,4 +1,4 @@
-import { createClient, type MatrixClient } from "matrix-js-sdk";
+import { createClient, type LoginResponse, type MatrixClient } from "matrix-js-sdk";
 
 const quietLogger = {
 	trace() {},
@@ -34,17 +34,47 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 	});
 }
 
+export async function loginWithPassword(options: {
+	readonly baseUrl: string;
+	readonly username: string;
+	readonly password: string;
+	readonly fetchFn?: typeof globalThis.fetch;
+}): Promise<LoginResponse> {
+	const baseUrl = canonicalHomeserver(options.baseUrl);
+	if (!baseUrl || !options.username.trim() || !options.password || options.password.length > 4096)
+		throw new Error("Invalid Matrix login input");
+	const client = createMatrixClient({
+		baseUrl,
+		...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+	});
+	try {
+		return await client.login("m.login.password", {
+			user: options.username,
+			password: options.password,
+		});
+	} finally {
+		client.stopClient();
+	}
+}
+
+function canonicalHomeserver(value: string): string | null {
+	const url = new URL(value);
+	return url.protocol === "https:" &&
+		!url.username &&
+		!url.password &&
+		!url.search &&
+		!url.hash &&
+		url.pathname === "/"
+		? url.origin
+		: null;
+}
+
 export async function verifyMatrixAccessToken(
 	options: MatrixClientOptions & { readonly accessToken: string },
 ): Promise<MatrixIdentity> {
-	const baseUrl = new URL(options.baseUrl);
+	const baseUrl = canonicalHomeserver(options.baseUrl);
 	if (
-		baseUrl.protocol !== "https:" ||
-		baseUrl.username ||
-		baseUrl.password ||
-		baseUrl.search ||
-		baseUrl.hash ||
-		baseUrl.pathname !== "/" ||
+		!baseUrl ||
 		options.accessToken.trim() !== options.accessToken ||
 		options.accessToken.length > 4096 ||
 		!options.accessToken
@@ -52,7 +82,7 @@ export async function verifyMatrixAccessToken(
 		throw new Error("Invalid Matrix homeserver URL");
 	}
 
-	const client = createMatrixClient({ ...options, baseUrl: baseUrl.origin, logger: quietLogger });
+	const client = createMatrixClient({ ...options, baseUrl, logger: quietLogger });
 	try {
 		const identity = await client.whoami();
 		if (typeof identity.user_id !== "string" || !/^@[^:\s]+:[^:\s]+$/.test(identity.user_id)) {

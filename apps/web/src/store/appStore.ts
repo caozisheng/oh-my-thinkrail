@@ -443,6 +443,7 @@ export const SettingsSection = {
 	Models: "models",
 	Mcp: "mcp",
 	Github: "github",
+	Integrations: "integrations",
 	Appearance: "appearance",
 	Language: "language",
 	LineWidth: "line-width",

@@ -223,6 +223,7 @@ import { initializeHostRuntime } from "./hostRuntime";
 import { provisionInitialTerminal } from "./initialTerminal";
 import { issuesHost } from "./issues";
 import { trackLoginOutcome } from "./loginAnalytics";
+import { matrixStatus, resetMatrixForHostStart, setMatrixPublisher, stopMatrix } from "./matrix";
 import {
 	additionalCapture,
 	applyAdditionalAnalyticsSettings,
@@ -574,6 +575,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 					ws.subscribe(WS_CHANNELS.packagesChanged);
 				if (ws.data.protocolVersion >= FONTS_PROTOCOL_VERSION)
 					ws.subscribe(WS_CHANNELS.fontsChanged);
+				if (ws.data.protocolVersion >= 143) ws.subscribe(WS_CHANNELS.matrixChanged);
 				const speech = ws.data.protocolVersion >= SPEECH_PROTOCOL_VERSION;
 				if (speech) ws.subscribe(WS_CHANNELS.speechChanged);
 				const hostPlatform: HostPlatform =
@@ -1052,6 +1054,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	const stopThemesWatch = watchUserThemes({ onChange: nudge(WS_CHANNELS.themesChanged) });
 	const stopFontsWatch = watchUserFonts({ onChange: nudge(WS_CHANNELS.fontsChanged) });
 	setSpeechPublisher((status) => publishScoped(WS_CHANNELS.speechChanged, status));
+	setMatrixPublisher((status) => publishScoped(WS_CHANNELS.matrixChanged, status));
+	void matrixStatus().catch(() => log.warn("Matrix connection restoration failed"));
 	void initSpeech().catch((err) => log.warn("voice input state could not be read", err));
 	setWatchPublisher(publishFsChanged);
 	setSkillPathClassifier(isProjectSkillPath);
@@ -1268,6 +1272,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	setModelsFilePublisher(publishProviderChanged);
 	setModelListingPublisher(publishProviderChanged);
 
+	resetMatrixForHostStart();
 	const initialConfig = getConfig();
 	initializeAnalytics({
 		...(appVersion ? { appVersion } : {}),
@@ -1312,6 +1317,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		stopFontsWatch();
 		stopSpeechInstall();
 		void stopEngine();
+		void stopMatrix();
 		disposeAllSessions();
 		for (const timer of reapTimers.values()) clearTimeout(timer);
 		reapTimers.clear();
@@ -1331,6 +1337,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 				settleSessionsForShutdown(),
 				shutdownAnalytics(),
 				stopWorkspaceCreations(),
+				stopMatrix(),
 			]);
 			await turnTracker.drain();
 			await settleCredentialWritesForShutdown();
@@ -1386,6 +1393,7 @@ function restoreSeamDefaults(): void {
 	setProjectPathGuard(null);
 	setPiPackagesPublisher(null);
 	setSpeechPublisher(null);
+	setMatrixPublisher(null);
 	setWatchPublisher(null);
 	setSkillPathClassifier(null);
 	setIgnoredPathsResolver(null);

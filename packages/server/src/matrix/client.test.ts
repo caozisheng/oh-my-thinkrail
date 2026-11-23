@@ -3,11 +3,14 @@ import { verifyMatrixAccessToken } from "./client";
 
 function fetchFixture(identity: Record<string, unknown>) {
 	const requests: string[] = [];
-	const fetchFn = Object.assign(async (input: URL | RequestInfo, init?: RequestInit) => {
-		requests.push(String(input));
-		expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer fixture-token");
-		return Response.json(identity);
-	}, { preconnect() {} });
+	const fetchFn = Object.assign(
+		async (input: URL | RequestInfo, init?: RequestInit) => {
+			requests.push(String(input));
+			expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer fixture-token");
+			return Response.json(identity);
+		},
+		{ preconnect() {} },
+	);
 	return { fetchFn, requests };
 }
 

@@ -143,6 +143,20 @@ The connection token remains in the host OS credential vault, never in agent pro
 Server and SSH/SCP repository addresses are not supported by this association flow. Stage confirmation
 and draft delivery require the current host capability; older hosts do not perform these writes.
 
+## Matrix mobile integration
+
+Settings → Matrix can connect a dedicated bot account using either a one-time password login or an existing
+access token. The access token is stored in the host OS credential vault; the password is not retained.
+ThinkRail creates a private `OMT` Space, project Spaces and active session rooms for open trusted projects,
+invites the single configured controller MXID, and mirrors readable user/assistant transcript text for use
+from standard Matrix clients. Thinking and raw tool output are not mirrored. Only that exact controller MXID
+can send ThinkRail commands; room membership alone does not grant control. Other invited room members can
+read mirrored history, and they cannot post in the rooms. The initial bridge does not support encrypted
+rooms, so the homeserver can read message contents. Disconnecting removes the local token and stops the
+bridge but leaves Spaces, rooms and message history on the homeserver. Matrix command delivery is fail-closed
+when the host was offline or the acceptance result is uncertain: resend only after checking the room's
+ThinkRail status/transcript. Homeserver access requires HTTPS and public DNS addresses.
+
 ## Inherited IDE capabilities
 
 - **Powerful chat features.** You can open several concurrent work sessions per workspace, each with its own model. Send a prompt, or queue it as a follow-up, delegate to subagents, and work together on a shared plan: the agent updates it, and you review and edit. Attach any file with the paperclip, paste or drag and drop: images go to the model, and other files (PDFs, videos, text) are copied into the workspace's `.thinkrail/context/attachments/` folder for the agent to read. On Linux, use the paperclip or paste, since drag and drop of files isn't available there. Settings → Subagents lists built-in, personal, and trusted workspace agents with their model policies. Switch individual agents off globally to block new launches without interrupting ongoing work, and set delegation and concurrency limits there.
