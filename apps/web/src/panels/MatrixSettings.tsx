@@ -14,7 +14,12 @@ import {
 import { T, useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SETTINGS_INPUT, SettingsGroup, SettingsPage, SettingsRow } from "@/settingsKit";
+import {
+	SETTINGS_INPUT,
+	SettingsGroup,
+	SettingsPage,
+	SettingsRow,
+} from "@/settingsKit";
 import { useAppStore } from "@/store";
 import { getTransport } from "@/transport";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -34,6 +39,7 @@ export function MatrixSettings() {
 	const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 	const requestGeneration = useRef(0);
 	const mounted = useRef(false);
+
 	const refresh = useCallback(() => {
 		const generation = ++requestGeneration.current;
 		getTransport()
@@ -47,6 +53,7 @@ export function MatrixSettings() {
 				},
 			);
 	}, []);
+
 	useEffect(() => {
 		mounted.current = true;
 		refresh();
@@ -60,24 +67,26 @@ export function MatrixSettings() {
 			unsubscribe();
 		};
 	}, [refresh]);
+
 	const request = async (
 		method: "matrix.configure" | "matrix.disconnect" | "matrix.sync",
 		input: MatrixConnectionInput | Record<string, never>,
 	) => {
 		const generation = ++requestGeneration.current;
-		const current = () => mounted.current && generation === requestGeneration.current;
+		const isCurrent = () => mounted.current && generation === requestGeneration.current;
 		setBusy(true);
 		setFailed(false);
 		try {
 			const value = await getTransport().request(method, input);
-			if (current()) install(value);
+			if (isCurrent()) install(value);
 		} catch {
-			if (current()) setFailed(true);
+			if (isCurrent()) setFailed(true);
+		} finally {
+			if (isCurrent()) setBusy(false);
 		}
-		if (mounted.current) setBusy(false);
 	};
 
-	const submit = async () => {
+	const submit = () => {
 		const input = {
 			operationId: crypto.randomUUID(),
 			homeserver,
@@ -94,12 +103,10 @@ export function MatrixSettings() {
 		setSecret("");
 		void request("matrix.configure", input);
 	};
-	const disconnect = () => setConfirmDisconnect(true);
-	const sync = () => void request("matrix.sync", {});
 
-	if (protocol === null || protocol < MATRIX_PROTOCOL_VERSION) return null;
-	const connected = status?.hasCredential === true || Boolean(status?.operationId);
+	const sync = () => void request("matrix.sync", {});
 	const phase = status?.phase ?? "disconnected";
+	const connected = status?.hasCredential === true || Boolean(status?.operationId);
 	const phaseKey = {
 		authenticating: "settings.matrix.phase.authenticating",
 		connected: "settings.matrix.phase.connected",
@@ -116,6 +123,8 @@ export function MatrixSettings() {
 		controllerUserId.length > 0 &&
 		acknowledged &&
 		secret.length > 0;
+
+	if (protocol === null || protocol < MATRIX_PROTOCOL_VERSION) return null;
 	return (
 		<SettingsPage
 			title={t("settings.nav.matrix")}
@@ -143,29 +152,26 @@ export function MatrixSettings() {
 				/>
 				{status?.homeserver ? (
 					<SettingsRow
-						rowId="matrix-homeserverLabel-summary"
 						label={t("settings.matrix.homeserverLabel")}
 						description={<span>{status.homeserver}</span>}
 					/>
 				) : null}
 				{status?.botUserId ? (
 					<SettingsRow
-						rowId="matrix-botLabel-summary"
 						label={t("settings.matrix.botLabel")}
 						description={<span>{status.botUserId}</span>}
 					/>
 				) : null}
 				{status?.controllerUserId ? (
 					<SettingsRow
-						rowId="matrix-controllerLabel-summary"
 						label={t("settings.matrix.controllerLabel")}
 						description={<span>{status.controllerUserId}</span>}
 					/>
 				) : null}
 				{connected ? (
 					<>
+						<SettingsRow rowId="matrix-counts" label={t("settings.matrix.countsLabel")} description={<span>{t("settings.matrix.counts", { projects: status?.projects ?? 0, sessions: status?.sessions ?? 0, messages: status?.backfilled ?? 0, unknown: status?.pendingControls ?? 0 })}</span>} />
 						<SettingsRow
-							rowId="matrix-syncNotReadyLabel"
 							label={t("settings.matrix.syncNotReadyLabel")}
 							description={<span>{t("settings.matrix.syncNotReady")}</span>}
 						/>
@@ -175,25 +181,23 @@ export function MatrixSettings() {
 							control={
 								<div className="flex flex-wrap gap-8">
 									<Button
-										tabIndex={0}
-										variant="outline"
-										size="m"
-										iconLeft={RiRefreshLine}
-										disabled={busy}
-										onClick={sync}
-									>
-										{t("settings.matrix.syncNow")}
-									</Button>
+									variant="outline"
+									size="m"
+									iconLeft={RiRefreshLine}
+									disabled={busy}
+									onClick={sync}
+								>
+									{t("settings.matrix.syncNow")}
+								</Button>
 									<Button
-										tabIndex={0}
-										variant="outline"
-										size="m"
-										iconLeft={RiLogoutBoxLine}
-										disabled={busy}
-										onClick={disconnect}
-									>
-										{t("settings.matrix.disconnect")}
-									</Button>
+									variant="outline"
+									size="m"
+									iconLeft={RiLogoutBoxLine}
+									disabled={busy}
+									onClick={() => setConfirmDisconnect(true)}
+								>
+									{t("settings.matrix.disconnect")}
+								</Button>
 								</div>
 							}
 						/>
@@ -201,7 +205,7 @@ export function MatrixSettings() {
 				) : (
 					<>
 						<SettingsRow
-							rowId="matrix-homeserverLabel"
+							rowId="matrix-homeserver"
 							label={t("settings.matrix.homeserverLabel")}
 							control={
 								<input
@@ -209,74 +213,66 @@ export function MatrixSettings() {
 									type="url"
 									autoComplete="url"
 									value={homeserver}
-									onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-										setHomeserver(event.target.value)
-									}
+									onChange={(event) => setHomeserver(event.target.value)}
 									aria-label={t("settings.matrix.homeserverLabel")}
 									placeholder={t("settings.matrix.homeserverPlaceholder")}
-									className={SETTINGS_INPUT + " w-full"}
+									className={`${SETTINGS_INPUT} w-full`}
 								/>
 							}
 						/>
 						<SettingsRow
-							rowId="matrix-botLabel"
+							rowId="matrix-bot"
 							label={t("settings.matrix.botLabel")}
 							control={
 								<input
 									tabIndex={0}
 									value={botUserId}
-									onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-										setBotUserId(event.target.value)
-									}
+									onChange={(event) => setBotUserId(event.target.value)}
 									aria-label={t("settings.matrix.botLabel")}
 									placeholder={t("settings.matrix.botPlaceholder")}
-									className={SETTINGS_INPUT + " w-full"}
+									className={`${SETTINGS_INPUT} w-full`}
 								/>
 							}
 						/>
 						<SettingsRow
-							rowId="matrix-controllerLabel"
+							rowId="matrix-controller"
 							label={t("settings.matrix.controllerLabel")}
 							control={
 								<input
 									tabIndex={0}
 									value={controllerUserId}
-									onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-										setControllerUserId(event.target.value)
-									}
+									onChange={(event) => setControllerUserId(event.target.value)}
 									aria-label={t("settings.matrix.controllerLabel")}
 									placeholder={t("settings.matrix.controllerPlaceholder")}
-									className={SETTINGS_INPUT + " w-full"}
+									className={`${SETTINGS_INPUT} w-full`}
 								/>
 							}
 						/>
 						<SettingsRow
-							rowId="matrix-loginMode"
+							rowId="matrix-login-mode"
 							label={t("settings.matrix.loginMode")}
 							control={
 								<div className="flex gap-8">
 									<Button
-										tabIndex={0}
-										variant={mode === "password" ? "primary" : "outline"}
-										size="s"
-										onClick={() => {
-											setMode("password");
-											setSecret("");
-										}}
-									>
-										{t("settings.matrix.passwordMode")}
-									</Button>
+									variant={mode === "password" ? "primary" : "outline"}
+									size="s"
+									onClick={() => {
+										setMode("password");
+										setSecret("");
+									}}
+								>
+									{t("settings.matrix.passwordMode")}
+								</Button>
 									<Button
-										tabIndex={0}
-										variant={mode === "access-token" ? "primary" : "outline"}
-										size="s"
-										onClick={() => {
-											setMode("access-token");
-											setSecret("");
-										}}
-									>
-										{t("settings.matrix.tokenMode")}
-									</Button>
+									variant={mode === "access-token" ? "primary" : "outline"}
+									size="s"
+									onClick={() => {
+										setMode("access-token");
+										setSecret("");
+									}}
+								>
+									{t("settings.matrix.tokenMode")}
+								</Button>
 								</div>
 							}
 						/>
@@ -290,18 +286,18 @@ export function MatrixSettings() {
 									type="password"
 									autoComplete={mode === "password" ? "new-password" : "off"}
 									value={secret}
-									onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-										setSecret(event.target.value)
-									}
-									className={SETTINGS_INPUT + " w-full"}
+									onChange={(event) => setSecret(event.target.value)}
+									className={`${SETTINGS_INPUT} w-full`}
 								/>
 							}
 						/>
 						<SettingsRow
-							rowId="matrix-plaintextLabel"
+							rowId="matrix-plaintext"
 							label={t("settings.matrix.plaintextLabel")}
 							description={
-								<p className="text-feedback-warning">{t("settings.matrix.plaintextWarning")}</p>
+								<p className="text-feedback-warning">
+									{t("settings.matrix.plaintextWarning")}
+								</p>
 							}
 							control={
 								<label className="flex items-start gap-8">
@@ -309,16 +305,14 @@ export function MatrixSettings() {
 										tabIndex={0}
 										type="checkbox"
 										checked={acknowledged}
-										onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-											setAcknowledged(event.target.checked)
-										}
+										onChange={(event) => setAcknowledged(event.target.checked)}
 									/>
 									<span>{t("settings.matrix.plaintextConfirm")}</span>
 								</label>
 							}
 						/>
 						<SettingsRow
-							rowId="matrix-loginAction"
+							rowId="matrix-login"
 							label={t("settings.matrix.loginAction")}
 							control={
 								<Button
@@ -336,7 +330,6 @@ export function MatrixSettings() {
 				)}
 				{failed ? (
 					<SettingsRow
-						rowId="matrix-failureLabel"
 						label={t("settings.matrix.failureLabel")}
 						description={<T i18nKey="settings.matrix.failure" />}
 					/>
@@ -344,11 +337,16 @@ export function MatrixSettings() {
 			</SettingsGroup>
 			<ConfirmDialog
 				open={confirmDisconnect}
-				onOpenChange={setConfirmDisconnect}
-				title={t("settings.matrix.disconnectConfirm")}
+				title={t("settings.matrix.disconnect")}
+				description={t("settings.matrix.disconnectConfirm")}
 				confirmLabel={t("settings.matrix.disconnect")}
-				destructive
-				onConfirm={() => void request("matrix.disconnect", {})}
+				cancelLabel={t("common.cancel")}
+				tone="neutral"
+				onCancel={() => setConfirmDisconnect(false)}
+				onConfirm={() => {
+					setConfirmDisconnect(false);
+					void request("matrix.disconnect", {});
+				}}
 			/>
 		</SettingsPage>
 	);

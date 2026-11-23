@@ -7,6 +7,7 @@ test("explicit commands never silently become prompts", () => {
 	expect(parseMatrixCommand("!omt say !omt stop")).toEqual({ kind: "prompt", text: "!omt stop" });
 	expect(parseMatrixCommand("!omt typo")).toEqual({ kind: "invalid" });
 	expect(parseMatrixCommand("!omt stop")).toEqual({ kind: "stop" });
+	expect(parseMatrixCommand("!omt answer interaction-7 2;text:custom")).toEqual({ kind: "answer", interactionId: "interaction-7", text: "2;text:custom" });
 });
 
 test("transcript projections exclude thinking, tool data and control messages", () => {

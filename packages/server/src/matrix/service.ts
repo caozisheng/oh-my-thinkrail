@@ -91,7 +91,7 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 	let stopped = false;
 	let epoch = 0;
 	let storageFailed = false;
-	let counts = { projects: 0, sessions: 0, backfilled: 0 };
+	let counts = { projects: 0, sessions: 0, backfilled: 0, pendingControls: 0 };
 	let stopSync: (() => void) | undefined;
 	let reconcile: (() => Promise<void>) | undefined;
 	const subscribers = new Set<(status: MatrixStatus) => void>();

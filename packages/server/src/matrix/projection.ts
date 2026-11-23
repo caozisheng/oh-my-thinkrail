@@ -240,6 +240,14 @@ export function createMatrixProjection(options: {
 						await save();
 					}
 				}
+				const completion = target.state.completion;
+				if (completion && target.state.execution === "idle" && !target.state.backgroundWork) {
+					const key = `completion:${completion.completionId}`;
+					if (!mapping.sent.includes(key)) {
+						await send(mapping.roomId, `ThinkRail session settled: ${completion.outcome}.`, `${target.sessionId}:${key}`);
+						mapping.sent.push(key); await save();
+					}
+				}
 				const transcript = await options.host.transcript(target);
 				for (let i = 0; i < transcript.length; i++) {
 					const text = transcriptProjection(transcript[i]);
@@ -262,6 +270,7 @@ export function createMatrixProjection(options: {
 				projects: Object.keys(state.projects).length,
 				sessions: Object.keys(state.sessions).length,
 				backfilled: Object.values(state.sessions).reduce((n, row) => n + row.sent.length, 0),
+				pendingControls: Object.values(state.inbox).filter((row) => row.phase === "unknown").length,
 			};
 		},
 		async receive(event: {

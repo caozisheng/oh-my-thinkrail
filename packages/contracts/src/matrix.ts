@@ -33,6 +33,7 @@ export interface MatrixStatus {
 	projects: number;
 	sessions: number;
 	backfilled: number;
+	pendingControls: number;
 	lastSyncedAt?: number;
 }
 
