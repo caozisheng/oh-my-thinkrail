@@ -186,7 +186,8 @@ function current(): MatrixService {
 					if (!pending) return null;
 					const workspace = listAllWorkspaceRecords().find((row) => row.id === target.workspaceId);
 					if (!workspace) return null;
-					if (pending.kind === "dialog") return "This interaction requires the ThinkRail web UI; Matrix cannot safely display its complete approval scope.";
+					if (pending.kind === "dialog")
+						return "This interaction requires the ThinkRail web UI; Matrix cannot safely display its complete approval scope.";
 					const messages = (
 						await getSessionMessages(target.sessionId, target.workspaceId, workspace.worktreePath)
 					).messages;

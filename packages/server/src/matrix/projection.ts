@@ -175,10 +175,13 @@ export function createMatrixProjection(options: {
 			await ensureSafe(state.rootRoomId);
 			await configureRoomController(state.rootRoomId);
 			if (!state.controlRoomId) {
-				if (state.controlCreating) throw new Error("Matrix control room creation outcome is unknown");
-				state.controlCreating = true; await save();
+				if (state.controlCreating)
+					throw new Error("Matrix control room creation outcome is unknown");
+				state.controlCreating = true;
+				await save();
 				state.controlRoomId = await makeRoom("Control center", false);
-				delete state.controlCreating; await save();
+				delete state.controlCreating;
+				await save();
 			}
 			await ensureSafe(state.controlRoomId);
 			await configureRoomController(state.controlRoomId);
@@ -204,7 +207,8 @@ export function createMatrixProjection(options: {
 					if (
 						target.state.execution !== "running" &&
 						!target.state.needsInput &&
-						!target.state.backgroundWork && !state.explicitSessionIds?.includes(target.sessionId)
+						!target.state.backgroundWork &&
+						!state.explicitSessionIds?.includes(target.sessionId)
 					)
 						continue;
 					mapping = {
@@ -245,26 +249,32 @@ export function createMatrixProjection(options: {
 				const transcript = await options.host.transcript(target);
 				// A running host may still be appending/streaming this message. Only project a
 				// settled transcript so partial assistant output is never emitted.
-				if (target.state.execution !== "running") for (const message of transcript) {
-					const text = transcriptProjection(message);
-					if (!text) continue;
-					const hash = createHash("sha256").update(text).digest("hex");
-					if (mapping.sent.includes(hash)) continue;
-					for (let offset = 0; offset < text.length; offset += 12000)
-						await send(
-							mapping.roomId,
-							text.slice(offset, offset + 12000),
-							`${target.sessionId}:${hash}:${offset}`,
-						);
-					mapping.sent.push(hash);
-					await save();
-				}
+				if (target.state.execution !== "running")
+					for (const message of transcript) {
+						const text = transcriptProjection(message);
+						if (!text) continue;
+						const hash = createHash("sha256").update(text).digest("hex");
+						if (mapping.sent.includes(hash)) continue;
+						for (let offset = 0; offset < text.length; offset += 12000)
+							await send(
+								mapping.roomId,
+								text.slice(offset, offset + 12000),
+								`${target.sessionId}:${hash}:${offset}`,
+							);
+						mapping.sent.push(hash);
+						await save();
+					}
 				const completion = target.state.completion;
 				if (completion && target.state.execution === "idle" && !target.state.backgroundWork) {
 					const key = `completion:${completion.completionId}`;
 					if (!mapping.sent.includes(key)) {
-						await send(mapping.roomId, `ThinkRail session settled: ${completion.outcome}.`, `${target.sessionId}:${key}`);
-						mapping.sent.push(key); await save();
+						await send(
+							mapping.roomId,
+							`ThinkRail session settled: ${completion.outcome}.`,
+							`${target.sessionId}:${key}`,
+						);
+						mapping.sent.push(key);
+						await save();
 					}
 				}
 			}
@@ -288,17 +298,46 @@ export function createMatrixProjection(options: {
 			if (event.roomId === state.controlRoomId) {
 				if (state.inbox[event.id]) return;
 				await ensureSafe(event.roomId);
-				state.inbox[event.id] = { phase: "done", roomId: event.roomId }; await save();
-				if (event.historical) { await send(event.roomId, "ThinkRail was offline; resend your directory command.", `offline:${event.id}`); return; }
+				state.inbox[event.id] = { phase: "done", roomId: event.roomId };
+				await save();
+				if (event.historical) {
+					await send(
+						event.roomId,
+						"ThinkRail was offline; resend your directory command.",
+						`offline:${event.id}`,
+					);
+					return;
+				}
 				const available = await options.host.catalog();
 				if (event.text.startsWith("!omt attach ")) {
 					const id = event.text.slice(12).trim();
-					if (!available.some((target) => target.sessionId === id)) { await send(event.roomId, "Unknown or unavailable session ID.", `attach-error:${event.id}`); return; }
-					state.explicitSessionIds = [...new Set([...(state.explicitSessionIds ?? []), id])]; await save();
-					await send(event.roomId, "Session selected for mapping. Sync will create its room and backfill readable history.", `attach:${event.id}`);
+					if (!available.some((target) => target.sessionId === id)) {
+						await send(
+							event.roomId,
+							"Unknown or unavailable session ID.",
+							`attach-error:${event.id}`,
+						);
+						return;
+					}
+					state.explicitSessionIds = [...new Set([...(state.explicitSessionIds ?? []), id])];
+					await save();
+					await send(
+						event.roomId,
+						"Session selected for mapping. Sync will create its room and backfill readable history.",
+						`attach:${event.id}`,
+					);
 				} else {
-					const directory = available.map((target) => `${target.projectName} / ${target.workspaceName} / ${target.title || "Chat"}\n${target.sessionId}${state.sessions[target.sessionId]?.roomId ? ` https://matrix.to/#/${state.sessions[target.sessionId]?.roomId}` : ""}`).join("\n\n");
-					await send(event.roomId, `Use !omt sessions to list sessions; !omt attach <exact session ID> to map history.\n\n${directory.slice(0, 20000)}`, `directory:${event.id}`);
+					const directory = available
+						.map(
+							(target) =>
+								`${target.projectName} / ${target.workspaceName} / ${target.title || "Chat"}\n${target.sessionId}${state.sessions[target.sessionId]?.roomId ? ` https://matrix.to/#/${state.sessions[target.sessionId]?.roomId}` : ""}`,
+						)
+						.join("\n\n");
+					await send(
+						event.roomId,
+						`Use !omt sessions to list sessions; !omt attach <exact session ID> to map history.\n\n${directory.slice(0, 20000)}`,
+						`directory:${event.id}`,
+					);
 				}
 				return;
 			}

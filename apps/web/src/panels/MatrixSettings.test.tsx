@@ -15,6 +15,8 @@ test("Matrix integration settings have catalog rows, accessible explicit control
 	expect(source).toContain("aria-label={secretName}");
 	expect(source).toContain("tabIndex={0}");
 	expect(source).toContain("<ConfirmDialog");
+	expect(source).toContain("onOpenChange={setConfirmDisconnect}");
+	expect(source).not.toContain('tone="neutral"');
 	expect(source).not.toContain("window.confirm");
 	expect(source).not.toContain("finally {");
 	expect(EN["settings.matrix.password"]).toBeDefined();
