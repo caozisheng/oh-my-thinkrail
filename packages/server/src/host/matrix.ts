@@ -9,7 +9,6 @@ import {
 	followUpSession,
 	getSessionMessages,
 	listSessionStates,
-	resolveExtUi,
 	respondToTool,
 	startInitialSessionPrompt,
 	steerSession,
@@ -187,8 +186,7 @@ function current(): MatrixService {
 					if (!pending) return null;
 					const workspace = listAllWorkspaceRecords().find((row) => row.id === target.workspaceId);
 					if (!workspace) return null;
-					if (pending.kind === "dialog")
-						return `${pending.request.title}\n${JSON.stringify(pending.request)}\nReply: !omt answer ${pending.interactionId} <value>. Confirm uses yes/no; select uses an exact option.`;
+					if (pending.kind === "dialog") return "This interaction requires the ThinkRail web UI; Matrix cannot safely display its complete approval scope.";
 					const messages = (
 						await getSessionMessages(target.sessionId, target.workspaceId, workspace.worktreePath)
 					).messages;
@@ -209,18 +207,8 @@ function current(): MatrixService {
 					const pending = fresh.state.needsInput;
 					if (!pending || pending.interactionId !== interactionId)
 						throw new Error("Expired interaction");
-					if (pending.kind === "dialog") {
-						const request = pending.request;
-						if (request.kind === "confirm" && text !== "yes" && text !== "no")
-							throw new Error("Use yes or no");
-						if (request.kind === "select" && !request.options.includes(text))
-							throw new Error("Invalid option");
-						resolveExtUi({
-							id: request.id,
-							value: request.kind === "confirm" ? text === "yes" : text,
-						});
-						return;
-					}
+					if (pending.kind === "dialog")
+						throw new Error("This interaction requires the ThinkRail web UI");
 					const workspace = listAllWorkspaceRecords().find((row) => row.id === target.workspaceId);
 					if (!workspace) throw new Error("Unknown workspace");
 					const messages = (

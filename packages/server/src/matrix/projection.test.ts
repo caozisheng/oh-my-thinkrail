@@ -26,8 +26,12 @@ const target: MatrixSessionTarget = {
 };
 function fixture() {
 	let saved = emptyProjection();
+	saved.explicitSessionIds = ["s1"];
+	const current = structuredClone(target);
 	let serial = 0;
 	const sent: string[] = [];
+	const txids: string[] = [];
+	let encrypted = false;
 	const prompts: string[] = [];
 	const calls: Record<string, unknown>[] = [];
 	const powerLevels: { roomId: string; userId: string; level: number | undefined }[] = [];
@@ -39,7 +43,12 @@ function fixture() {
 			return { room_id: `!room${++serial}:example.org` };
 		},
 		async roomState() {
-			return [{ type: "m.room.join_rules", content: { join_rule: "invite" } }];
+			return encrypted
+				? [
+						{ type: "m.room.join_rules", content: { join_rule: "invite" } },
+						{ type: "m.room.encryption", content: {} },
+					]
+				: [{ type: "m.room.join_rules", content: { join_rule: "invite" } }];
 		},
 		async invite(roomId: string, userId: string) {
 			invites.push({ roomId, userId });
@@ -49,7 +58,8 @@ function fixture() {
 		async setPowerLevel(roomId: string, userId: string, level: number | undefined) {
 			powerLevels.push({ roomId, userId, level });
 		},
-		async sendEvent(_room: string, _type: string, content: { body: string }) {
+		async sendEvent(_room: string, _type: string, content: { body: string }, txid: string) {
+			txids.push(txid);
 			sent.push(content.body);
 			return { event_id: `$${sent.length}` };
 		},
@@ -71,7 +81,7 @@ function fixture() {
 			},
 			host: {
 				async catalog() {
-					return [target];
+					return [current];
 				},
 				async transcript() {
 					return [{ role: "assistant", content: [{ type: "text", text: "Hello" }] }];
@@ -88,9 +98,12 @@ function fixture() {
 		});
 	return {
 		make,
+		current,
 		sent,
 		prompts,
 		calls,
+		txids,
+		setEncrypted: (value: boolean) => { encrypted = value; },
 		powerLevels,
 		invites,
 		state: (): MatrixProjectionState => saved,
@@ -105,7 +118,7 @@ test("creates private OMT/project/session rooms once and reuses mappings across 
 	await f.make().reconcile();
 	expect(f.calls.map((call) => call.name)).toEqual(["OMT", "Control center", "Project", "Session"]);
 	expect(f.calls.every((call) => call.visibility === "private")).toBe(true);
-	expect(f.sent).toEqual(["Assistant: Hello"]);
+	expect(f.sent).toEqual([]);
 	expect(f.powerLevels).toEqual([
 		{ roomId: "!room1:example.org", userId: "@owner:example.org", level: 10 },
 		{ roomId: "!room2:example.org", userId: "@owner:example.org", level: 10 },
@@ -114,7 +127,42 @@ test("creates private OMT/project/session rooms once and reuses mappings across 
 	]);
 	await f.make().reconcile();
 	expect(f.calls).toHaveLength(4);
-	expect(f.sent).toHaveLength(1);
+	expect(f.sent).toHaveLength(0);
+
+});
+
+test("unfinished durable dispatches become unknown and are not replayed after restart", async () => {
+	const f = fixture();
+	await f.make().reconcile();
+	const roomId = f.state().sessions.s1?.roomId;
+	if (!roomId) throw new Error("Expected mapped room");
+	const state = f.state();
+	state.inbox.$pending = { phase: "dispatching", roomId };
+	await f.make().reconcile();
+	expect(f.state().inbox.$pending?.phase).toBe("unknown");
+	expect(f.prompts).toEqual([]);
+});
+
+test("historical notices validate room safety before sending", async () => {
+	const f = fixture();
+	const bridge = f.make();
+	await bridge.reconcile();
+	const roomId = f.state().sessions.s1?.roomId;
+	if (!roomId) throw new Error("Expected mapped room");
+	f.setEncrypted(true);
+	await expect(bridge.receive({ id: "$historical", roomId, sender: "@owner:example.org", text: "hello", historical: true, replacement: false })).rejects.toThrow("Encrypted");
+	expect(f.sent).toEqual([]);
+});
+
+test("running transcripts are not projected until execution settles", async () => {
+	const f = fixture();
+	const mutable = f.current;
+	mutable.state = { ...target.state, execution: "running" };
+	await f.make().reconcile();
+	expect(f.sent).toEqual([]);
+	mutable.state = { ...target.state, execution: "idle" };
+	await f.make().reconcile();
+	expect(f.sent).toEqual(["Assistant: Hello"]);
 });
 
 test("controller changes invite the new controller and downgrade the previous one", async () => {

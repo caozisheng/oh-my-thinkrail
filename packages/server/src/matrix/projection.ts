@@ -69,6 +69,8 @@ export function createMatrixProjection(options: {
 	};
 	const send = async (roomId: string, text: string, key: string) => {
 		assertActive();
+		await ensureSafe(roomId);
+		assertActive();
 		await options.client.sendEvent(
 			roomId,
 			EventType.RoomMessage,
@@ -240,21 +242,13 @@ export function createMatrixProjection(options: {
 						await save();
 					}
 				}
-				const completion = target.state.completion;
-				if (completion && target.state.execution === "idle" && !target.state.backgroundWork) {
-					const key = `completion:${completion.completionId}`;
-					if (!mapping.sent.includes(key)) {
-						await send(mapping.roomId, `ThinkRail session settled: ${completion.outcome}.`, `${target.sessionId}:${key}`);
-						mapping.sent.push(key); await save();
-					}
-				}
 				const transcript = await options.host.transcript(target);
-				for (let i = 0; i < transcript.length; i++) {
-					const text = transcriptProjection(transcript[i]);
+				// A running host may still be appending/streaming this message. Only project a
+				// settled transcript so partial assistant output is never emitted.
+				if (target.state.execution !== "running") for (const message of transcript) {
+					const text = transcriptProjection(message);
 					if (!text) continue;
-					const hash = createHash("sha256")
-						.update(JSON.stringify([i, text]))
-						.digest("hex");
+					const hash = createHash("sha256").update(text).digest("hex");
 					if (mapping.sent.includes(hash)) continue;
 					for (let offset = 0; offset < text.length; offset += 12000)
 						await send(
@@ -264,6 +258,14 @@ export function createMatrixProjection(options: {
 						);
 					mapping.sent.push(hash);
 					await save();
+				}
+				const completion = target.state.completion;
+				if (completion && target.state.execution === "idle" && !target.state.backgroundWork) {
+					const key = `completion:${completion.completionId}`;
+					if (!mapping.sent.includes(key)) {
+						await send(mapping.roomId, `ThinkRail session settled: ${completion.outcome}.`, `${target.sessionId}:${key}`);
+						mapping.sent.push(key); await save();
+					}
 				}
 			}
 			return {
@@ -285,9 +287,9 @@ export function createMatrixProjection(options: {
 			if (!loaded || event.sender !== options.controller || event.replacement) return;
 			if (event.roomId === state.controlRoomId) {
 				if (state.inbox[event.id]) return;
+				await ensureSafe(event.roomId);
 				state.inbox[event.id] = { phase: "done", roomId: event.roomId }; await save();
 				if (event.historical) { await send(event.roomId, "ThinkRail was offline; resend your directory command.", `offline:${event.id}`); return; }
-				await ensureSafe(event.roomId);
 				const available = await options.host.catalog();
 				if (event.text.startsWith("!omt attach ")) {
 					const id = event.text.slice(12).trim();
@@ -303,6 +305,7 @@ export function createMatrixProjection(options: {
 			const mapping = Object.values(state.sessions).find((row) => row.roomId === event.roomId);
 			if (!mapping || state.inbox[event.id]) return;
 			if (event.historical) {
+				await ensureSafe(event.roomId);
 				state.inbox[event.id] = { phase: "done", roomId: event.roomId };
 				await save();
 				await send(
