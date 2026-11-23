@@ -2654,7 +2654,7 @@
 	"settings.matrix.plaintextLabel": "Plaintext room access",
 	"settings.matrix.plaintextWarning": "Use a dedicated bot on a trusted homeserver. ThinkRail does not support encrypted rooms.",
 	"settings.matrix.statusLabel": "Connection status",
-	"settings.matrix.syncNotReady": "Active/needs-input sessions in open trusted projects map automatically. Use !omt sessions in the control room, then !omt attach <session ID> to backfill an older session. Text and settled outcomes are mirrored; thinking and tool output are excluded.",
+	"settings.matrix.syncNotReady": "Active/needs-input sessions in open trusted projects map automatically. Use !omt sessions in the control room, then !omt attach followed by the session ID to backfill an older session. Text and settled outcomes are mirrored; thinking and tool output are excluded.",
 	"settings.matrix.syncNotReadyLabel": "Synchronization",
 	"settings.matrix.syncNow": "Sync now",
 	"settings.matrix.title": "Matrix",
