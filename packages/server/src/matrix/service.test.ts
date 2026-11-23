@@ -17,7 +17,9 @@ const input: MatrixConnectionInput = {
 	password: "one-time-password",
 };
 
-function fixture(options: { whoamiUserId?: string; failVaultSet?: boolean } = {}) {
+function fixture(
+	options: { whoamiUserId?: string; failVaultSet?: boolean; loginError?: boolean } = {},
+) {
 	const secrets = new Map<string, string>();
 	let saved: MatrixRecord | null = null;
 	const calls: string[] = [];
@@ -30,7 +32,6 @@ function fixture(options: { whoamiUserId?: string; failVaultSet?: boolean } = {}
 			if (options.failVaultSet) throw new Error("secret");
 			secrets.set(id, value);
 		},
-
 		async delete(id) {
 			calls.push("vault:delete");
 			secrets.delete(id);
@@ -50,6 +51,8 @@ function fixture(options: { whoamiUserId?: string; failVaultSet?: boolean } = {}
 			const url = String(resource);
 			if (url.endsWith("/login")) {
 				calls.push("login");
+				if (options.loginError)
+					return Response.json({ errcode: "M_FORBIDDEN", error: "bad password" }, { status: 403 });
 				return Response.json({
 					user_id: input.botUserId,
 					access_token: "ephemeral-token",
@@ -107,7 +110,7 @@ test("restores and revalidates a vault-backed connection after restart", async (
 	expect(f.calls.filter((call) => call === "login")).toHaveLength(1);
 });
 
-test("a successful operation replay does not log in again and changed input is refused", async () => {
+test("successful operation replay is idempotent and changed input is refused", async () => {
 	const f = fixture();
 	await f.service.configure(input);
 	await f.service.configure(input);
@@ -115,4 +118,11 @@ test("a successful operation replay does not log in again and changed input is r
 	await expect(
 		f.service.configure({ ...input, controllerUserId: "@other:example.org" }),
 	).rejects.toThrow();
+});
+
+test("definitive password rejection does not leave a retry-blocking pending fence", async () => {
+	const f = fixture({ loginError: true });
+	await expect(f.service.configure(input)).rejects.toThrow();
+	expect(f.readRecord()?.operation).toBeUndefined();
+	f.service.stop();
 });
