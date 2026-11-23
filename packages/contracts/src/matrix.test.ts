@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 import { canonicalMatrixHomeserver, isMatrixConnectionInput, isMatrixUserId } from "./matrix";
 
-test("canonicalizes only clean HTTPS homeserver origins", () => {
+test("canonicalizes clean HTTP(S) origins without granting network access", () => {
+	expect(canonicalMatrixHomeserver("http://matrix.example:9527/")).toBe(
+		"http://matrix.example:9527",
+	);
 	expect(canonicalMatrixHomeserver("https://matrix.example/")).toBe("https://matrix.example");
 	for (const value of [
-		"http://matrix.example",
 		"https://user@matrix.example",
 		"https://matrix.example/path",
 		"https://matrix.example/?x=1",
@@ -25,6 +27,26 @@ test("accepts an exact, secret-bearing login input but rejects ambiguous identit
 		password: "temporary-secret",
 	};
 	expect(isMatrixConnectionInput(input)).toBe(true);
+	const http = { ...input, homeserver: "http://matrix.example:9527" };
+	expect(isMatrixConnectionInput(http)).toBe(false);
+	expect(isMatrixConnectionInput({ ...input, homeserver: "http:matrix.example:9527" })).toBe(false);
+	expect(
+		isMatrixConnectionInput({ ...http, networkConsent: { homeserver: http.homeserver } }),
+	).toBe(true);
+	expect(
+		isMatrixConnectionInput({
+			...http,
+			networkConsent: { homeserver: "http://matrix.example:9528" },
+		}),
+	).toBe(false);
+	expect(isMatrixConnectionInput({ ...http, networkConsent: undefined })).toBe(false);
+	expect(
+		isMatrixConnectionInput({
+			...http,
+			homeserver: "http:matrix.example:9527",
+			networkConsent: { homeserver: "http://matrix.example:9527" },
+		}),
+	).toBe(false);
 	expect(isMatrixConnectionInput({ ...input, accessToken: "also-secret" })).toBe(false);
 	expect(isMatrixConnectionInput({ ...input, controllerUserId: input.botUserId })).toBe(false);
 	expect(isMatrixConnectionInput({ ...input, plaintextAcknowledged: false })).toBe(false);

@@ -17,14 +17,16 @@ default, narrow cross-ring guards, the quit-confirmation rule both clients drive
 the palette ranks with — kept here so host-side search can rank with the same copy. The one package
 `apps/web` may depend on—which is what lets the UI ship independently of the host.
 
-## Matrix integration (v143)
+## Matrix integration (v143–144)
 
-`MatrixConnectionInput` is write-only: exactly one of password or access token plus an explicit
-plaintext acknowledgment, HTTPS homeserver origin, dedicated bot MXID, controller MXID and an
-operation id. `MatrixStatus` never contains secret material. `matrix.status`, `.configure`,
-`.disconnect`, `.sync` and `matrix.changed` are gated at protocol v143; older clients omit the
-Matrix section. Connection status reports durable authentication and bridge progress, not remote
-room membership as proof of controller authorization.
+`MatrixConnectionInput` is write-only: exactly one of password or access token plus plaintext
+acknowledgment, homeserver origin, dedicated bot MXID, controller MXID and operation id. Optional
+`networkConsent` is an exact `{ homeserver }` acknowledgment bound to the same canonical origin; it
+is required for HTTP and private-network access and is never a general proxy permission. `MatrixStatus`
+never contains secret material. `matrix.status`, `.configure`, `.disconnect`, `.sync` and
+`matrix.changed` are gated at v143. The explicit private/HTTP exception is v144; older clients do not
+offer it. Connection status reports host-observed bridge progress, not remote room membership as proof
+of controller authorization.
 
 ## Issue integration
 

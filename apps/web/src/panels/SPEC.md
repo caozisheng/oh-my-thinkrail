@@ -9,6 +9,13 @@ references: [central-integration, submodule-web-issues]
 tags: [ui]
 ---
 
+## Matrix in Integrations
+
+The existing Integrations section retains its `github` identity and GitHub CLI status. It also renders
+Matrix as an embedded Settings group on v143+ hosts, without a nested page heading or separate nav
+entry. The former `integrations` Matrix route resolves to `github`; Matrix search results target that
+same section. Protocol gating remains inside the Matrix contributor so older hosts keep GitHub intact.
+
 ## Responsibility
 
 The layout-agnostic, store-driven feature views. A panel fills its container and never knows its

@@ -87,6 +87,25 @@ export function isPublicMatrixAddress(address: string): boolean {
 	return false;
 }
 
+export function isPrivateMatrixAddress(address: string): boolean {
+	if (isIP(address) === 4)
+		return (
+			inV4Range(address, "10.0.0.0", 8) ||
+			inV4Range(address, "172.16.0.0", 12) ||
+			inV4Range(address, "192.168.0.0", 16) ||
+			inV4Range(address, "100.64.0.0", 10)
+		);
+	if (isIP(address) !== 6) return false;
+	if (inV6(address, [0, 0, 0, 0, 0, 0xffff, 0, 0], 96)) {
+		const groups = ipv6Groups(address);
+		if (!groups) return false;
+		const high = groups[6] ?? 0;
+		const low = groups[7] ?? 0;
+		return isPrivateMatrixAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+	}
+	return inV6(address, [0xfc00, 0, 0, 0, 0, 0, 0, 0], 7);
+}
+
 export async function assertSafeHomeserver(value: string): Promise<URL> {
 	let url: URL;
 	try {
@@ -95,7 +114,7 @@ export async function assertSafeHomeserver(value: string): Promise<URL> {
 		throw new Error("Invalid Matrix homeserver.");
 	}
 	if (
-		url.protocol !== "https:" ||
+		(url.protocol !== "https:" && url.protocol !== "http:") ||
 		url.username ||
 		url.password ||
 		url.pathname !== "/" ||
@@ -108,9 +127,14 @@ export async function assertSafeHomeserver(value: string): Promise<URL> {
 		url.hostname.endsWith(".localhost") ||
 		url.hostname.endsWith(".local")
 	)
-		throw new Error("Matrix homeserver must resolve to a public address.");
+		throw new Error("Matrix homeserver address is not supported.");
 	const records = await lookup(url.hostname, { all: true, verbatim: true });
-	if (!records.length || records.some((record) => !isPublicMatrixAddress(record.address)))
-		throw new Error("Matrix homeserver must resolve to public addresses.");
+	if (
+		!records.length ||
+		records.some(
+			(record) => !isPublicMatrixAddress(record.address) && !isPrivateMatrixAddress(record.address),
+		)
+	)
+		throw new Error("Matrix homeserver address is not supported.");
 	return new URL(url.origin);
 }

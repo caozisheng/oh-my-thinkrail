@@ -11,6 +11,7 @@ import { SkeletonRows } from "@thinkrail/ui/skeleton";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { SettingsGroup, SettingsPage, SettingsRow } from "@/settingsKit";
 import { getTransport } from "@/transport";
+import { MatrixSettings } from "./MatrixSettings";
 import { SETTING, settingProps } from "./settingsCatalog";
 
 const SpinningRefresh = withIconClass(RefreshCw, "motion-safe:animate-spin");
@@ -145,6 +146,7 @@ export function GithubStatusView({
 					}
 				/>
 			</SettingsGroup>
+			<MatrixSettings embedded />
 		</SettingsPage>
 	);
 }

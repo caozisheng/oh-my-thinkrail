@@ -1,7 +1,17 @@
 import { createHash } from "node:crypto";
 import type { SessionState } from "@thinkrail/contracts";
-import { EventType, type MatrixClient, MsgType, Preset, RoomType, Visibility } from "matrix-js-sdk";
+import {
+	EventType,
+	type MatrixClient,
+	MsgType,
+	Preset,
+	RelationType,
+	RoomType,
+	Visibility,
+} from "matrix-js-sdk";
 import { projectionTransactionId, transcriptProjection } from "./bridge";
+import { assistantMessageKey } from "./liveEvents";
+import type { MatrixDiagnosticCode } from "./service";
 
 export interface MatrixSessionTarget {
 	projectId: string;
@@ -29,6 +39,15 @@ export interface MatrixRoomMapping {
 	projectRoomId?: string;
 	projectCreating?: true;
 	sent: string[];
+	streams?: Record<
+		string,
+		{
+			text?: string;
+			final?: boolean;
+			chunks: { eventId?: string; text?: string; revision: number; pending?: string }[];
+			pending?: { text: string; final: boolean };
+		}
+	>;
 }
 export interface MatrixProjectionState {
 	identity?: { bot: string; homeserver: string; controller: string };
@@ -52,6 +71,7 @@ export function emptyProjection(): MatrixProjectionState {
 }
 
 export function createMatrixProjection(options: {
+	diagnostic?: (code: MatrixDiagnosticCode) => void;
 	client: MatrixClient;
 	controller: string;
 	bot: string;
@@ -60,9 +80,24 @@ export function createMatrixProjection(options: {
 	store: MatrixProjectionStore;
 	allowed: () => boolean;
 }) {
+	const diagnostic = (code: MatrixDiagnosticCode) => {
+		try {
+			options.diagnostic?.(code);
+		} catch {}
+	};
 	let state = emptyProjection();
 	let targets: MatrixSessionTarget[] = [];
 	let loaded = false;
+	// Cooperative checkpoints admit host controls. Any attempted mutation invalidates
+	// the captured catalog/transcript, including unknown dispatch outcomes. Abandon
+	// the remaining pass; the next reconcile refreshes state and exact ownership.
+	let controlGeneration = 0;
+	const summary = () => ({
+		projects: Object.keys(state.projects).length,
+		sessions: Object.keys(state.sessions).length,
+		backfilled: Object.values(state.sessions).reduce((n, row) => n + row.sent.length, 0),
+		pendingControls: Object.values(state.inbox).filter((row) => row.phase === "unknown").length,
+	});
 	const save = () => options.store.save(structuredClone(state));
 	const assertActive = () => {
 		if (!options.allowed()) throw new Error("Matrix integration stopped");
@@ -107,9 +142,20 @@ export function createMatrixProjection(options: {
 		)?.content?.membership;
 		if (membership !== "join" && membership !== "invite")
 			await options.client.invite(roomId, options.controller);
-		await options.client.setPowerLevel(roomId, options.controller, 10);
-		for (const former of state.formerControllers ?? [])
-			if (former !== options.controller) await options.client.setPowerLevel(roomId, former, 0);
+		const powerLevelsEvent = events.find((event) => event.type === EventType.RoomPowerLevels);
+		const content = structuredClone(powerLevelsEvent?.content ?? {});
+		const users = { ...(content.users ?? {}) };
+		let changed = users[options.controller] !== 10;
+		users[options.controller] = 10;
+		for (const former of state.formerControllers ?? []) {
+			if (former !== options.controller && users[former] !== 0) {
+				users[former] = 0;
+				changed = true;
+			}
+		}
+		if (changed) {
+			await options.client.sendStateEvent(roomId, EventType.RoomPowerLevels, { ...content, users });
+		}
 	};
 	const ensureSafe = async (roomId: string) => {
 		const events = await options.client.roomState(roomId);
@@ -134,36 +180,45 @@ export function createMatrixProjection(options: {
 			parent,
 		);
 	};
-	return {
-		async reconcile() {
-			assertActive();
-			if (!loaded) {
-				state = await options.store.load();
-				if (
-					state.identity &&
-					(state.identity.bot !== options.bot || state.identity.homeserver !== options.homeserver)
-				)
-					state = emptyProjection();
-				if (state.identity && state.identity.controller !== options.controller) {
-					state.formerControllers = [
-						...new Set([...(state.formerControllers ?? []), state.identity.controller]),
-					].filter((controller) => controller !== options.controller);
-				} else if (state.formerControllers?.includes(options.controller)) {
-					state.formerControllers = state.formerControllers.filter(
-						(controller) => controller !== options.controller,
-					);
-				}
-				state.identity = {
-					bot: options.bot,
-					homeserver: options.homeserver,
-					controller: options.controller,
-				};
-				for (const item of Object.values(state.inbox))
-					if (item.phase === "dispatching") item.phase = "unknown";
-				loaded = true;
-				await save();
+	const load = async () => {
+		if (!loaded) {
+			state = await options.store.load();
+			if (
+				state.identity &&
+				(state.identity.bot !== options.bot || state.identity.homeserver !== options.homeserver)
+			)
+				state = emptyProjection();
+			if (state.identity && state.identity.controller !== options.controller) {
+				state.formerControllers = [
+					...new Set([...(state.formerControllers ?? []), state.identity.controller]),
+				].filter((controller) => controller !== options.controller);
+			} else if (state.formerControllers?.includes(options.controller)) {
+				state.formerControllers = state.formerControllers.filter(
+					(controller) => controller !== options.controller,
+				);
 			}
+			state.identity = {
+				bot: options.bot,
+				homeserver: options.homeserver,
+				controller: options.controller,
+			};
+			for (const item of Object.values(state.inbox))
+				if (item.phase === "dispatching") item.phase = "unknown";
+			loaded = true;
+			await save();
+		}
+	};
+
+	const projection = {
+		async *reconcileSteps() {
+			assertActive();
+			await load();
+			diagnostic("reconcile-catalog");
+			const generation = controlGeneration;
 			targets = await options.host.catalog();
+			yield;
+			if (generation !== controlGeneration) return summary();
+			diagnostic("reconcile-root");
 			if (!state.rootRoomId) {
 				if (state.rootCreating) throw new Error("Matrix room creation outcome is unknown");
 				state.rootCreating = true;
@@ -174,6 +229,9 @@ export function createMatrixProjection(options: {
 			}
 			await ensureSafe(state.rootRoomId);
 			await configureRoomController(state.rootRoomId);
+			yield;
+			if (generation !== controlGeneration) return summary();
+			diagnostic("reconcile-control");
 			if (!state.controlRoomId) {
 				if (state.controlCreating)
 					throw new Error("Matrix control room creation outcome is unknown");
@@ -186,8 +244,20 @@ export function createMatrixProjection(options: {
 			await ensureSafe(state.controlRoomId);
 			await configureRoomController(state.controlRoomId);
 			await link(state.rootRoomId, state.controlRoomId);
+			yield;
+			if (generation !== controlGeneration) return summary();
+			const configuredProjects = new Set<string>();
 			for (const target of targets) {
 				assertActive();
+				let mapping = state.sessions[target.sessionId];
+				if (
+					!mapping &&
+					target.state.execution !== "running" &&
+					!target.state.needsInput &&
+					!target.state.backgroundWork &&
+					!state.explicitSessionIds?.includes(target.sessionId)
+				)
+					continue;
 				const project = state.projects[target.projectId] ?? {};
 				state.projects[target.projectId] = project;
 				if (!project.roomId) {
@@ -198,19 +268,17 @@ export function createMatrixProjection(options: {
 					delete project.creating;
 					await save();
 				}
-				await ensureSafe(project.roomId);
-				await link(state.rootRoomId, project.roomId);
-				await options.client.setRoomName(project.roomId, target.projectName);
-				await configureRoomController(project.roomId);
-				let mapping = state.sessions[target.sessionId];
+				if (!configuredProjects.has(target.projectId)) {
+					diagnostic("reconcile-project");
+					await ensureSafe(project.roomId);
+					await link(state.rootRoomId, project.roomId);
+					await options.client.setRoomName(project.roomId, target.projectName);
+					await configureRoomController(project.roomId);
+					configuredProjects.add(target.projectId);
+					yield;
+					if (generation !== controlGeneration) return summary();
+				}
 				if (!mapping) {
-					if (
-						target.state.execution !== "running" &&
-						!target.state.needsInput &&
-						!target.state.backgroundWork &&
-						!state.explicitSessionIds?.includes(target.sessionId)
-					)
-						continue;
 					mapping = {
 						projectId: target.projectId,
 						workspaceId: target.workspaceId,
@@ -219,6 +287,7 @@ export function createMatrixProjection(options: {
 					};
 					state.sessions[target.sessionId] = mapping;
 				}
+				diagnostic("reconcile-session");
 				if (mapping.workspaceId !== target.workspaceId || mapping.projectId !== target.projectId)
 					throw new Error("Matrix session ownership changed");
 				if (!mapping.roomId) {
@@ -246,21 +315,53 @@ export function createMatrixProjection(options: {
 						await save();
 					}
 				}
+				yield;
+				if (generation !== controlGeneration) return summary();
+				diagnostic("reconcile-transcript");
 				const transcript = await options.host.transcript(target);
+				yield;
+				if (generation !== controlGeneration) return summary();
+				diagnostic("reconcile-output");
 				// A running host may still be appending/streaming this message. Only project a
 				// settled transcript so partial assistant output is never emitted.
+				const occurrences = new Map<number, number>();
 				if (target.state.execution !== "running")
 					for (const message of transcript) {
+						// Only assistant messages participate in stream identities. Users may
+						// legitimately share their millisecond timestamp with an assistant.
+						let messageKey: string | undefined;
+						if (
+							message &&
+							typeof message === "object" &&
+							"role" in message &&
+							message.role === "assistant" &&
+							"timestamp" in message &&
+							typeof message.timestamp === "number" &&
+							Number.isFinite(message.timestamp)
+						) {
+							const occurrence = occurrences.get(message.timestamp) ?? 0;
+							occurrences.set(message.timestamp, occurrence + 1);
+							messageKey = assistantMessageKey(message.timestamp, occurrence);
+						}
 						const text = transcriptProjection(message);
 						if (!text) continue;
+						if (messageKey !== undefined) {
+							await projection.stream(target.sessionId, messageKey, message, true);
+							yield;
+							if (generation !== controlGeneration) return summary();
+							continue;
+						}
 						const hash = createHash("sha256").update(text).digest("hex");
 						if (mapping.sent.includes(hash)) continue;
-						for (let offset = 0; offset < text.length; offset += 12000)
+						for (let offset = 0; offset < text.length; offset += 12000) {
 							await send(
 								mapping.roomId,
 								text.slice(offset, offset + 12000),
 								`${target.sessionId}:${hash}:${offset}`,
 							);
+							yield;
+							if (generation !== controlGeneration) return summary();
+						}
 						mapping.sent.push(hash);
 						await save();
 					}
@@ -277,14 +378,116 @@ export function createMatrixProjection(options: {
 						await save();
 					}
 				}
+				yield;
+				if (generation !== controlGeneration) return summary();
 			}
-			return {
-				projects: Object.keys(state.projects).length,
-				sessions: Object.keys(state.sessions).length,
-				backfilled: Object.values(state.sessions).reduce((n, row) => n + row.sent.length, 0),
-				pendingControls: Object.values(state.inbox).filter((row) => row.phase === "unknown").length,
-			};
+			return summary();
 		},
+
+		/** Caller coalesces partial snapshots (~1s). messageKey is assistantMessageKey(timestamp, transcript occurrence).
+		 * Reconcile must have mapped the session first; stream never creates rooms or dispatches input.
+		 */
+		async stream(sessionId: string, messageKey: string, message: unknown, final: boolean) {
+			assertActive();
+			await load();
+			const mapping = state.sessions[sessionId];
+			if (!mapping?.roomId) return;
+			const roomId = mapping.roomId;
+			if (
+				!message ||
+				typeof message !== "object" ||
+				!("role" in message) ||
+				message.role !== "assistant"
+			)
+				return;
+			if (
+				!("timestamp" in message) ||
+				typeof message.timestamp !== "number" ||
+				!Number.isFinite(message.timestamp)
+			)
+				return;
+			const timestampKey = String(message.timestamp);
+			const suffix = messageKey.slice(timestampKey.length + 1);
+			if (
+				messageKey !== timestampKey &&
+				(!messageKey.startsWith(`${timestampKey}:`) || !/^[1-9][0-9]*$/.test(suffix))
+			)
+				return;
+			const text = transcriptProjection(message);
+			if (!text) return;
+			const key = projectionTransactionId(`${sessionId}:${messageKey}`);
+			const existingReceipt = mapping.streams?.[key];
+			if (
+				existingReceipt &&
+				!existingReceipt.pending &&
+				(existingReceipt.final || (existingReceipt.text === text && !final))
+			)
+				return;
+			const validate = async () => {
+				assertActive();
+				const fresh = (await options.host.catalog()).find((row) => row.sessionId === sessionId);
+				if (!fresh) return false;
+				if (fresh.projectId !== mapping.projectId || fresh.workspaceId !== mapping.workspaceId)
+					throw new Error("Matrix session ownership changed");
+				await ensureSafe(roomId);
+				assertActive();
+				return true;
+			};
+			if (!(await validate())) return;
+			mapping.streams ??= {};
+			mapping.streams[key] ??= { chunks: [] };
+			const receipt = mapping.streams[key];
+			const deliver = async () => {
+				const pending = receipt.pending;
+				if (!pending) return true;
+				const count = Math.max(receipt.chunks.length, Math.ceil(pending.text.length / 12000));
+				for (let i = 0; i < count; i++) {
+					receipt.chunks[i] ??= { revision: 0 };
+					const chunk = receipt.chunks[i];
+					if (!chunk) throw new Error("Missing stream chunk receipt");
+					const body = pending.text.slice(i * 12000, (i + 1) * 12000);
+					if (chunk.text === body && chunk.pending === undefined) continue;
+					chunk.pending ??= body;
+					await save();
+					if (!(await validate())) return false;
+					const content = { msgtype: MsgType.Notice as const, body: chunk.pending };
+					const result = await options.client.sendEvent(
+						roomId,
+						EventType.RoomMessage,
+						chunk.eventId
+							? {
+									...content,
+									"m.new_content": content,
+									"m.relates_to": { rel_type: RelationType.Replace, event_id: chunk.eventId },
+								}
+							: content,
+						projectionTransactionId(`stream:${sessionId}:${messageKey}:${i}:${chunk.revision}`),
+					);
+					chunk.eventId ??= result.event_id;
+					chunk.text = chunk.pending;
+					delete chunk.pending;
+					chunk.revision++;
+					await save();
+				}
+				receipt.text = pending.text;
+				receipt.final = pending.final;
+				if (pending.final) {
+					const hash = createHash("sha256").update(pending.text).digest("hex");
+					if (!mapping.sent.includes(hash)) mapping.sent.push(hash);
+				}
+				delete receipt.pending;
+				await save();
+				return true;
+			};
+			// An uncertain response is retried with its original payload and transaction,
+			// never with the newer snapshot under that transaction ID.
+			if (receipt.pending && !(await deliver())) return;
+			if (receipt.final || (receipt.text === text && !final)) return;
+			receipt.pending = { text, final };
+			await save();
+			await deliver();
+		},
+
 		async receive(event: {
 			id: string;
 			roomId: string;
@@ -296,11 +499,16 @@ export function createMatrixProjection(options: {
 			assertActive();
 			if (!loaded || event.sender !== options.controller || event.replacement) return;
 			if (event.roomId === state.controlRoomId) {
-				if (state.inbox[event.id]) return;
+				if (state.inbox[event.id]) {
+					diagnostic("duplicate");
+					return;
+				}
+				diagnostic("control-room");
 				await ensureSafe(event.roomId);
 				state.inbox[event.id] = { phase: "done", roomId: event.roomId };
 				await save();
 				if (event.historical) {
+					diagnostic("historical");
 					await send(
 						event.roomId,
 						"ThinkRail was offline; resend your directory command.",
@@ -342,8 +550,16 @@ export function createMatrixProjection(options: {
 				return;
 			}
 			const mapping = Object.values(state.sessions).find((row) => row.roomId === event.roomId);
-			if (!mapping || state.inbox[event.id]) return;
+			if (!mapping) {
+				diagnostic("unmapped-room");
+				return;
+			}
+			if (state.inbox[event.id]) {
+				diagnostic("duplicate");
+				return;
+			}
 			if (event.historical) {
+				diagnostic("historical");
 				await ensureSafe(event.roomId);
 				state.inbox[event.id] = { phase: "done", roomId: event.roomId };
 				await save();
@@ -361,6 +577,7 @@ export function createMatrixProjection(options: {
 					row.projectId === mapping.projectId,
 			);
 			if (!fresh) {
+				diagnostic("not-available");
 				await send(
 					event.roomId,
 					"This session is not available for Matrix control.",
@@ -374,6 +591,14 @@ export function createMatrixProjection(options: {
 			assertActive();
 			const { parseMatrixCommand } = await import("./bridge");
 			const command = parseMatrixCommand(event.text);
+			diagnostic("dispatch-started");
+			if (
+				command.kind === "prompt" ||
+				command.kind === "followup" ||
+				command.kind === "answer" ||
+				(command.kind === "stop" && fresh.state.runId)
+			)
+				controlGeneration++;
 			try {
 				if (command.kind === "prompt" || command.kind === "followup")
 					await options.host.prompt(fresh, command.text, command.kind === "followup");
@@ -391,7 +616,9 @@ export function createMatrixProjection(options: {
 					);
 				state.inbox[event.id] = { phase: "done", roomId: event.roomId };
 				await save();
+				diagnostic("dispatch-accepted");
 			} catch {
+				diagnostic("dispatch-unknown");
 				state.inbox[event.id] = { phase: "unknown", roomId: event.roomId };
 				await save();
 				await send(
@@ -401,5 +628,39 @@ export function createMatrixProjection(options: {
 				);
 			}
 		},
+	};
+
+	// Serialize reconciliation, streaming snapshots and inbox writes against one durable state.
+	let queue: Promise<unknown> = Promise.resolve();
+	const serial =
+		<A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+		(...args: A): Promise<R> => {
+			const result = queue.then(() => fn(...args));
+			queue = result.catch(() => {});
+			return result;
+		};
+	// Each generator advance owns state exclusively. Yield only after awaited work has
+	// settled; queued live input runs before the next advance, never alongside it.
+	let reconciling:
+		| Promise<{ projects: number; sessions: number; backfilled: number; pendingControls: number }>
+		| undefined;
+	const reconcile = () => {
+		if (reconciling) return reconciling;
+		const steps = projection.reconcileSteps();
+		const advance = serial(() => steps.next());
+		reconciling = (async () => {
+			for (;;) {
+				const step = await advance();
+				if (step.done) return step.value;
+			}
+		})().finally(() => {
+			reconciling = undefined;
+		});
+		return reconciling;
+	};
+	return {
+		reconcile,
+		stream: serial(projection.stream),
+		receive: serial(projection.receive),
 	};
 }

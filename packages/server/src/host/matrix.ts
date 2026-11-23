@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { MatrixConnectionInput, MatrixStatus } from "@thinkrail/contracts";
+import {
+	MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION,
+	type MatrixConnectionInput,
+	type MatrixStatus,
+	type SessionEventPayload,
+} from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import {
 	abortSession,
@@ -13,6 +18,7 @@ import {
 	startInitialSessionPrompt,
 	steerSession,
 } from "../agent";
+import { logger } from "../log";
 import {
 	createMatrixService,
 	emptyProjection,
@@ -114,15 +120,25 @@ function assertTargetPolicy(target: MatrixSessionTarget): void {
 		throw new CodedError("RESOURCE_UNAVAILABLE", "Matrix session is unavailable.");
 }
 async function validateTarget(target: MatrixSessionTarget): Promise<MatrixSessionTarget> {
-	const fresh = (await catalog()).find(
+	assertTargetPolicy(target);
+	const workspace = listAllWorkspaceRecords().find((row) => row.id === target.workspaceId);
+	if (!workspace) throw new CodedError("RESOURCE_UNAVAILABLE", "Matrix session is unavailable.");
+	const rows = await listSessionStates([
+		{
+			id: workspace.id,
+			projectId: workspace.projectId,
+			cwd: workspace.worktreePath,
+		},
+	]);
+	const fresh = rows.find(
 		(row) =>
 			row.sessionId === target.sessionId &&
 			row.workspaceId === target.workspaceId &&
 			row.projectId === target.projectId,
 	);
 	if (!fresh) throw new CodedError("RESOURCE_UNAVAILABLE", "Matrix session is unavailable.");
-	assertTargetPolicy(fresh);
-	return fresh;
+	assertTargetPolicy(target);
+	return { ...target, ...fresh, title: fresh.title ?? "" };
 }
 function projectionStore() {
 	const file = join(matrixPath(), "projection.json");
@@ -155,6 +171,7 @@ let unsubscribe: (() => void) | undefined;
 function current(): MatrixService {
 	if (hostStopped) throw new CodedError("RESOURCE_UNAVAILABLE", "Matrix host is stopped.");
 	service ??= createMatrixService({
+		diagnostic: (code) => logger("matrix").info(code),
 		credentials: createMatrixCredentials({ namespace: `profile:${dataDir()}` }),
 		persistence: persistence(),
 		bridge: {
@@ -162,12 +179,17 @@ function current(): MatrixService {
 			host: {
 				catalog,
 				async transcript(target) {
-					await validateTarget(target);
+					assertTargetPolicy(target);
 					const workspace = listAllWorkspaceRecords().find((row) => row.id === target.workspaceId);
 					if (!workspace) throw new Error("Unknown workspace");
-					return (
-						await getSessionMessages(target.sessionId, target.workspaceId, workspace.worktreePath)
-					).messages;
+					// Agent checks exact ownership; avoid an all-workspace catalog per transcript.
+					const result = await getSessionMessages(
+						target.sessionId,
+						target.workspaceId,
+						workspace.worktreePath,
+					);
+					assertTargetPolicy(target);
+					return result.messages;
 				},
 				async prompt(target, text, followup) {
 					await validateTarget(target);
@@ -234,6 +256,14 @@ function current(): MatrixService {
 	return service;
 }
 
+export function observeMatrixSessionEvent(payload: SessionEventPayload): void {
+	if (!hostStopped) service?.observe(payload);
+}
+
+export function observeMatrixSessionState(): void {
+	if (!hostStopped) service?.stateChanged();
+}
+
 export function setMatrixPublisher(next: ((status: MatrixStatus) => void) | null): void {
 	publish = next;
 	unsubscribe?.();
@@ -253,6 +283,16 @@ export function matrixConfigure(
 	ctx?: MatrixRequestContext,
 ): Promise<MatrixStatus> {
 	requireProtocol(ctx);
+	if (
+		input &&
+		Object.hasOwn(input, "networkConsent") &&
+		ctx?.protocolVersion !== undefined &&
+		ctx.protocolVersion < MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION
+	)
+		throw new CodedError(
+			"RESOURCE_UNAVAILABLE",
+			"Matrix private-network consent needs a newer client.",
+		);
 	return current().configure(input);
 }
 

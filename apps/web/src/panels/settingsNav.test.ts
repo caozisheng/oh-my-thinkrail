@@ -99,7 +99,6 @@ describe("settingsNavGroups", () => {
 			[
 				SettingsSection.Workspaces,
 				SettingsSection.Github,
-				SettingsSection.Integrations,
 				SettingsSection.Notifications,
 				SettingsSection.Privacy,
 				SettingsSection.Updates,
@@ -182,6 +181,14 @@ describe("settingsNavGroups", () => {
 });
 
 describe("resolveSettingsSection", () => {
+	test("the former standalone Matrix route resolves to Integrations", () => {
+		expect(
+			resolveSettingsSection(
+				SettingsSection.Integrations,
+				settingsNavGroups(Number.MAX_SAFE_INTEGER, true),
+			),
+		).toBe(SettingsSection.Github);
+	});
 	test("keeps an available section", () => {
 		const groups = settingsNavGroups(Number.MAX_SAFE_INTEGER, true);
 		for (const id of ids(Number.MAX_SAFE_INTEGER, true)) {

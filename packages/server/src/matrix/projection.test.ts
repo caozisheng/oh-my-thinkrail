@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { MatrixClient } from "matrix-js-sdk";
+import { EventType, type MatrixClient } from "matrix-js-sdk";
 import {
 	createMatrixProjection,
 	emptyProjection,
@@ -28,15 +28,24 @@ function fixture() {
 	let saved = emptyProjection();
 	saved.explicitSessionIds = ["s1"];
 	const current = structuredClone(target);
+	const targets = [current];
+	const roomStates: string[] = [];
+	const names: string[] = [];
+	const links: string[][] = [];
 	let serial = 0;
 	const sent: string[] = [];
+	const diagnostics: string[] = [];
 	const txids: string[] = [];
 	let encrypted = false;
 	let loseCreateRoomResponse = false;
 	let loseSendResponse = false;
 	const prompts: string[] = [];
 	const calls: Record<string, unknown>[] = [];
-	const powerLevels: { roomId: string; userId: string; level: number | undefined }[] = [];
+	const powerLevels: {
+		roomId: string;
+		content: Record<string, unknown> & { users: Record<string, number> };
+	}[] = [];
+	const roomPowerLevels = new Map<string, (typeof powerLevels)[number]["content"]>();
 	const invites: { roomId: string; userId: string }[] = [];
 	let allowed = true;
 	const client = {
@@ -49,21 +58,37 @@ function fixture() {
 			}
 			return { room_id };
 		},
-		async roomState() {
+		async roomState(roomId: string) {
+			roomStates.push(roomId);
 			return encrypted
 				? [
 						{ type: "m.room.join_rules", content: { join_rule: "invite" } },
 						{ type: "m.room.encryption", content: {} },
 					]
-				: [{ type: "m.room.join_rules", content: { join_rule: "invite" } }];
+				: [
+						{ type: "m.room.join_rules", content: { join_rule: "invite" } },
+						{ type: "m.room.power_levels", content: roomPowerLevels.get(roomId) ?? {} },
+					];
 		},
 		async invite(roomId: string, userId: string) {
 			invites.push({ roomId, userId });
 		},
-		async sendStateEvent() {},
-		async setRoomName() {},
-		async setPowerLevel(roomId: string, userId: string, level: number | undefined) {
-			powerLevels.push({ roomId, userId, level });
+		async sendStateEvent(roomId: string, type: string, content: unknown, key?: string) {
+			links.push([roomId, type, key ?? ""]);
+			if (type === "m.room.power_levels") {
+				const levels = structuredClone(content) as (typeof powerLevels)[number]["content"];
+				powerLevels.push({ roomId, content: levels });
+				roomPowerLevels.set(roomId, levels);
+			}
+		},
+		async setRoomName(roomId: string) {
+			names.push(roomId);
+		},
+		async setPowerLevel(roomId: string, userId: string, level: number) {
+			// Like the SDK before sync, every call copies the same stale cached state.
+			await client.sendStateEvent(roomId, EventType.RoomPowerLevels, {
+				users: { [userId]: level },
+			});
 		},
 		async sendEvent(_room: string, _type: string, content: { body: string }, txid: string) {
 			txids.push(txid);
@@ -77,6 +102,7 @@ function fixture() {
 	} as unknown as MatrixClient;
 	const make = () =>
 		createMatrixProjection({
+			diagnostic: (code) => diagnostics.push(code),
 			client,
 			controller: "@owner:example.org",
 			bot: "@bot:example.org",
@@ -92,7 +118,7 @@ function fixture() {
 			},
 			host: {
 				async catalog() {
-					return [current];
+					return targets;
 				},
 				async transcript() {
 					return [{ role: "assistant", content: [{ type: "text", text: "Hello" }] }];
@@ -109,6 +135,11 @@ function fixture() {
 		});
 	return {
 		make,
+		targets,
+		roomStates,
+		names,
+		links,
+		diagnostics,
 		current,
 		sent,
 		prompts,
@@ -124,6 +155,7 @@ function fixture() {
 			loseSendResponse = true;
 		},
 		powerLevels,
+		roomPowerLevels,
 		invites,
 		state: (): MatrixProjectionState => saved,
 		stop: () => {
@@ -138,12 +170,7 @@ test("creates private OMT/project/session rooms once and reuses mappings across 
 	expect(f.calls.map((call) => call.name)).toEqual(["OMT", "Control center", "Project", "Session"]);
 	expect(f.calls.every((call) => call.visibility === "private")).toBe(true);
 	expect(f.sent).toEqual([]);
-	expect(f.powerLevels).toEqual([
-		{ roomId: "!room1:example.org", userId: "@owner:example.org", level: 10 },
-		{ roomId: "!room2:example.org", userId: "@owner:example.org", level: 10 },
-		{ roomId: "!room3:example.org", userId: "@owner:example.org", level: 10 },
-		{ roomId: "!room4:example.org", userId: "@owner:example.org", level: 10 },
-	]);
+	expect(f.powerLevels).toHaveLength(4);
 	await f.make().reconcile();
 	expect(f.calls).toHaveLength(4);
 	expect(f.sent).toHaveLength(0);
@@ -272,11 +299,49 @@ test("controller changes invite the new controller and downgrade the previous on
 	};
 	await f.make().reconcile();
 	expect(f.invites.every((invite) => invite.userId === "@owner:example.org")).toBe(true);
-	expect(
-		f.powerLevels
-			.filter((entry) => entry.userId === "@old:example.org")
-			.every((entry) => entry.level === 0),
-	).toBe(true);
+	expect(f.powerLevels.every((entry) => entry.content.users["@old:example.org"] === 0)).toBe(true);
+});
+
+test("controller rotation writes fresh power levels atomically despite a stale SDK cache", async () => {
+	const f = fixture();
+	await f.make().reconcile();
+	const fresh = {
+		users: {
+			"@bot:example.org": 100,
+			"@owner:example.org": 0,
+			"@old:example.org": 10,
+			"@older:example.org": 10,
+			"@reader:example.org": 0,
+		},
+		users_default: 0,
+		events_default: 10,
+		state_default: 100,
+		invite: 100,
+		kick: 100,
+		ban: 100,
+		redact: 100,
+		events: { "m.room.name": 100 },
+	};
+	for (const roomId of f.roomPowerLevels.keys())
+		f.roomPowerLevels.set(roomId, structuredClone(fresh));
+	f.state().formerControllers = ["@old:example.org", "@older:example.org", "@owner:example.org"];
+	f.powerLevels.length = 0;
+	await f.make().reconcile();
+	expect(f.powerLevels).toHaveLength(4);
+	for (const { content } of f.powerLevels) {
+		expect(content).toEqual({
+			...fresh,
+			users: {
+				...fresh.users,
+				"@owner:example.org": 10,
+				"@old:example.org": 0,
+				"@older:example.org": 0,
+			},
+		});
+	}
+	f.powerLevels.length = 0;
+	await f.make().reconcile();
+	expect(f.powerLevels).toEqual([]);
 });
 
 test("a controller that is re-authorized is not left in the former-controller downgrade set", async () => {
@@ -290,11 +355,9 @@ test("a controller that is re-authorized is not left in the former-controller do
 	};
 	state.formerControllers = ["@owner:example.org"];
 	await f.make().reconcile();
-	expect(
-		f.powerLevels
-			.filter((entry) => entry.userId === "@owner:example.org")
-			.every((entry) => entry.level === 10),
-	).toBe(true);
+	expect(f.powerLevels.every((entry) => entry.content.users["@owner:example.org"] === 10)).toBe(
+		true,
+	);
 });
 
 test("only live controller input is dispatched once; historical and edited input never executes", async () => {
@@ -320,4 +383,102 @@ test("only live controller input is dispatched once; historical and edited input
 	expect(f.prompts).toEqual(["hello"]);
 	f.stop();
 	await expect(bridge.receive({ ...event, id: "$stopped" })).rejects.toThrow();
+});
+
+test("receive diagnostics classify mapped, control, duplicate, historical and unmapped input without payloads", async () => {
+	const f = fixture();
+	const bridge = f.make();
+	await bridge.reconcile();
+	const roomId = f.state().sessions.s1?.roomId;
+	const controlRoomId = f.state().controlRoomId;
+	if (!roomId || !controlRoomId) throw new Error("Expected mapped rooms");
+	const event = {
+		id: "$secret",
+		roomId: roomId,
+		sender: "@owner:example.org",
+		text: "private token https://secret",
+		historical: false,
+		replacement: false,
+	};
+	await bridge.receive({ ...event, roomId: "!unmapped:secret" });
+	await bridge.receive({ ...event, id: "$control", roomId: controlRoomId });
+	await bridge.receive({ ...event, id: "$historical", historical: true });
+	await bridge.receive(event);
+	await bridge.receive(event);
+	expect(f.diagnostics).toEqual([
+		"reconcile-catalog",
+		"reconcile-root",
+		"reconcile-control",
+		"reconcile-project",
+		"reconcile-session",
+		"reconcile-transcript",
+		"reconcile-output",
+		"unmapped-room",
+		"control-room",
+		"historical",
+		"dispatch-started",
+		"dispatch-accepted",
+		"duplicate",
+	]);
+});
+
+test("sibling targets configure their project once per reconcile and skip unmapped idle projects", async () => {
+	const f = fixture();
+	f.targets.unshift({
+		...structuredClone(target),
+		projectId: "idle-project",
+		sessionId: "idle",
+		state: { ...target.state, execution: "idle" },
+	});
+	f.targets.push({ ...structuredClone(target), sessionId: "s2" });
+	const p = f.make();
+	await p.reconcile();
+	expect(Object.keys(f.state().projects)).toEqual(["p1"]);
+	expect(Object.keys(f.state().sessions)).toEqual(["s1", "s2"]);
+	const project = f.state().projects.p1?.roomId;
+	expect(project).toBeDefined();
+	for (let pass = 0; pass < 2; pass++) {
+		expect(f.roomStates.filter((id) => id === project)).toHaveLength(2);
+		expect(f.names.filter((id) => id === project)).toHaveLength(1);
+		expect(f.powerLevels.filter((row) => row.roomId === project)).toHaveLength(pass === 0 ? 1 : 0);
+		expect(f.links.filter((row) => row[0] === project && row[1] === "m.space.parent")).toHaveLength(
+			1,
+		);
+		f.roomStates.length = 0;
+		f.names.length = 0;
+		f.powerLevels.length = 0;
+		f.links.length = 0;
+		if (pass === 0) await p.reconcile();
+	}
+});
+
+test("mapped input runs between reconciliation sessions, before the full pass completes", async () => {
+	const f = fixture();
+	const projection = f.make();
+	await projection.reconcile();
+	for (let i = 2; i <= 8; i++) f.targets.push({ ...structuredClone(target), sessionId: `s${i}` });
+
+	// Queue live input as a later session is being configured.
+	const before = f.names.length;
+	const pass = projection.reconcile();
+	for (let i = 0; i < 1000 && f.names.length <= before; i++) await Promise.resolve();
+	const mapping = f.state().sessions.s1;
+	if (!mapping?.roomId) throw new Error("expected mapped session");
+	const receive = projection.receive({
+		id: "$fair",
+		roomId: mapping.roomId,
+		sender: "@owner:example.org",
+		text: "hello",
+		historical: false,
+		replacement: false,
+	});
+	await receive;
+	expect(f.prompts).toEqual(["hello"]);
+	expect(Object.keys(f.state().sessions).length).toBeLessThan(8);
+	await pass;
+	// The inbound prompt invalidates this pass's captured catalog. A fresh pass
+	// resumes the remaining targets without projecting stale session state.
+	expect(Object.keys(f.state().sessions).length).toBeLessThan(8);
+	await projection.reconcile();
+	expect(Object.keys(f.state().sessions)).toHaveLength(8);
 });

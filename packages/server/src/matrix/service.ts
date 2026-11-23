@@ -6,11 +6,13 @@ import {
 	type MatrixConnectionInput,
 	type MatrixErrorCode,
 	type MatrixStatus,
+	type SessionEventPayload,
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { ClientEvent, type MatrixClient, RoomEvent, SyncState } from "matrix-js-sdk";
 import { createMatrixClient } from "./client";
 import { matrixFetchFor } from "./fetch";
+import { createMatrixLiveEvents } from "./liveEvents";
 import {
 	createMatrixProjection,
 	type MatrixHostPort,
@@ -29,6 +31,7 @@ export interface MatrixRecord {
 	controllerUserId: string;
 	mode: "password" | "access-token";
 	credentialId?: string;
+	networkConsent?: { homeserver: string };
 	cleanupCredentialIds: string[];
 	operation?: { id: string; fingerprint: string; phase: "pending" | "completed" };
 }
@@ -40,6 +43,8 @@ export interface MatrixPersistence {
 
 export interface MatrixService {
 	status(): MatrixStatus;
+	observe(payload: SessionEventPayload): void;
+	stateChanged(): void;
 	restore(): Promise<MatrixStatus>;
 	sync(): Promise<MatrixStatus>;
 	configure(input: MatrixConnectionInput): Promise<MatrixStatus>;
@@ -48,7 +53,38 @@ export interface MatrixService {
 	stop(): Promise<void>;
 }
 
+/** Closed classifications only: never attach event, identity, content or exception data. */
+export type MatrixDiagnosticCode =
+	| "sync-prepared"
+	| "sync-online"
+	| "sync-paused"
+	| "timeline-controller-text"
+	| "timeline-rejected-sender"
+	| "timeline-unsupported"
+	| "timeline-encrypted"
+	| "inbound-queued"
+	| "inbound-started"
+	| "reconcile-start"
+	| "reconcile-catalog"
+	| "reconcile-root"
+	| "reconcile-control"
+	| "reconcile-project"
+	| "reconcile-session"
+	| "reconcile-transcript"
+	| "reconcile-output"
+	| "reconcile-end"
+	| "reconcile-failed"
+	| "unmapped-room"
+	| "duplicate"
+	| "historical"
+	| "not-available"
+	| "dispatch-started"
+	| "dispatch-accepted"
+	| "dispatch-unknown"
+	| "control-room";
+
 export interface MatrixServiceOptions {
+	diagnostic?: (code: MatrixDiagnosticCode) => void;
 	credentials: MatrixCredentialStore;
 	persistence: MatrixPersistence;
 	fetchFn?: typeof globalThis.fetch;
@@ -67,6 +103,11 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 function validRecord(value: MatrixRecord): boolean {
 	return (
 		canonicalMatrixHomeserver(value.homeserver) === value.homeserver &&
+		(value.networkConsent === undefined ||
+			(Object.keys(value.networkConsent).length === 1 &&
+				value.networkConsent.homeserver === value.homeserver)) &&
+		(!value.homeserver.startsWith("http:") ||
+			value.networkConsent?.homeserver === value.homeserver) &&
 		isMatrixUserId(value.botUserId) &&
 		isMatrixUserId(value.controllerUserId) &&
 		value.botUserId !== value.controllerUserId &&
@@ -82,6 +123,12 @@ function validRecord(value: MatrixRecord): boolean {
 }
 
 export function createMatrixService(options: MatrixServiceOptions): MatrixService {
+	// A diagnostics consumer must not change delivery or lifecycle behavior.
+	const diagnostic = (code: MatrixDiagnosticCode) => {
+		try {
+			options.diagnostic?.(code);
+		} catch {}
+	};
 	let record: MatrixRecord | null = null;
 	let client: MatrixClient | null = null;
 	let phase: MatrixStatus["phase"] = "disconnected";
@@ -94,6 +141,7 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 	let counts = { projects: 0, sessions: 0, backfilled: 0, pendingControls: 0 };
 	let stopSync: (() => void) | undefined;
 	let reconcile: (() => Promise<void>) | undefined;
+	let liveEvents: ReturnType<typeof createMatrixLiveEvents> | undefined;
 	const subscribers = new Set<(status: MatrixStatus) => void>();
 	const snapshot = (): MatrixStatus => ({
 		phase,
@@ -155,15 +203,17 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 		}
 		await save({ ...record, cleanupCredentialIds: [] });
 	};
-	const makeClient = (homeserver: string, token?: string, userId?: string) =>
+	const makeClient = (
+		homeserver: string,
+		token?: string,
+		userId?: string,
+		consent?: { homeserver: string },
+	) =>
 		createMatrixClient({
 			baseUrl: homeserver,
-			fetchFn:
-				options.fetchFn ??
-				matrixFetchFor(homeserver, process.env.THINKRAIL_E2E_ISOLATION !== undefined),
+			fetchFn: options.fetchFn ?? matrixFetchFor(homeserver, consent),
 			...(token ? { accessToken: token } : {}),
 			...(userId ? { userId } : {}),
-			...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
 		});
 	const verify = async (candidate: MatrixClient, userId: string) => {
 		try {
@@ -199,13 +249,23 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 		let online = false;
 		let disposed = false;
 		let baseline = true;
+		let initialPrepared = false;
+		let reconnectBatch = false;
 		let queue = Promise.resolve();
+		let lastReconcileDiagnostic = -Infinity;
+		let reconcileFailed = false;
+		let syncDiagnostic: MatrixDiagnosticCode | undefined;
+		const syncStateDiagnostic = (code: MatrixDiagnosticCode) => {
+			if (syncDiagnostic !== code) diagnostic(code);
+			syncDiagnostic = code;
+		};
 		const projection = createMatrixProjection({
 			client: candidate,
 			controller: bound.controllerUserId,
 			bot: bound.botUserId,
 			homeserver: bound.homeserver,
 			...options.bridge,
+			diagnostic,
 			allowed: () =>
 				!disposed &&
 				!stopped &&
@@ -213,70 +273,134 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 				record?.credentialId === bound.credentialId,
 		});
 		const enqueue = (work: () => Promise<void>) => {
-			queue = queue.then(work).catch(() => {
-				if (!disposed) {
-					phase = "error";
-					error = "sync";
-					publish();
-				}
-			});
+			queue = queue
+				.then(() => {
+					if (!disposed) return work();
+					return undefined;
+				})
+				.catch(() => {
+					if (!disposed) {
+						phase = "error";
+						error = "sync";
+						publish();
+					}
+				});
 			return queue;
 		};
-		reconcile = () =>
-			enqueue(async () => {
+		const events = createMatrixLiveEvents({
+			allowed: () => online && !disposed && !stopped && client === candidate,
+			enqueue,
+			stream: (sessionId, key, message, final) => projection.stream(sessionId, key, message, final),
+			async reconcile() {
 				if (!online || disposed) return;
-				counts = await projection.reconcile();
+				// Reconciliation runs every five seconds: sample routine cycles once a minute,
+				// but always report a new failure and its recovery (never raw errors).
+				const report = Date.now() - lastReconcileDiagnostic >= 60_000;
+				if (report) {
+					lastReconcileDiagnostic = Date.now();
+					diagnostic("reconcile-start");
+				}
+				let next: typeof counts;
+				try {
+					next = await projection.reconcile();
+					if (report || reconcileFailed) diagnostic("reconcile-end");
+					reconcileFailed = false;
+				} catch (cause) {
+					if (!reconcileFailed) diagnostic("reconcile-failed");
+					reconcileFailed = true;
+					throw cause;
+				}
+				if (!online || disposed || stopped) return;
+				counts = next;
 				phase = "connected";
 				error = undefined;
 				publish();
-			});
+			},
+		});
+		liveEvents = events;
+		reconcile = () => events.sync();
 		candidate.on(ClientEvent.Sync, (state) => {
 			if (disposed) return;
 			if (state === SyncState.Prepared || state === SyncState.Syncing) {
 				const wasOnline = online;
 				online = true;
-				if (!wasOnline) {
-					baseline = true;
-					void reconcile?.().then(() => {
-						baseline = false;
-					});
+				if (!initialPrepared && state === SyncState.Prepared) {
+					initialPrepared = true;
+					diagnostic("sync-prepared");
+					baseline = false;
+				} else if (reconnectBatch) {
+					// Timeline events for this /sync were emitted before this state event.
+					// Keep them historical, then admit events from the following batch.
+					reconnectBatch = false;
+					baseline = false;
 				}
+				syncStateDiagnostic("sync-online");
+				if (!wasOnline) void events.sync();
 			} else {
+				if (online || initialPrepared) reconnectBatch = true;
 				online = false;
+				syncStateDiagnostic("sync-paused");
+				events.pause();
 				baseline = true;
 				phase = "paused";
 				publish();
 			}
 		});
 		candidate.on(RoomEvent.Timeline, (event, room, toStart) => {
-			if (
-				disposed ||
-				!room ||
-				toStart ||
-				event.getType() !== "m.room.message" ||
-				event.getSender() !== bound.controllerUserId
-			)
+			if (disposed || !room || toStart) return;
+			if (event.getType() === "m.room.encrypted") {
+				diagnostic("timeline-encrypted");
 				return;
+			}
+			if (event.getType() !== "m.room.message") {
+				diagnostic("timeline-unsupported");
+				return;
+			}
+			// Our projected output is echoed by /sync; it is not unauthorized input.
+			if (event.getSender() === bound.botUserId) return;
+			if (event.getSender() !== bound.controllerUserId) {
+				diagnostic("timeline-rejected-sender");
+				return;
+			}
 			const content = event.getContent();
-			if (typeof content.body !== "string" || content.msgtype !== "m.text") return;
+			if (typeof content.body !== "string" || content.msgtype !== "m.text") {
+				diagnostic("timeline-unsupported");
+				return;
+			}
 			const id = event.getId();
-			if (!id) return;
+			if (!id) {
+				diagnostic("timeline-unsupported");
+				return;
+			}
+			diagnostic("timeline-controller-text");
 			const historical = baseline || !online;
-			void enqueue(() =>
-				projection.receive({
+			diagnostic("inbound-queued");
+			// Projection owns serialization at bounded reconciliation checkpoints.
+			// Do not put input behind the live-events drain's entire catalog pass.
+			diagnostic("inbound-started");
+			void projection
+				.receive({
 					id,
 					roomId: room.roomId,
 					sender: bound.controllerUserId,
 					text: content.body,
 					historical,
 					replacement: Boolean(content["m.relates_to"]?.rel_type === "m.replace"),
-				}),
-			);
+				})
+				.catch(() => {
+					if (!disposed) {
+						phase = "error";
+						error = "sync";
+						publish();
+					}
+				});
 		});
-		const timer = setInterval(() => void reconcile?.(), 5000);
+		const timer = setInterval(() => void events.sync(), 5000);
 		timer.unref?.();
 		stopSync = () => {
 			disposed = true;
+			events.dispose();
+			if (liveEvents === events) liveEvents = undefined;
 			clearInterval(timer);
 			candidate.stopClient();
 			reconcile = undefined;
@@ -284,6 +408,7 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 		phase = "syncing";
 		publish();
 		void candidate.startClient({ initialSyncLimit: 50 }).catch(() => {
+			if (disposed || stopped) return;
 			phase = "error";
 			error = "sync";
 			publish();
@@ -291,6 +416,12 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 	};
 	return {
 		status: snapshot,
+		observe(payload) {
+			liveEvents?.observe(payload);
+		},
+		stateChanged() {
+			liveEvents?.stateChanged();
+		},
 		async sync() {
 			if (!client) throw new MatrixFailure("authentication");
 			await reconcile?.();
@@ -323,7 +454,12 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 				}
 				check(expected);
 				if (!token) throw new MatrixFailure("credentials");
-				const candidate = makeClient(saved.homeserver, token, saved.botUserId);
+				const candidate = makeClient(
+					saved.homeserver,
+					token,
+					saved.botUserId,
+					saved.networkConsent,
+				);
 				try {
 					await verify(candidate, saved.botUserId);
 					check(expected);
@@ -367,6 +503,13 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 					botUserId: input.botUserId,
 					controllerUserId: input.controllerUserId,
 					mode: input.mode,
+					...(input.networkConsent
+						? {
+								networkConsent: {
+									homeserver: input.networkConsent.homeserver,
+								},
+							}
+						: {}),
 				};
 				await save({
 					...(previous ?? base),
@@ -379,7 +522,7 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 				publish();
 				let token: string;
 				if (input.mode === "password") {
-					const loginClient = makeClient(homeserver);
+					const loginClient = makeClient(homeserver, undefined, undefined, input.networkConsent);
 					try {
 						const login = await loginClient.login("m.login.password", {
 							identifier: { type: "m.id.user", user: input.botUserId },
@@ -397,7 +540,7 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 				check(expected);
 				if (typeof token !== "string" || !/^[!-~]{1,4096}$/.test(token))
 					throw new MatrixFailure("authentication");
-				const candidate = makeClient(homeserver, token, input.botUserId);
+				const candidate = makeClient(homeserver, token, input.botUserId, input.networkConsent);
 				try {
 					try {
 						await verify(candidate, input.botUserId);

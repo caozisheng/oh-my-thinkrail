@@ -223,7 +223,14 @@ import { initializeHostRuntime } from "./hostRuntime";
 import { provisionInitialTerminal } from "./initialTerminal";
 import { issuesHost } from "./issues";
 import { trackLoginOutcome } from "./loginAnalytics";
-import { matrixStatus, resetMatrixForHostStart, setMatrixPublisher, stopMatrix } from "./matrix";
+import {
+	matrixStatus,
+	observeMatrixSessionEvent,
+	observeMatrixSessionState,
+	resetMatrixForHostStart,
+	setMatrixPublisher,
+	stopMatrix,
+} from "./matrix";
 import {
 	additionalCapture,
 	applyAdditionalAnalyticsSettings,
@@ -1144,6 +1151,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	});
 
 	setSessionStatePublisher((record: SessionStateRecord) => {
+		observeMatrixSessionState();
 		stampSessionActivity(record);
 		publishScoped(
 			WS_CHANNELS.sessionState,
@@ -1208,6 +1216,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		);
 	});
 	setSessionPublisher((payload, workspaceId) => {
+		observeMatrixSessionEvent(payload);
 		runObservation.observe(payload.sessionId, payload.event);
 		observeContinuation(payload.sessionId, payload.event);
 		void turnTracker.observe(payload.sessionId, payload.event);

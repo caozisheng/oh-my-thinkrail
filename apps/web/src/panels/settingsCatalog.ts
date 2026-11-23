@@ -584,7 +584,7 @@ export const SETTING = {
 	},
 	matrixIntegration: {
 		id: "matrix-integration",
-		section: SettingsSection.Integrations,
+		section: SettingsSection.Github,
 		label: "settings.matrix.title",
 		description: "settings.matrix.description",
 		keywords: ["matrix", "bot", "homeserver", "element", "chat"],

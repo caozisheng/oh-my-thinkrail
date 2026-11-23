@@ -7,19 +7,41 @@ import {
 import {
 	canonicalMatrixHomeserver,
 	isMatrixConnectionInput,
+	MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION,
 	MATRIX_PROTOCOL_VERSION,
 	type MatrixConnectionInput,
 	type MatrixStatus,
 } from "@thinkrail/contracts";
 import { T, useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { SETTINGS_INPUT, SettingsGroup, SettingsPage, SettingsRow } from "@/settingsKit";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+	SETTINGS_INPUT,
+	SettingsGroup,
+	SettingsLine,
+	SettingsPage,
+	SettingsRow,
+} from "@/settingsKit";
 import { useAppStore } from "@/store";
 import { getTransport } from "@/transport";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-export function MatrixSettings() {
+function MatrixSettingsFrame({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+	const t = useT();
+	return embedded ? (
+		children
+	) : (
+		<SettingsPage
+			title={t("settings.nav.matrix")}
+			description={t("settings.matrix.pageDescription")}
+			testId="settings-matrix"
+		>
+			{children}
+		</SettingsPage>
+	);
+}
+
+export function MatrixSettings({ embedded = false }: { embedded?: boolean } = {}) {
 	const t = useT();
 	const protocol = useAppStore((state) => state.protocolVersion);
 	const [status, install] = useState<MatrixStatus | null>(null);
@@ -29,10 +51,13 @@ export function MatrixSettings() {
 	const [mode, setMode] = useState<"password" | "access-token">("password");
 	const [secret, setSecret] = useState("");
 	const [acknowledged, setAcknowledged] = useState(false);
+	const [networkConsent, setNetworkConsent] = useState<string | null>(null);
+	const canonicalHomeserver = canonicalMatrixHomeserver(homeserver);
 	const [busy, setBusy] = useState(false);
 	const [failed, setFailed] = useState(false);
 	const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 	const requestGeneration = useRef(0);
+	const mutationGeneration = useRef(0);
 	const mounted = useRef(false);
 
 	const refresh = useCallback(() => {
@@ -50,6 +75,7 @@ export function MatrixSettings() {
 	}, []);
 
 	useEffect(() => {
+		if (protocol === null || protocol < MATRIX_PROTOCOL_VERSION) return;
 		mounted.current = true;
 		refresh();
 		const unsubscribe = getTransport().subscribe("matrix.changed", (value) => {
@@ -61,28 +87,30 @@ export function MatrixSettings() {
 			requestGeneration.current++;
 			unsubscribe();
 		};
-	}, [refresh]);
+	}, [refresh, protocol]);
 
 	const request = (
 		method: "matrix.configure" | "matrix.disconnect" | "matrix.sync",
 		input: MatrixConnectionInput | Record<string, never>,
 	) => {
 		const generation = ++requestGeneration.current;
+		const mutation = ++mutationGeneration.current;
 		const isCurrent = () => mounted.current && generation === requestGeneration.current;
+		const settle = () => {
+			if (mounted.current && mutation === mutationGeneration.current) setBusy(false);
+		};
 		setBusy(true);
 		setFailed(false);
 		void getTransport()
 			.request(method, input)
 			.then(
 				(value) => {
-					if (!isCurrent()) return;
-					install(value);
-					setBusy(false);
+					if (isCurrent()) install(value);
+					settle();
 				},
 				() => {
-					if (!isCurrent()) return;
-					setFailed(true);
-					setBusy(false);
+					if (mounted.current && mutation === mutationGeneration.current) setFailed(true);
+					settle();
 				},
 			);
 	};
@@ -94,6 +122,12 @@ export function MatrixSettings() {
 			botUserId,
 			controllerUserId,
 			plaintextAcknowledged: acknowledged,
+			...(canonicalHomeserver &&
+			networkConsent === canonicalHomeserver &&
+			protocol !== null &&
+			protocol >= MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION
+				? { networkConsent: { homeserver: canonicalHomeserver } }
+				: {}),
 			mode,
 			...(mode === "password" ? { password: secret } : { accessToken: secret }),
 		} as MatrixConnectionInput;
@@ -116,22 +150,24 @@ export function MatrixSettings() {
 		paused: "settings.matrix.phase.paused",
 		syncing: "settings.matrix.phase.syncing",
 	} as const;
+	const errorKeys = {
+		"invalid-input": "settings.matrix.error.invalidInput",
+		authentication: "settings.matrix.error.authentication",
+		"identity-mismatch": "settings.matrix.error.identityMismatch",
+		network: "settings.matrix.error.network",
+		credentials: "settings.matrix.error.credentials",
+		storage: "settings.matrix.error.storage",
+		busy: "settings.matrix.error.busy",
+		"reconciliation-required": "settings.matrix.error.reconciliation",
+		"room-encrypted": "settings.matrix.error.encrypted",
+		sync: "settings.matrix.error.sync",
+	} as const;
 	const secretName =
 		mode === "password" ? t("settings.matrix.password") : t("settings.matrix.accessToken");
-	const valid =
-		canonicalMatrixHomeserver(homeserver) !== null &&
-		botUserId.length > 0 &&
-		controllerUserId.length > 0 &&
-		acknowledged &&
-		secret.length > 0;
 
 	if (protocol === null || protocol < MATRIX_PROTOCOL_VERSION) return null;
 	return (
-		<SettingsPage
-			title={t("settings.nav.matrix")}
-			description={t("settings.matrix.pageDescription")}
-			testId="settings-matrix"
-		>
+		<MatrixSettingsFrame embedded={embedded}>
 			<SettingsGroup
 				title={t("settings.matrix.title")}
 				description={t("settings.matrix.description")}
@@ -151,6 +187,13 @@ export function MatrixSettings() {
 						</div>
 					}
 				/>
+				{status?.error ? (
+					<SettingsRow
+						rowId="matrix-error-detail"
+						label={t("settings.matrix.failureLabel")}
+						description={t(errorKeys[status.error])}
+					/>
+				) : null}
 				{status?.homeserver ? (
 					<SettingsRow
 						label={t("settings.matrix.homeserverLabel")}
@@ -323,21 +366,46 @@ export function MatrixSettings() {
 								</label>
 							}
 						/>
-						<SettingsRow
-							rowId="matrix-login"
-							label={t("settings.matrix.loginAction")}
-							control={
-								<Button
-									tabIndex={0}
-									variant="outline"
-									size="m"
-									disabled={!valid || busy}
-									onClick={submit}
-								>
-									{busy ? t("settings.matrix.working") : t("settings.matrix.loginAction")}
-								</Button>
-							}
-						/>
+						{protocol >= MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION ? (
+							<SettingsRow
+								rowId="matrix-network-consent"
+								label={t("settings.matrix.networkConsentLabel")}
+								description={t("settings.matrix.networkConsentWarning")}
+								control={
+									<label className="flex items-start gap-8">
+										<input
+											tabIndex={0}
+											type="checkbox"
+											disabled={!canonicalHomeserver}
+											checked={
+												canonicalHomeserver !== null && networkConsent === canonicalHomeserver
+											}
+											onChange={(event) =>
+												setNetworkConsent(event.target.checked ? canonicalHomeserver : null)
+											}
+										/>
+										<span>
+											{t("settings.matrix.networkConsentConfirm", {
+												homeserver: canonicalHomeserver ?? homeserver,
+											})}
+										</span>
+									</label>
+								}
+							/>
+						) : null}
+						<SettingsLine rowId="matrix-login">
+							<Button
+								tabIndex={0}
+								variant="primary"
+								size="m"
+								data-testid="matrix-login-button"
+								aria-busy={busy || undefined}
+								disabled={busy}
+								onClick={submit}
+							>
+								{busy ? t("settings.matrix.working") : t("settings.matrix.loginAction")}
+							</Button>
+						</SettingsLine>
 					</>
 				)}
 				{failed ? (
@@ -359,6 +427,6 @@ export function MatrixSettings() {
 					void request("matrix.disconnect", {});
 				}}
 			/>
-		</SettingsPage>
+		</MatrixSettingsFrame>
 	);
 }

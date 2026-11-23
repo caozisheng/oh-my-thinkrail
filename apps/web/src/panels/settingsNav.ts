@@ -26,7 +26,6 @@ import {
 	EXTENSION_CATALOG_PROTOCOL_VERSION,
 	HOST_ENVIRONMENT_PROTOCOL_VERSION,
 	LOCALES_PROTOCOL_VERSION,
-	MATRIX_PROTOCOL_VERSION,
 	MCP_PROTOCOL_VERSION,
 	SPEECH_PROTOCOL_VERSION,
 	SUBAGENT_SETTINGS_PROTOCOL_VERSION,
@@ -119,12 +118,6 @@ const NAV_GROUPS: SettingsNavGroup[] = [
 				requiresProtocolVersion: WORKSPACE_SETTLE_PROTOCOL_VERSION,
 			},
 			{ id: SettingsSection.Github, label: "settings.nav.github", icon: RiApps2Line },
-			{
-				id: SettingsSection.Integrations,
-				label: "settings.nav.matrix",
-				icon: RiPlugLine,
-				requiresProtocolVersion: MATRIX_PROTOCOL_VERSION,
-			},
 			{
 				id: SettingsSection.Notifications,
 				label: "settings.nav.notifications",

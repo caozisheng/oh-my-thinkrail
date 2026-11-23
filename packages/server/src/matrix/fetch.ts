@@ -1,12 +1,23 @@
 import { lookup } from "node:dns/promises";
-import { request } from "node:https";
-import { isPublicMatrixAddress } from "./network";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isPrivateMatrixAddress, isPublicMatrixAddress } from "./network";
 
-export function matrixFetchFor(allowedOrigin: string, safeHomeserverTest = false) {
+export function pinnedMatrixLookupResult(
+	address: { address: string; family: number },
+	options: unknown,
+): unknown[] {
+	return options && typeof options === "object" && "all" in options && options.all
+		? [null, [address]]
+		: [null, address.address, address.family];
+}
+
+export function matrixFetchFor(allowedOrigin: string, consent?: { homeserver: string }) {
+	const authorized = consent?.homeserver === allowedOrigin;
 	const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const url = new URL(String(input));
 		if (
-			url.protocol !== "https:" ||
+			(url.protocol !== "https:" && !(authorized && url.protocol === "http:")) ||
 			url.username ||
 			url.password ||
 			!url.pathname.startsWith("/_matrix/") ||
@@ -19,7 +30,11 @@ export function matrixFetchFor(allowedOrigin: string, safeHomeserverTest = false
 		const addresses = await lookup(hostname, { all: true, verbatim: true });
 		if (
 			!addresses.length ||
-			addresses.some((row) => !safeHomeserverTest && !isPublicMatrixAddress(row.address))
+			addresses.some(
+				(row) =>
+					!isPublicMatrixAddress(row.address) &&
+					!(authorized && isPrivateMatrixAddress(row.address)),
+			)
 		)
 			throw new Error("Matrix destination refused");
 		const address = addresses[0];
@@ -31,14 +46,14 @@ export function matrixFetchFor(allowedOrigin: string, safeHomeserverTest = false
 		if (typeof body === "string" && Buffer.byteLength(body) > 2 * 1024 * 1024)
 			throw new Error("Matrix request too large");
 		return new Promise<Response>((resolve, reject) => {
-			const req = request(
+			const req = (url.protocol === "http:" ? httpRequest : httpsRequest)(
 				url,
 				{
 					method: init?.method ?? "GET",
 					headers,
 					signal: init?.signal ?? AbortSignal.timeout(45000),
-					lookup(_hostname, _options, callback) {
-						callback(null, address.address, address.family);
+					lookup(_hostname, options, callback) {
+						Reflect.apply(callback, undefined, pinnedMatrixLookupResult(address, options));
 					},
 				},
 				(res) => {

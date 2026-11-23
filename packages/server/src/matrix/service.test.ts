@@ -120,6 +120,24 @@ test("successful operation replay is idempotent and changed input is refused", a
 	).rejects.toThrow();
 });
 
+test("private HTTP consent survives restart and remains bound to the exact origin", async () => {
+	const f = fixture();
+	const homeserver = "http://matrix.example:9527";
+	const httpInput = { ...input, homeserver, networkConsent: { homeserver } };
+	await expect(f.service.configure({ ...input, homeserver })).rejects.toThrow();
+	await f.service.configure(httpInput);
+	expect(f.readRecord()?.networkConsent).toEqual({ homeserver });
+	await f.service.stop();
+	expect((await f.make().restore()).phase).toBe("connected");
+	await expect(
+		f.make().configure({
+			...httpInput,
+			operationId: "another",
+			homeserver: "http://matrix.example:9528",
+		}),
+	).rejects.toThrow();
+});
+
 test("definitive password rejection does not leave a retry-blocking pending fence", async () => {
 	const f = fixture({ loginError: true });
 	await expect(f.service.configure(input)).rejects.toThrow();

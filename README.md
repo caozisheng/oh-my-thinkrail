@@ -145,17 +145,18 @@ and draft delivery require the current host capability; older hosts do not perfo
 
 ## Matrix mobile integration
 
-Settings → Matrix can connect a dedicated bot account using either a one-time password login or an existing
+Settings → Integrations → Matrix can connect a dedicated bot account using either a one-time password login or an existing
 access token. The access token is stored in the host OS credential vault; the password is not retained.
 ThinkRail creates a private `OMT` Space, project Spaces and active session rooms for open trusted projects,
 invites the single configured controller MXID, and mirrors readable user/assistant transcript text for use
-from standard Matrix clients. Thinking and raw tool output are not mirrored. Only that exact controller MXID
+from standard Matrix clients. Assistant text streams through standard message edits at approximately
+one-second intervals, then finalizes in the same message. Thinking and raw tool output are not mirrored. Only that exact controller MXID
 can send ThinkRail commands; room membership alone does not grant control. Other invited room members can
 read mirrored history, and they cannot post in the rooms. The initial bridge does not support encrypted
 rooms, so the homeserver can read message contents. Disconnecting removes the local token and stops the
 bridge but leaves Spaces, rooms and message history on the homeserver. Matrix command delivery is fail-closed
 when the host was offline or the acceptance result is uncertain: resend only after checking the room's
-ThinkRail status/transcript. Homeserver access requires HTTPS and public DNS addresses.
+ThinkRail status/transcript. Homeserver access defaults to HTTPS/public DNS. Settings can explicitly acknowledge HTTP/private-network access for one exact homeserver address; this sends credentials and content without transport encryption. Loopback, link-local and metadata destinations remain blocked.
 
 ## Inherited IDE capabilities
 
