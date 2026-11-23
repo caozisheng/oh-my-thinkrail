@@ -103,16 +103,17 @@ function fixture() {
 test("creates private OMT/project/session rooms once and reuses mappings across restart", async () => {
 	const f = fixture();
 	await f.make().reconcile();
-	expect(f.calls.map((call) => call.name)).toEqual(["OMT", "Project", "Session"]);
+	expect(f.calls.map((call) => call.name)).toEqual(["OMT", "Control center", "Project", "Session"]);
 	expect(f.calls.every((call) => call.visibility === "private")).toBe(true);
 	expect(f.sent).toEqual(["Assistant: Hello"]);
 	expect(f.powerLevels).toEqual([
 		{ roomId: "!room1:example.org", userId: "@owner:example.org", level: 10 },
 		{ roomId: "!room2:example.org", userId: "@owner:example.org", level: 10 },
 		{ roomId: "!room3:example.org", userId: "@owner:example.org", level: 10 },
+		{ roomId: "!room4:example.org", userId: "@owner:example.org", level: 10 },
 	]);
 	await f.make().reconcile();
-	expect(f.calls).toHaveLength(3);
+	expect(f.calls).toHaveLength(4);
 	expect(f.sent).toHaveLength(1);
 });
 

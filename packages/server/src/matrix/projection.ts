@@ -33,6 +33,9 @@ export interface MatrixRoomMapping {
 export interface MatrixProjectionState {
 	identity?: { bot: string; homeserver: string; controller: string };
 	formerControllers?: string[];
+	controlRoomId?: string;
+	controlCreating?: true;
+	explicitSessionIds?: string[];
 	rootRoomId?: string;
 	rootCreating?: true;
 	projects: Record<string, { roomId?: string; creating?: true }>;
@@ -169,6 +172,15 @@ export function createMatrixProjection(options: {
 			}
 			await ensureSafe(state.rootRoomId);
 			await configureRoomController(state.rootRoomId);
+			if (!state.controlRoomId) {
+				if (state.controlCreating) throw new Error("Matrix control room creation outcome is unknown");
+				state.controlCreating = true; await save();
+				state.controlRoomId = await makeRoom("Control center", false);
+				delete state.controlCreating; await save();
+			}
+			await ensureSafe(state.controlRoomId);
+			await configureRoomController(state.controlRoomId);
+			await link(state.rootRoomId, state.controlRoomId);
 			for (const target of targets) {
 				assertActive();
 				const project = state.projects[target.projectId] ?? {};
@@ -190,7 +202,7 @@ export function createMatrixProjection(options: {
 					if (
 						target.state.execution !== "running" &&
 						!target.state.needsInput &&
-						!target.state.backgroundWork
+						!target.state.backgroundWork && !state.explicitSessionIds?.includes(target.sessionId)
 					)
 						continue;
 					mapping = {
@@ -262,6 +274,23 @@ export function createMatrixProjection(options: {
 		}) {
 			assertActive();
 			if (!loaded || event.sender !== options.controller || event.replacement) return;
+			if (event.roomId === state.controlRoomId) {
+				if (state.inbox[event.id]) return;
+				state.inbox[event.id] = { phase: "done", roomId: event.roomId }; await save();
+				if (event.historical) { await send(event.roomId, "ThinkRail was offline; resend your directory command.", `offline:${event.id}`); return; }
+				await ensureSafe(event.roomId);
+				const available = await options.host.catalog();
+				if (event.text.startsWith("!omt attach ")) {
+					const id = event.text.slice(12).trim();
+					if (!available.some((target) => target.sessionId === id)) { await send(event.roomId, "Unknown or unavailable session ID.", `attach-error:${event.id}`); return; }
+					state.explicitSessionIds = [...new Set([...(state.explicitSessionIds ?? []), id])]; await save();
+					await send(event.roomId, "Session selected for mapping. Sync will create its room and backfill readable history.", `attach:${event.id}`);
+				} else {
+					const directory = available.map((target) => `${target.projectName} / ${target.workspaceName} / ${target.title || "Chat"}\n${target.sessionId}${state.sessions[target.sessionId]?.roomId ? ` https://matrix.to/#/${state.sessions[target.sessionId]?.roomId}` : ""}`).join("\n\n");
+					await send(event.roomId, `Use !omt sessions to list sessions; !omt attach <exact session ID> to map history.\n\n${directory.slice(0, 20000)}`, `directory:${event.id}`);
+				}
+				return;
+			}
 			const mapping = Object.values(state.sessions).find((row) => row.roomId === event.roomId);
 			if (!mapping || state.inbox[event.id]) return;
 			if (event.historical) {
