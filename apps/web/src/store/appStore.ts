@@ -443,6 +443,7 @@ export const SettingsSection = {
 	Models: "models",
 	Mcp: "mcp",
 	Github: "github",
+	Integrations: "integrations",
 	Appearance: "appearance",
 	Language: "language",
 	LineWidth: "line-width",
@@ -469,6 +470,7 @@ export type SettingsSection = (typeof SettingsSection)[keyof typeof SettingsSect
 export const RETIRED_SETTINGS_SECTIONS: Readonly<
 	Partial<Record<SettingsSection, SettingsSection>>
 > = {
+	[SettingsSection.Integrations]: SettingsSection.Github,
 	[SettingsSection.Artifacts]: SettingsSection.Layout,
 	[SettingsSection.LineWidth]: SettingsSection.Text,
 	[SettingsSection.Review]: SettingsSection.Models,

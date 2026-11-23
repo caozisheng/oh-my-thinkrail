@@ -122,6 +122,7 @@ import type {
 	IssueSessionStartupTarget,
 	IssueTarget,
 } from "./issues";
+import type { MatrixConnectionInput, MatrixStatus } from "./matrix";
 import type {
 	ExtUiResponse,
 	ImageContent,
@@ -175,7 +176,9 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 142;
+export const PROTOCOL_VERSION = 144;
+export const MATRIX_PROTOCOL_VERSION = 143;
+export const MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION = 144;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
 export const ISSUES_REPOSITORY_JOIN_PROTOCOL_VERSION = 126;
 export const ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION = 134;
@@ -537,6 +540,10 @@ export const WS_METHODS = {
 	gitPrefetch: "git.prefetch",
 	githubAuthStatus: "github.authStatus",
 	githubRefresh: "github.refresh",
+	matrixStatus: "matrix.status",
+	matrixConfigure: "matrix.configure",
+	matrixDisconnect: "matrix.disconnect",
+	matrixSync: "matrix.sync",
 	prPreview: "pr.preview",
 	prOpen: "pr.open",
 	prGenerate: "pr.generate",
@@ -735,6 +742,7 @@ export const WS_CHANNELS = {
 	packagesChanged: "packages.changed",
 	fontsChanged: "fonts.changed",
 	speechChanged: "speech.changed",
+	matrixChanged: "matrix.changed",
 } as const;
 
 type SameUnion<A extends B, B extends C, C = A> = A;
@@ -1236,6 +1244,10 @@ export interface WsMethodMap {
 	"git.prefetch": { params: { projectId: string; ref: string }; result: { ok: boolean } };
 	"github.authStatus": { params: Record<string, never>; result: GithubAuthStatus };
 	"github.refresh": { params: Record<string, never>; result: GithubAuthStatus };
+	"matrix.status": { params: Record<string, never>; result: MatrixStatus };
+	"matrix.configure": { params: MatrixConnectionInput; result: MatrixStatus };
+	"matrix.disconnect": { params: Record<string, never>; result: MatrixStatus };
+	"matrix.sync": { params: Record<string, never>; result: MatrixStatus };
 	"pr.preview": {
 		params: {
 			workspaceId: string;

@@ -134,6 +134,28 @@ to settings' `setSubagentEnabled` ([[submodule-server-settings]]). The host inje
 `getConfig().disabledSubagents` as agent's live per-name resolver and resets it on stop. Wire shape and
 gate: [[module-contracts]].
 
+## Matrix integration (v143)
+
+The host composes the server-only `matrix` service with its private OS credential vault, atomic
+profile metadata, trusted project/session catalog and existing agent capabilities. Configure receives
+credentials only in the one request and never persists a password. The Matrix service is restored
+lazily, verifies `/whoami` before syncing, and owns its cancellable SDK lifecycle; shutdown awaits it.
+The `matrix.changed` publisher reaches only v143+ clients. Homeserver requests are restricted to the
+configured origin, pinned to DNS answers, bounded by timeout/body size and never follow redirects. HTTPS
+and public DNS are the default. A v144 caller may explicitly consent to HTTP/private-network access for
+one exact canonical origin; the saved connection retains that consent, and each request rechecks DNS
+against the acknowledged address class. The exception never covers loopback, link-local, cloud metadata,
+redirects or another origin.
+
+The host catalog includes open, trusted repository projects and their session snapshots; it rereads
+project openness/trust and exact project/workspace/session ownership before every control operation.
+Control validation enumerates only the exact workspace, not the global catalog. Transcript reads
+check current project policy before and after the agent's exact session/workspace read; agent ownership
+validation replaces a redundant global catalog scan, never cached authorization.
+It delegates prompt, steer/follow-up, abort and current interaction answers through the existing agent
+barrel. It never changes another frontend's focus. Matrix rooms are projections only, not a session
+source of truth.
+
 ## Chat attachments
 
 `attachments.ts` writes the files a prompt attaches into `<worktree>/.thinkrail/context/attachments/`

@@ -151,6 +151,8 @@ export {
 	parseMatchTerms,
 	prepareContent,
 } from "./match";
+export type * from "./matrix";
+export { canonicalMatrixHomeserver, isMatrixConnectionInput, isMatrixUserId } from "./matrix";
 export type * from "./nativeClient";
 export type * from "./piProtocol";
 export {

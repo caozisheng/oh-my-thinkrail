@@ -37,6 +37,7 @@ import { ExtensionsSettings } from "./ExtensionsSettings";
 import { FeedbackSettings } from "./FeedbackSettings";
 import { GithubSettings } from "./GithubSettings";
 import { LanguageSettings } from "./LanguageSettings";
+import { MatrixSettings } from "./MatrixSettings";
 import { McpSettings } from "./McpSettings";
 import { ModelsSettings } from "./ModelsSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
@@ -107,6 +108,8 @@ function sectionContent(section: SettingsSection, injected: SectionContent): Rea
 			return <WorkspacesSettings />;
 		case SettingsSection.Github:
 			return <GithubSettings />;
+		case SettingsSection.Integrations:
+			return <MatrixSettings />;
 		case SettingsSection.Notifications:
 			return <NotificationsSettings />;
 		case SettingsSection.Privacy:

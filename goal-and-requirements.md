@@ -76,6 +76,7 @@ What ThinkRail does, at product level; the linked spec owns the detail.
   Default workspace (the project folder itself) and existing worktrees attached in place
   ([[submodule-server-workspaces]]). A Git repository URL can be cloned into a chosen new host folder and
   opened as a project, with optional shallow history and cancellation ([[submodule-server-projects]]).
+- **Matrix mobile control** — connect a dedicated bot and a single explicitly authorized Matrix MXID; use standard Spaces and rooms to read active trusted-project sessions and steer, follow up, stop, or answer current agent interactions from Matrix clients. Matrix rooms are plaintext projections, not state owners; the homeserver can read history and only the exact configured controller may control ThinkRail ([[submodule-server-matrix]]).
 - **Voice input** — local dictation into every text field, extensions' included and with no work on
   their part (the code editor and the terminal excepted), through a mic on the focused field or ⌘⇧Space /
   Ctrl+Shift+Space. Text lands at the cursor and is never auto-sent. NVIDIA's Nemotron streaming model runs on the host after
