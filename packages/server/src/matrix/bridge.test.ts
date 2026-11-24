@@ -14,6 +14,24 @@ test("explicit commands never silently become prompts", () => {
 	});
 });
 
+test("transcript projections exclude empty assistant text blocks", () => {
+	expect(
+		transcriptProjection({
+			role: "assistant",
+			content: [
+				{ type: "text", text: "  \n  " },
+				{ type: "toolCall", name: "shell" },
+			],
+		}),
+	).toBeNull();
+	expect(
+		transcriptProjection({ role: "assistant", content: [{ type: "toolCall", name: "shell" }] }),
+	).toBeNull();
+	expect(
+		transcriptProjection({ role: "assistant", content: [{ type: "text", text: "Answer" }] }),
+	).toBe("Assistant: Answer");
+});
+
 test("transcript projections exclude thinking, tool data and control messages", () => {
 	expect(
 		transcriptProjection({

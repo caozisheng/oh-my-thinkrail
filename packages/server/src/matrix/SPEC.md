@@ -54,7 +54,9 @@ emits timeline events before its per-batch Syncing state event, so the first suc
 reconnect remains historical; events from the next batch are admitted. The SDK does not expose enough
 metadata to distinguish deeper backlog from newly arrived events. Persist a dispatch fence before any host control call. A restart
 with an unfinished fence is an unknown delivery, never an automatic replay. Output projections use
-stable transaction IDs and are reconciled from the complete host display transcript. Host message
+stable transaction IDs and are reconciled from the complete host display transcript. Assistant text
+blocks containing only whitespace are omitted; tool-only/empty snapshots never create placeholder
+messages or empty replacements. Host message
 snapshots drive realtime assistant output, coalesced to approximately one update per second. The first
 snapshot creates a bot message; later snapshots replace that same message via standard `m.replace`,
 and message completion flushes a final update. Persisted original event IDs and revision transactions
