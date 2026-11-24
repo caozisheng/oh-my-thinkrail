@@ -40,6 +40,7 @@ function fixture() {
 	let loseCreateRoomResponse = false;
 	let loseSendResponse = false;
 	const prompts: string[] = [];
+	const receipts: string[] = [];
 	const calls: Record<string, unknown>[] = [];
 	const powerLevels: {
 		roomId: string;
@@ -48,6 +49,7 @@ function fixture() {
 	const roomPowerLevels = new Map<string, (typeof powerLevels)[number]["content"]>();
 	const invites: { roomId: string; userId: string }[] = [];
 	let allowed = true;
+	let receiptFailure = false;
 	const client = {
 		async createRoom(input: Record<string, unknown>) {
 			calls.push(input);
@@ -89,6 +91,11 @@ function fixture() {
 			await client.sendStateEvent(roomId, EventType.RoomPowerLevels, {
 				users: { [userId]: level },
 			});
+		},
+		async sendReadReceipt(event: { getId(): string }) {
+			receipts.push(event.getId());
+			if (receiptFailure) throw new Error("receipt rejected");
+			return {};
 		},
 		async sendEvent(_room: string, _type: string, content: { body: string }, txid: string) {
 			txids.push(txid);
@@ -142,6 +149,7 @@ function fixture() {
 		diagnostics,
 		current,
 		sent,
+		receipts,
 		prompts,
 		calls,
 		txids,
@@ -160,6 +168,9 @@ function fixture() {
 		state: (): MatrixProjectionState => saved,
 		stop: () => {
 			allowed = false;
+		},
+		failReceipts: () => {
+			receiptFailure = true;
 		},
 	};
 }
@@ -373,16 +384,39 @@ test("only live controller input is dispatched once; historical and edited input
 		text: "hello",
 		historical: false,
 		replacement: false,
+		matrixEvent: { getId: () => "$1", getRoomId: () => roomId } as never,
 	};
 	await bridge.receive({ ...event, sender: "@other:example.org" });
 	await bridge.receive({ ...event, id: "$old", historical: true });
 	await bridge.receive({ ...event, id: "$edit", replacement: true });
+	expect(f.receipts).toEqual([]);
 	expect(f.prompts).toEqual([]);
 	await bridge.receive(event);
 	await bridge.receive(event);
+	expect(f.receipts).toEqual(["$1"]);
 	expect(f.prompts).toEqual(["hello"]);
 	f.stop();
 	await expect(bridge.receive({ ...event, id: "$stopped" })).rejects.toThrow();
+});
+
+test("read receipt is sent before host prompt and receipt failure cannot block input", async () => {
+	const f = fixture();
+	const bridge = f.make();
+	await bridge.reconcile();
+	const roomId = f.state().sessions.s1?.roomId;
+	if (!roomId) throw new Error("Expected mapped room");
+	f.failReceipts();
+	await bridge.receive({
+		id: "$receipt-first",
+		roomId,
+		sender: "@owner:example.org",
+		text: "hello",
+		historical: false,
+		replacement: false,
+		matrixEvent: { getId: () => "$receipt-first", getRoomId: () => roomId } as never,
+	});
+	expect(f.receipts).toEqual(["$receipt-first"]);
+	expect(f.prompts).toEqual(["hello"]);
 });
 
 test("receive diagnostics classify mapped, control, duplicate, historical and unmapped input without payloads", async () => {

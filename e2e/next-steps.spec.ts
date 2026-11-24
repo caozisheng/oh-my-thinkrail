@@ -206,14 +206,13 @@ test("Alt+N does nothing inside a dialog, then sends from the Files tree, where 
 	await pressPlatformShortcut(page, "Shift+E");
 	const row = page.locator('[data-testid="file-node"]:focus');
 	await expect(row).toHaveCount(1);
-	const item = await row.getAttribute("data-tree-item");
-	expect(item).toBeTruthy();
-	const focused = page.locator(`[data-testid="file-node"][data-tree-item="${item}"]`);
-	await expect(focused).toBeFocused();
+	const focusedPath = await row.getAttribute("data-tree-item");
+	if (!focusedPath) throw new Error("Expected a focused Files tree row");
 	await page.keyboard.press("Alt+Digit2");
 	await expect.poll(() => promptTexts(frames)).toEqual(["Open a PR"]);
 	await expect(chips).toHaveCount(0);
-	await expect(focused).toBeFocused();
+	await expect(row).toBeFocused();
+	await expect(row).toHaveAttribute("data-tree-item", focusedPath);
 	await expect(page.getByTestId("chat-input")).toHaveValue("");
 });
 

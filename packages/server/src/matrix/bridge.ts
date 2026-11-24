@@ -41,7 +41,7 @@ export function transcriptProjection(message: unknown): string | null {
 						)
 						.join("\n")
 				: "";
-	if (!text || isControlMessage(text)) return null;
+	if (!text.trim() || isControlMessage(text)) return null;
 	return `${message.role === "user" ? "User" : "Assistant"}: ${text}`;
 }
 

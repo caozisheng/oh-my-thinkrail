@@ -381,6 +381,7 @@ export function createMatrixService(options: MatrixServiceOptions): MatrixServic
 			void projection
 				.receive({
 					id,
+					matrixEvent: event,
 					roomId: room.roomId,
 					sender: bound.controllerUserId,
 					text: content.body,

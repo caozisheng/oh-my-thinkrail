@@ -3,8 +3,10 @@ import type { SessionState } from "@thinkrail/contracts";
 import {
 	EventType,
 	type MatrixClient,
+	type MatrixEvent,
 	MsgType,
 	Preset,
+	ReceiptType,
 	RelationType,
 	RoomType,
 	Visibility,
@@ -490,6 +492,7 @@ export function createMatrixProjection(options: {
 
 		async receive(event: {
 			id: string;
+			matrixEvent?: MatrixEvent;
 			roomId: string;
 			sender: string;
 			text: string;
@@ -586,6 +589,11 @@ export function createMatrixProjection(options: {
 				return;
 			}
 			await ensureSafe(event.roomId);
+			if (!event.historical && event.matrixEvent) {
+				try {
+					await options.client.sendReadReceipt(event.matrixEvent, ReceiptType.Read);
+				} catch {}
+			}
 			state.inbox[event.id] = { phase: "dispatching", roomId: event.roomId };
 			await save();
 			assertActive();
