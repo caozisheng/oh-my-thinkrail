@@ -30,7 +30,10 @@ readable sessions for exact-ID user-initiated mapping.
 
 ## Bridge invariants
 
-Only the configured full controller MXID can submit input in locally mapped rooms. Other members
+Only the configured full controller MXID can submit input in locally mapped rooms. For a live, mapped
+session-room text event, the bridge sends a standard `m.read` receipt after fresh room/session checks
+and before the host control call. Receipt failure is isolated and never prevents dispatch; historical,
+edited, duplicate, control-room and unauthorized events do not receive this acknowledgement. Other members
 may read but are configured without message-send permission. Controller and former-controller power
 levels are written together as one full state event built from fresh room state; sequential SDK
 power-level updates can overwrite each other from a stale cache. Unchanged levels produce no write. New rooms are private and invite-only;
