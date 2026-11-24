@@ -144,6 +144,26 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 	};
 }
 
+test("empty and whitespace snapshots never create or replace Matrix messages", async () => {
+	const f = fixture();
+	const p = f.make();
+	await p.reconcile();
+	const empty = (text: string) => ({
+		role: "assistant",
+		timestamp: 1730000000000,
+		content: [
+			{ type: "text", text },
+			{ type: "toolCall", name: "shell" },
+		],
+	});
+	await p.stream("s", "1730000000000", empty(""), false);
+	await p.stream("s", "1730000000000", empty("  \n "), false);
+	expect(f.sends).toHaveLength(0);
+	await p.stream("s", "1730000000000", f.message("Tool result is ready"), false);
+	expect(f.sends).toHaveLength(1);
+	expect(f.sends[0]?.content.body).toBe("Assistant: Tool result is ready");
+});
+
 test("first partial -> replacement -> final -> settled history has no duplicate", async () => {
 	const f = fixture();
 	const p = f.make();
