@@ -14,7 +14,9 @@ import type {
 	DiffStats,
 	EditorInfo,
 	ExistingWorktreeCandidate,
+	ExtensionBrowseResult,
 	ExtensionCatalogEntry,
+	ExtensionQueryParams,
 	FileNode,
 	GitCommit,
 	GitDiffScope,
@@ -43,9 +45,9 @@ import type {
 	MergePrResult,
 	OpenBranchReview,
 	OpenPrResult,
+	PackageInstallResult,
 	PiPackageResourceType,
 	PiPackageScope,
-	PiPackageSummary,
 	PiPackagesCatalog,
 	PrBodySource,
 	Project,
@@ -176,7 +178,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 144;
+export const PROTOCOL_VERSION = 147;
 export const MATRIX_PROTOCOL_VERSION = 143;
 export const MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION = 144;
 export const PROJECT_GROUPS_PROTOCOL_VERSION = 125;
@@ -216,6 +218,9 @@ export const SERVER_FALLBACK_PROTOCOL_VERSION = 139;
 export const SUBAGENT_CATALOG_PROTOCOL_VERSION = 140;
 export const ARTIFACT_OUTPUTS_PROTOCOL_VERSION = 141;
 export const CHAT_ATTACHMENTS_PROTOCOL_VERSION = 142;
+export const INSTALLED_EXTENSIONS_PROTOCOL_VERSION = 146;
+export const EXTENSION_BROWSE_PROTOCOL_VERSION = 147;
+export const EXTENSION_QUERY_PROTOCOL_VERSION = 145;
 export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
 export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";
@@ -585,6 +590,7 @@ export const WS_METHODS = {
 	skillList: "skill.list",
 	skillsState: "skills.state",
 	extensionList: "extension.list",
+	extensionQuery: "extension.query",
 	packagesList: "packages.list",
 	packagesInstall: "packages.install",
 	packagesRemove: "packages.remove",
@@ -592,6 +598,10 @@ export const WS_METHODS = {
 	packagesCheckUpdates: "packages.checkUpdates",
 	packagesSetResourceEnabled: "packages.setResourceEnabled",
 	packagesReveal: "packages.reveal",
+	extensionsRemove: "extensions.remove",
+	extensionsUpdate: "extensions.update",
+	extensionsCheckUpdates: "extensions.checkUpdates",
+	extensionsBrowse: "extensions.browse",
 	localesList: "locales.list",
 	localesReveal: "locales.reveal",
 	themesList: "themes.list",
@@ -740,6 +750,7 @@ export const WS_CHANNELS = {
 	localesChanged: "locales.changed",
 	themesChanged: "themes.changed",
 	packagesChanged: "packages.changed",
+	extensionsChanged: "extensions.changed",
 	fontsChanged: "fonts.changed",
 	speechChanged: "speech.changed",
 	matrixChanged: "matrix.changed",
@@ -1416,10 +1427,11 @@ export interface WsMethodMap {
 	"skill.list": { params: { projectId: string }; result: SlashCommandInfo[] };
 	"skills.state": { params: { workspaceId: string }; result: SkillCatalogEntry[] };
 	"extension.list": { params: Record<string, never>; result: ExtensionCatalogEntry[] };
+	"extension.query": { params: ExtensionQueryParams; result: unknown };
 	"packages.list": { params: { workspaceId?: string; force?: boolean }; result: PiPackagesCatalog };
 	"packages.install": {
 		params: { source: string; scope: PiPackageScope; workspaceId?: string };
-		result: PiPackageSummary;
+		result: PackageInstallResult;
 	};
 	"packages.remove": {
 		params: { source: string; scope: PiPackageScope; workspaceId?: string };
@@ -1444,6 +1456,10 @@ export interface WsMethodMap {
 		result: Ack;
 	};
 	"packages.reveal": { params: { path: string; workspaceId?: string }; result: Ack };
+	"extensions.remove": { params: { source: string }; result: Ack };
+	"extensions.update": { params: { source: string }; result: Ack };
+	"extensions.checkUpdates": { params: { force?: boolean }; result: { source: string }[] };
+	"extensions.browse": { params: { force?: boolean }; result: ExtensionBrowseResult };
 	"locales.list": { params: Record<string, never>; result: LocalLocalesSnapshot };
 	"locales.reveal": { params: Record<string, never>; result: Ack };
 	"themes.list": { params: Record<string, never>; result: UserThemesSnapshot };
@@ -1824,6 +1840,12 @@ export type WsErrorCode =
 	| "PACKAGE_REMOVE_FAILED"
 	| "PACKAGE_UPDATE_FAILED"
 	| "PACKAGE_SETTINGS_WRITE_FAILED"
+	| "EXTENSION_SCOPE_UNSUPPORTED"
+	| "EXTENSION_UNKNOWN"
+	| "EXTENSIONS_FILE_INVALID"
+	| "EXTENSION_CATALOG_OFFLINE"
+	| "EXTENSION_CATALOG_UNREACHABLE"
+	| "EXTENSION_CATALOG_INVALID"
 	| "CACHE_WARMING_WRITE_FAILED"
 	| "REQUEST_REPLAY_OVERFLOW"
 	| "INSTALLED_FONTS_UNAVAILABLE"
@@ -1855,6 +1877,8 @@ export type WsErrorCode =
 	| "KEYBINDINGS_INVALID"
 	| "SERVER_FALLBACK_NOT_USED"
 	| "SERVER_FALLBACK_STILL_ON"
+	| "EXTENSION_DISABLED"
+	| "UNKNOWN_EXTENSION_QUERY"
 	| SpeechErrorCode;
 
 export interface WsResponse {

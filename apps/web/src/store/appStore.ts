@@ -3,6 +3,7 @@ import type {
 	AppSurvey,
 	ChatContinuation,
 	ComposerGrowthLimit,
+	ExtensionCatalogEntry,
 	ExtUiRequest,
 	FontChoice,
 	GitDiffScope,
@@ -157,6 +158,8 @@ import {
 	supportsWorkspaceSettling,
 } from "./selectors";
 
+export type ExtensionCatalogRead = ExtensionCatalogEntry[] | "loading" | "failed";
+
 export interface FileTab {
 	kind: "file";
 	id: string;
@@ -281,7 +284,17 @@ export interface PlanTab {
 	name: string;
 	sessionId: string;
 }
-export type EditorTab = FileTab | ChatTab | DocTab | DiffTab | ChangesTab | PlanTab;
+export interface ExtensionTab {
+	kind: "extension";
+	id: string;
+	workspaceId: string;
+	name: string;
+	extension: string;
+	panel: string;
+	titleKey: string;
+	params: Readonly<Record<string, string>>;
+}
+export type EditorTab = FileTab | ChatTab | DocTab | DiffTab | ChangesTab | PlanTab | ExtensionTab;
 
 export function chatTabId(workspaceId: string, sessionId: string): string {
 	return tupleKey("chat", workspaceId, sessionId);
@@ -353,6 +366,7 @@ export interface LocalLayoutStatePayload {
 	documentsByWorkspace: Record<string, WorkspaceLayoutDocument>;
 	attentionByWorkspace: Record<string, LayoutAttention>;
 	preferences: LocalLayoutPreferences;
+	panelsToRestore?: readonly LayoutAuxiliaryRegion[];
 }
 
 export interface CenterNavigationStamp {
@@ -431,7 +445,9 @@ export type LayoutIntent =
 	| { id: string; kind: "close-terminal"; workspaceId: string; tabKey: string }
 	| { id: string; kind: "select-terminal"; workspaceId: string; tabKey: string }
 	| { id: string; kind: "toggle-side"; workspaceId: string; side: "left" | "right" }
-	| { id: string; kind: "toggle-bottom"; workspaceId: string };
+	| { id: string; kind: "toggle-bottom"; workspaceId: string }
+	| { id: string; kind: "toggle-all-panels"; workspaceId: string }
+	| { id: string; kind: "hide-all-panels"; workspaceId: string };
 export type LayoutIntentInput = LayoutIntent extends infer Intent
 	? Intent extends { id: string }
 		? Omit<Intent, "id">
@@ -529,7 +545,39 @@ export interface ChatLocationRequest {
 	sessionId: string;
 	messageIndex: number;
 	anchorText: string;
+	/** Reveal this tool call's row; the message is the fallback when the chat does not show it. */
+	toolCallId?: string;
+	/** The message is the nearest shown ancestor of the requested entry; the chat says so. */
+	approximate?: boolean;
+	/** Reveal and highlight in place, leaving focus where it is. */
+	focus?: false;
 	navigation?: CenterNavigationStamp | null;
+}
+
+export interface ChatPanePanel {
+	readonly extension: string;
+	readonly panel: string;
+	readonly params: Readonly<Record<string, string>>;
+}
+
+export interface ChatPane extends ChatPanePanel {
+	readonly open: boolean;
+	/** The pane's share of the chat's tab, in percent; `null` until it first lays out. */
+	readonly width: number | null;
+}
+
+/** A panel's saved view; `epoch` counts the times another placement handed it over (`transferPanelViewState`). */
+export interface PanelViewEntry {
+	readonly state: unknown;
+	readonly epoch: number;
+}
+
+export function chatPaneViewKey(sessionId: string, extension: string, panel: string): string {
+	return tupleKey("chat-pane", sessionId, extension, panel);
+}
+
+function chatPaneViewPrefix(sessionId: string): string {
+	return tupleKey("chat-pane", sessionId);
 }
 
 export interface PendingMarkUnread {
@@ -1144,6 +1192,8 @@ interface AppState {
 	layoutDocumentsByWorkspace: Record<string, WorkspaceLayoutDocument>;
 	layoutAttentionByWorkspace: Record<string, LayoutAttention>;
 	layoutProjectionEpoch: number;
+	/** The panes `view.toggleAllPanels` hid and brings back next; runtime only, never persisted. */
+	panelsToRestore: readonly LayoutAuxiliaryRegion[];
 	layoutIntents: LayoutIntent[];
 	tabsByWorkspace: Record<string, EditorTab[]>;
 	activeTabByWorkspace: Record<string, string | null>;
@@ -1180,6 +1230,7 @@ interface AppState {
 	templatesVersion: number;
 	/** Bumped on `packages.changed`; the Extensions page re-lists installed pi packages when it moves. */
 	packagesVersion: number;
+	extensionCatalog: ExtensionCatalogRead;
 	modelsRefreshing: boolean;
 	modelsFresh: boolean;
 	changesRequest: {
@@ -1346,7 +1397,7 @@ interface AppState {
 		syncLayout?: boolean,
 		options?: LayoutOpenOptions,
 	) => void;
-	openDoc: (tab: DocTab | PlanTab) => void;
+	openDoc: (tab: DocTab | PlanTab | ExtensionTab) => void;
 	closeTab: (
 		id: string,
 		syncLayout?: boolean,
@@ -1452,6 +1503,16 @@ interface AppState {
 	setChangesLayout: (layout: ChangesLayout) => void;
 	diffScopeByWorkspace: Record<string, GitDiffScope>;
 	setDiffScope: (workspaceId: string, scope: GitDiffScope) => void;
+	chatPanesByWorkspace: Record<string, Record<string, ChatPane>>;
+	openChatPane: (workspaceId: string, sessionId: string, panel: ChatPanePanel) => void;
+	closeChatPane: (workspaceId: string, sessionId: string) => void;
+	setChatPaneWidth: (workspaceId: string, sessionId: string, width: number) => void;
+	panelViewStatesByWorkspace: Record<string, Record<string, PanelViewEntry>>;
+	savePanelViewState: (workspaceId: string, key: string, state: unknown) => void;
+	/** Saves a view another placement hands over and bumps its epoch, so a mounted panel remounts on it. */
+	transferPanelViewState: (workspaceId: string, key: string, state: unknown) => void;
+	/** Forgets a closed tab's view, epoch included, whether or not the tab had a cache. */
+	dropPanelViewState: (workspaceId: string, key: string) => void;
 	noteFsChanged: (payload: WorkspaceFsChangedPayload) => void;
 	turnsByWorkspace: Record<string, TurnChangeSet[]>;
 	setWorkspaceTurns: (
@@ -1585,6 +1646,7 @@ interface AppState {
 	installProviderStatus: (version: number, report: ProviderStatusReport | null) => void;
 	bumpTemplatesVersion: () => void;
 	bumpPackagesVersion: () => void;
+	installExtensionCatalog: (catalog: ExtensionCatalogEntry[] | "failed") => void;
 	beginModelsRefresh: () => number;
 	finishModelsRefresh: (providerVersion: number, result: RefreshedModels | null) => void;
 	dropModelsFreshness: () => void;
@@ -1934,6 +1996,41 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
 	return rest;
 }
 
+function patchChatPane(
+	state: Pick<AppState, "chatPanesByWorkspace">,
+	workspaceId: string,
+	sessionId: string,
+	pane: ChatPane,
+): Pick<AppState, "chatPanesByWorkspace"> {
+	return {
+		chatPanesByWorkspace: {
+			...state.chatPanesByWorkspace,
+			[workspaceId]: { ...state.chatPanesByWorkspace[workspaceId], [sessionId]: pane },
+		},
+	};
+}
+
+/** A panel view's owner is still there: a tab of that identity in the workspace's view, or a live chat's pane. */
+function panelViewOwned(s: AppState, workspaceId: string, key: string): boolean {
+	if (selectLayoutIdentityPlacement(s, workspaceId, key) !== null) return true;
+	return Object.keys(s.chatPanesByWorkspace[workspaceId] ?? {}).some(
+		(sessionId) =>
+			key.startsWith(chatPaneViewPrefix(sessionId)) && !isSessionDeleted(s, workspaceId, sessionId),
+	);
+}
+
+function withoutPanelViewStates(
+	states: AppState["panelViewStatesByWorkspace"],
+	workspaceId: string,
+	drop: (key: string) => boolean,
+): AppState["panelViewStatesByWorkspace"] {
+	const current = states[workspaceId];
+	if (!current) return states;
+	const kept = Object.entries(current).filter(([key]) => !drop(key));
+	if (kept.length === Object.keys(current).length) return states;
+	return { ...states, [workspaceId]: Object.fromEntries(kept) };
+}
+
 function appendLayoutIntent(intents: LayoutIntent[], input: LayoutIntentInput): LayoutIntent[] {
 	return [...intents, { ...input, id: randomId("layout-intent") }];
 }
@@ -2203,6 +2300,11 @@ function withoutChat(
 	const hasRenderedCompletion = Object.hasOwn(s.renderedCompletionBySession, sessionId);
 	const isObscured = Boolean(s.obscuredChatSessions[sessionId]);
 	const hasSkillBaseline = Object.hasOwn(s.skillsSyncedTickBySession, sessionId);
+	const hasChatPane = s.chatPanesByWorkspace[workspaceId]?.[sessionId] !== undefined;
+	const paneViewPrefix = chatPaneViewPrefix(sessionId);
+	const panelViewStates = withoutPanelViewStates(s.panelViewStatesByWorkspace, workspaceId, (key) =>
+		key.startsWith(paneViewPrefix),
+	);
 	const targetsLocation =
 		s.chatLocationRequest?.workspaceId === workspaceId &&
 		s.chatLocationRequest.sessionId === sessionId;
@@ -2223,6 +2325,8 @@ function withoutChat(
 		!hasRenderedCompletion &&
 		!isObscured &&
 		!hasSkillBaseline &&
+		!hasChatPane &&
+		panelViewStates === s.panelViewStatesByWorkspace &&
 		!targetsLocation &&
 		!targetsRoute &&
 		!targetsHistory &&
@@ -2311,6 +2415,15 @@ function withoutChat(
 		...(hasSkillBaseline
 			? { skillsSyncedTickBySession: omitKey(s.skillsSyncedTickBySession, sessionId) }
 			: {}),
+		...(hasChatPane
+			? {
+					chatPanesByWorkspace: {
+						...s.chatPanesByWorkspace,
+						[workspaceId]: omitKey(s.chatPanesByWorkspace[workspaceId] ?? {}, sessionId),
+					},
+				}
+			: {}),
+		panelViewStatesByWorkspace: panelViewStates,
 		...(targetsLocation ? { chatLocationRequest: null } : {}),
 		...(targetsRoute ? { routeChatTarget: null } : {}),
 		...(targetsHistory ? { historyOpenRequest: null } : {}),
@@ -2595,6 +2708,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 	layoutDocumentsByWorkspace: {},
 	layoutAttentionByWorkspace: {},
 	layoutProjectionEpoch: 0,
+	panelsToRestore: [],
 	layoutIntents: [],
 	tabsByWorkspace: {},
 	activeTabByWorkspace: {},
@@ -2628,6 +2742,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 	providerStatus: { version: -1, report: null, failed: false },
 	templatesVersion: 0,
 	packagesVersion: 0,
+	extensionCatalog: "loading",
 	modelsRefreshing: false,
 	modelsFresh: false,
 	changesRequest: null,
@@ -2647,6 +2762,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 	filesTreeByWorkspace: {},
 	changesLayout: "stacked",
 	diffScopeByWorkspace: {},
+	chatPanesByWorkspace: {},
+	panelViewStatesByWorkspace: {},
 	chatLocationRequest: null,
 	historyOpenRequest: null,
 	fsChangesByWorkspace: {},
@@ -2921,6 +3038,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 				...pruneExpandedProjects(state, openProjects),
 				welcomeGeneration: state.welcomeGeneration + 1,
 				providerStatusVersion: state.providerStatusVersion + 1,
+				...(state.welcomeProtocolVersion === protocolVersion
+					? {}
+					: { extensionCatalog: "loading" as const }),
 			};
 		}),
 	applyHostUpdate: (hostUpdate) => set({ hostUpdate }),
@@ -3035,6 +3155,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 					workspaceId,
 				),
 				diffScopeByWorkspace: omitKey(state.diffScopeByWorkspace, workspaceId),
+				chatPanesByWorkspace: omitKey(state.chatPanesByWorkspace, workspaceId),
+				panelViewStatesByWorkspace: omitKey(state.panelViewStatesByWorkspace, workspaceId),
 				filesTreeByWorkspace: omitKey(state.filesTreeByWorkspace, workspaceId),
 				fileClipboard:
 					state.fileClipboard?.workspaceId === workspaceId ? null : state.fileClipboard,
@@ -3208,6 +3330,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 			layoutAttentionByWorkspace: payload.attentionByWorkspace,
 			localLayoutPreferences: payload.preferences,
 			layoutProjectionEpoch: state.layoutProjectionEpoch + (invalidateProjection ? 1 : 0),
+			panelsToRestore: payload.panelsToRestore ?? state.panelsToRestore,
 		}));
 	},
 	setLocalLayoutPreferences: (preferences) => set({ localLayoutPreferences: preferences }),
@@ -3407,9 +3530,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 		set((s) => {
 			const wsId = workspaceId ?? s.activeWorkspaceId;
 			if (!wsId || s.removedWorkspaceIds[wsId]) return {};
+			const closed = (s.tabsByWorkspace[wsId] ?? []).find((t) => t.id === id);
 			const tabs = (s.tabsByWorkspace[wsId] ?? []).filter((t) => t.id !== id);
 			const wasActive = s.activeTabByWorkspace[wsId] === id;
+			const viewKey = closed?.kind === "extension" ? editorResourceIdentity(closed) : null;
 			return {
+				...(viewKey !== null
+					? {
+							panelViewStatesByWorkspace: withoutPanelViewStates(
+								s.panelViewStatesByWorkspace,
+								wsId,
+								(key) => key === viewKey,
+							),
+						}
+					: {}),
 				...(syncLayout
 					? {
 							layoutIntents: appendLayoutIntent(s.layoutIntents, {
@@ -3694,6 +3828,70 @@ export const useAppStore = create<AppState>((set, get) => ({
 				? {}
 				: { diffScopeByWorkspace: { ...s.diffScopeByWorkspace, [workspaceId]: scope } },
 		),
+	openChatPane: (workspaceId, sessionId, { extension, panel, params }) =>
+		set((s) => {
+			if (s.removedWorkspaceIds[workspaceId]) return {};
+			const width = s.chatPanesByWorkspace[workspaceId]?.[sessionId]?.width ?? null;
+			return patchChatPane(s, workspaceId, sessionId, {
+				extension,
+				panel,
+				params: { ...params },
+				open: true,
+				width,
+			});
+		}),
+	closeChatPane: (workspaceId, sessionId) =>
+		set((s) => {
+			const pane = s.chatPanesByWorkspace[workspaceId]?.[sessionId];
+			return pane?.open ? patchChatPane(s, workspaceId, sessionId, { ...pane, open: false }) : {};
+		}),
+	setChatPaneWidth: (workspaceId, sessionId, width) =>
+		set((s) => {
+			const pane = s.chatPanesByWorkspace[workspaceId]?.[sessionId];
+			return pane && pane.width !== width
+				? patchChatPane(s, workspaceId, sessionId, { ...pane, width })
+				: {};
+		}),
+	savePanelViewState: (workspaceId, key, state) =>
+		set((s) => {
+			if (s.removedWorkspaceIds[workspaceId] || !panelViewOwned(s, workspaceId, key)) return {};
+			const current = s.panelViewStatesByWorkspace[workspaceId] ?? {};
+			const entry = current[key];
+			if (state === undefined && entry?.state === undefined) return {};
+			const epoch = entry?.epoch ?? 0;
+			return {
+				panelViewStatesByWorkspace: {
+					...s.panelViewStatesByWorkspace,
+					[workspaceId]:
+						state === undefined && epoch === 0
+							? omitKey(current, key)
+							: { ...current, [key]: { state, epoch } },
+				},
+			};
+		}),
+	transferPanelViewState: (workspaceId, key, state) =>
+		set((s) => {
+			if (s.removedWorkspaceIds[workspaceId]) return {};
+			const current = s.panelViewStatesByWorkspace[workspaceId] ?? {};
+			const epoch = (current[key]?.epoch ?? 0) + 1;
+			return {
+				panelViewStatesByWorkspace: {
+					...s.panelViewStatesByWorkspace,
+					[workspaceId]: { ...current, [key]: { state, epoch } },
+				},
+			};
+		}),
+	dropPanelViewState: (workspaceId, key) =>
+		set((s) => {
+			const panelViewStatesByWorkspace = withoutPanelViewStates(
+				s.panelViewStatesByWorkspace,
+				workspaceId,
+				(candidate) => candidate === key,
+			);
+			return panelViewStatesByWorkspace === s.panelViewStatesByWorkspace
+				? {}
+				: { panelViewStatesByWorkspace };
+		}),
 	setWorkspaceTurns: (workspaceId, turns, baseline, connectionGeneration) =>
 		set((s) => {
 			if (s.removedWorkspaceIds[workspaceId] || !isConnectedGeneration(s, connectionGeneration)) {
@@ -4827,6 +5025,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 		),
 	bumpTemplatesVersion: () => set((s) => ({ templatesVersion: s.templatesVersion + 1 })),
 	bumpPackagesVersion: () => set((s) => ({ packagesVersion: s.packagesVersion + 1 })),
+	installExtensionCatalog: (extensionCatalog) => set({ extensionCatalog }),
 	beginModelsRefresh: () => {
 		const providerVersion = get().providerVersion;
 		set({ modelsRefreshing: true });

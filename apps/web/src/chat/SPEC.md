@@ -606,12 +606,60 @@ remain app-local. A registration is:
   **`resolveProminence`** seam — where a per-user override map (settings) can plug in later.
 
 Every registry read (renderer, summary, chrome, width, prominence) goes through one resolver: the exact tool
-name, else the longest app-local prefix registration (`registerToolRendererPrefix` — today only `mcp__`,
-because pi names MCP tools per server), else the default. Exact names always win, an empty prefix never
-matches, and extension descriptors stay exact-name only.
+name — a built-in registration first, else, among installed extensions whose renderers are currently
+registered, the one listed first by the host (the accepted loading window is in
+[[submodule-web-extensions]]) — else the longest app-local prefix registration
+(`registerToolRendererPrefix` — today only `mcp__`, because pi names MCP tools per server), else the
+default. A built-in exact name always wins, an empty prefix never matches, and
+extension descriptors stay exact-name only. An installed exact name that the extension's own server half
+registers never takes a name under an app prefix — the host's MCP tools beat an installed one on the
+server — and the loader never registers an installed renderer for a name the host keeps over that
+extension's server half (its `web.shadowed`). A card for a tool the extension's server half does not
+register is the extension's documented purpose and is accepted: a web half may draw a host MCP tool
+(`mcp__<server>__<tool>`) or a host tool that has no card of its own (`set_title`, `grep`), while the host
+still runs the tool; only a built-in card is never replaced.
+The order mirrors which tool the server actually runs (built-in
+tool-name precedence, host-owned tools before installed ones, then pi's first registration wins), so a
+card does not draw over another tool's result outside that window.
 
-Unregistered tools fall back to `DefaultToolRenderer`. A tool that needs user input mid-run takes one of
-two routes:
+**The registry is subscribable.** Installed web halves register after first render
+([[submodule-web-extensions]]): `reserveInstalledOwner(owner)` fixes an owner's precedence slot when its
+load starts (host-list order, independent of which bundle finishes first),
+`setInstalledToolRenderers(owner, toolRenderers)` replaces that owner's set atomically in its slot, and
+`removeInstalledToolRenderers(owner)` drops it and its slot, revealing the next owner of the same name (a
+failed load instead keeps an empty set in its slot).
+Every change publishes a new immutable `ToolRegistry` snapshot (with a `revision`). Readers take it through
+`useSyncExternalStore` hooks — `useToolRegistry()` for derivations, `useToolRenderer(name)` for the
+renderer itself, `useToolRegistryRevision()` — and pass the snapshot as the optional trailing `registry`
+argument of every resolver and derivation (`deriveRows`, `deriveInteractionStates`,
+`latestPendingInteraction` / `dockedInteraction` / `pendingInteraction`, `sessionGlance`,
+`estimateChatRowHeights`, `deriveMessageActions`, `deriveComposerSuggestions`, summaries, chrome, width,
+prominence, docking). A version counter beside an
+unchanged `getToolRenderer(name)` call is not enough: the React Compiler memoizes that call by its
+arguments, so the snapshot has to be an argument. The structure matters too: an unregistered tool is a
+routine step inside a collapsed activity group, so a late primary registration turns it into a card row
+and its removal turns it back. Without the argument the live snapshot is read, which keeps imperative
+callers and tests unchanged. Built-in registration at bootstrap behaves as before. In dev, registry state
+lives in `import.meta.hot.data`, so a hot update of the registry keeps every registration.
+
+Unregistered tools fall back to `DefaultToolRenderer`. **Every renderer renders inside its own
+`ToolRendererBoundary`** — in `ToolRendererBody`, in the composer dock (`DockedTool`) and on the plan page
+alike, built-in or installed: a
+renderer that throws shows `DefaultToolRenderer` for that one row (chat wraps it in
+`data-testid="tool-renderer-fallback"`) while the card chrome, result images and every other row keep
+working. The boundary gives the renderer another try when the renderer identity (an update), the
+`toolCallId`, the call's `status` or its `streaming` flag changes — so a card that threw on partial arguments
+renders once streaming ends or the result arrives (a result lands with the status change) — but not on
+other prop changes such as each streamed argument delta, so a permanently broken card retries a bounded
+number of times per call rather than on every render. It reports
+through `components`' `reportBoundaryError` (reportId `tool-renderer`, classifier only) **once per renderer
+function**, so a broken card in fifty rows is one report. A registration's `summary` runs outside any
+boundary (card headers, activity steps), so a throwing summary reads as no summary and reports once
+(`tool-summary`); a throwing `composerSuggestions` reader likewise reads as no suggestions
+(`tool-composer-suggestions`). Effects and event handlers are not caught by a boundary; they reach the window-level
+error reports. A new render site of a registered renderer must keep the boundary.
+
+A tool that needs user input mid-run takes one of two routes:
 - the extension-UI bridge (`pi.extensionUi` → `ExtUiPrompt`, below);
 - for a rich inline card, rendering from its `toolCall` args and replying through the props-only
   **`ToolRenderProps.interaction`**. `ToolRendererBody` fills it through `useToolInteraction`
@@ -901,24 +949,40 @@ both message orders. *Rejected:* keeping the modal for non-MCP extensions — ev
   a mapped message hit; see `store/SPEC.md` for the store-level request/clear contract and
   the workbench shell integration's open/reopen/hydrate half) — `ChatTranscript` is the sole consumer. Once
   `rows.length > 0`,
-  it resolves the request's `messageIndex` via `runtime.turnIdByMessageIndex` (present only on a
+  it resolves the target through the pure **`locateChatRow`** (`chatLocation.ts`): a request naming a
+  `toolCallId` lands on that call's row — its own `tool` row or the `activity` row grouping it
+  (`rowIndexForToolCall`, which reads the rows, so it works for a live runtime too); otherwise, or when the
+  chat does not show the call, it resolves the request's `messageIndex` via `runtime.turnIdByMessageIndex` (present only on a
   *hydrated* runtime — a live/already-open session's runtime, built by the event reducer, never carries
   one), falling back to scanning `turns` for the newest whose own text contains `anchorText`'s prefix — the
   same fallback also covers a hydrated map entry whose turn no longer contains the anchor (e.g. the
-  transcript changed underneath it). The resolved turn maps to a row via the pure **`rowIndexForTurn(rows,
+  transcript changed underneath it). The fallback never runs with an empty (or blank) prefix, which every
+  turn would match: a text-less target (a tool result, a tool-call-only assistant message) resolves only
+  through its `toolCallId` or the map. The resolved turn maps to a row via the pure **`rowIndexForTurn(rows,
   turnId)`** (`rows.ts`), called with the projected rows — a turn's own row for
   `user`/`system`/`error`/`retry`, or its first `:text:` row for `assistant` (whose turns dissolve
-  into `markdown`/`tool`/`activity` rows, never a row of their own)
+  into `markdown`/`tool`/`activity` rows, never a row of their own); an `assistant` turn with no text row
+  lands on its first tool call's row (`rowIndexForToolCall`), flagged nearest
   — then a cancellable, non-animated materialization derives the target from Virtuoso's measured size
   snapshot (with conservative estimates only for never-measured rows) before the controller-owned centered
   pixel correction. Materialization remains pending until the exact row stays mounted and measured at that
   alignment across stable frames; a transient mount during Virtuoso's estimate correction is not success.
   It never starts Virtuoso's internally retrying `scrollToIndex`, so reader takeover can cancel every
   outstanding write. Its lifecycle is keyed to request identity rather than streaming row-array churn, and
-  its live row-index resolver follows projections that change while the request is pending. A transient
-  `flashRowId` (rendered as `data-flash` + a `bg-primary-subtle` transition on the row wrapper, cleared after
-  1600ms) draws the eye only after the row mounts, and the same "found" result focuses the row (with
-  `preventScroll`, in whichever transcript mounted for the jump), so the keyboard lands where the reader looks. Resolving a row, explicit reader cancellation, or
+  its live row-index resolver follows projections that change while the request is pending. A request
+  naming a tool call that sits inside a group (an activity group, a thinking step's tools) opens those
+  folds first (`locateToolItem` finds the call's transcript item and the folds around it, `expandFolds`
+  opens them whether mounted or not) and, once the row is found, brings the call's own item into view
+  (`block: "nearest"`). A transient flashed item (`TranscriptProvider`'s flash context, rendered by
+  `TranscriptItem` as `data-flash` + a `bg-primary-subtle` transition, cleared after 1600ms) — that call's
+  item, else the row — draws the eye only after the row mounts, and the same "found" result focuses the row
+  (with `preventScroll`, in whichever transcript mounted for the jump), so the keyboard lands where the
+  reader looks — except for a request with `focus: false` (a chat pane's *Show in chat*, which reveals in
+  place while the reader works in the pane), which leaves focus where it is.
+  A landing that stands in for the target — the request is `approximate` (the host anchored the nearest
+  shown ancestor), the named tool call is not in the rows, or a text-less assistant message stands on its
+  first tool call — also toasts "showing the nearest message" (`chat.transcript.locatedNearest`) once the
+  row is found. Resolving a row, explicit reader cancellation, or
   exhausting the bounded materialization wait (toasted as "couldn't locate the message") clears that exact
   still-current request; an older effect may not clear a newer jump. Cancellation is the user-wins failure
   path and is intentionally silent rather than restarted against the reader. Effect teardown defers its
@@ -1296,7 +1360,13 @@ both message orders. *Rejected:* keeping the modal for non-MCP extensions — ev
   `h-panel-header-row` (`--panel-header-row-height`, currently 28px), the shared structural geometry with
   workbench Group Headers and the Changes toolbar, not a value pinned here; it never scrolls,
   and constrained widths clip/truncate TODO + status/usage text while preserving the trailing Skills
-  action. Its **Skills** button is the presentational **`SkillsButton`**
+  action. After the usage figures, before Resources, it renders `links` — a compact "<label> ↗" link per chat
+  action the shell offers (an extension panel opened for this chat, in a tab): `ChatView` receives
+  them as its `chatActions` prop (`lib`'s `ChatAction`, [[submodule-web-shell]] § Extension panels) and
+  shows them once the chat has a session file (the store's `selectChatPersisted`), so chat never reads
+  the extension registry. An action marked `pane` (it opens beside the chat) renders as a toggle instead
+  (`chatHeaderLinks`: a ghost `Button` with the action's icon and `aria-pressed`), pressed while this
+  chat's pane shows it; pressing it then closes the pane (*Chat pane* below). Its **Skills** button is the presentational **`SkillsButton`**
   primitive — a `BookOpen` pill, badged when a skill dir changed on disk — also shared with
   `NewWorkspaceDialog` so the two triggers cannot drift), and **`SkillsDialog`** (the **Skills manager**: a catalog
   grouped by source with **sticky section headers** — the first-party **ThinkRail** and **Pi** groups lead
@@ -1977,6 +2047,22 @@ both message orders. *Rejected:* keeping the modal for non-MCP extensions — ev
   glance-based prompt/follow-up plus hydration fallback only for older hosts; the compatibility path skips
   an awaiting question rather than waking the agent past its blocker.
 
+## Chat pane
+
+A chat may show a pane beside it, inside its own center tab: the shell's extension panels opened for
+this chat ([[submodule-web-shell]] § Extension panels). `ChatView` takes it as an optional `pane` prop
+(`ChatPaneSlot`: the chat action's id, a label, the body element, the width and the resize and close
+callbacks) and renders through the props-only `ChatPaneSplit`: the whole chat (header, transcript,
+composer) on the left, the pane on the right, split by `@thinkrail/ui/resizable`'s keyboard-accessible
+handle (`chat-pane-resize`, arrow keys resize). The split's group and the chat's panel are always
+rendered, and only the handle and the pane come and go, so opening or closing a pane never remounts the
+transcript or the composer. Width is a percentage of the tab, stored per chat by the shell — half the
+tab by default, the chat at least 30 % and the pane at least 25 % — and reported once per resize
+gesture (at the drag's end; a keyboard step reports at once), so a drag does not re-render the chat.
+Each chat keeps its own pane and width; switching chats shows that chat's. The pane draws no chrome:
+the panel inside renders its own title, *Open as tab* and close controls. *Rejected:* a second center
+group (two tab strips, a stale analysis after a chat switch, a group left behind) and a new center tab.
+
 ## Chat Resources
 
 [[submodule-web-chat-resources]] owns the three presentation surfaces — header trigger, composer
@@ -2079,7 +2165,7 @@ Unknown custom messages retain their existing behavior.
 
 ## Boundary
 
-- **Public surface:** the registry API (`toolRegistry`), the shared workspace-file target canonicalizer
+- **Public surface:** the registry API (`toolRegistry`, plus `ToolRendererBoundary` for any other render site of a registered renderer), the shared workspace-file target canonicalizer
   (`fileTargets`), and the renderers (incl. the presentational
   `Markdown` — GFM + code highlighting, no store/transport; the rendering is fixed but the **prose skin** is the
   caller's via an optional `className` — chat uses the compact bubble skin (`tr-prose-chat`),

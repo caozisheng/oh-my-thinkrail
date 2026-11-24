@@ -243,7 +243,13 @@ nudges `fsChanged`. Nothing cleans the folder: sent messages keep naming its fil
   would. Known limitation that follows: what browsers fetch in CORS mode from the page's opaque origin — a
   module script by `src` and `@font-face` files — does not load (classic scripts, inline modules,
   stylesheets, images and `data:` fonts do); lifting it needs an isolated preview origin, not CORS, the `fonts` poller's `fonts.changed` nudge reaching
-  only sockets whose `?protocol=` is at least `FONTS_PROTOCOL_VERSION`; the **`/speech` socket**
+  only sockets whose `?protocol=` is at least `FONTS_PROTOCOL_VERSION`; the **`/extensions/<name>/<token>/<file>`**
+  route (`extensionRoutes.ts`, `EXTENSION_ASSETS_ROUTE`, ahead of the static fallback), which serves only
+  a loaded installed extension's manifest `web` or `styles` file through the `extensions` barrel's
+  `resolveExtensionAsset` — `text/javascript` / `text/css` with `charset=utf-8`, `X-Content-Type-Options:
+  nosniff`, `Cache-Control: public, max-age=31536000, immutable` (the token changes with the files) — 404s
+  every other name, an unknown extension or a stale token, and answers 405 with `Allow: GET, HEAD` to any
+  other method; no CORS, like every route (a cross-origin UI would need it); the **`/speech` socket**
   (`SPEECH_SOCKET_ROUTE`, refused below `SPEECH_PROTOCOL_VERSION`), which shares the one `Bun.serve`
   websocket handler but is tagged at upgrade. Its `open` / `message` / `close` go straight to that
   socket's [[submodule-server-speech]] relay, so it never joins the `clientKey → socket` registry, the
@@ -684,10 +690,52 @@ nudges `fsChanged`. Nothing cleans the folder: sent messages keep naming its fil
   routes a `.pi/settings.json` workspace nudge to `handleProjectPiSettingsChanged` only for a project
   whose pi-level trust is granted — an untrusted repository's file never affects resolution, so it must
   not fan out a reload; a `disabledPackages` change also publishes `packages.changed` so a re-enabled
-  row regains its chips. The channel is subscribed from `PI_PACKAGES_PROTOCOL_VERSION` and published
-  through `setPiPackagesPublisher`. The
+  row regains its chips, and so does a `disabledExtensions` change, since a row a ThinkRail extension
+  supersedes carries `supersededBy` only while that extension is on. The channel is subscribed from `PI_PACKAGES_PROTOCOL_VERSION` and published
+  through `setPiPackagesPublisher`. **Installed ThinkRail extensions:** `createServer` starts the
+  `extensions` runtime (`startInstalledExtensions` over the data dir — a background reconcile that never
+  delays the server) and stops it on shutdown; its `onChange` calls the agent's
+  `refreshInstalledExtensions()` (package revision bump + `refreshExtensionTools()`, so open chats rebuild
+  their loader when the turn ends) and publishes `extensions.changed`, subscribed from
+  `INSTALLED_EXTENSIONS_PROTOCOL_VERSION`. `packages.install` returns `PackageInstallResult`: for an
+  extension (the agent façade's kind rule) it drops the name from `disabledExtensions` and answers a
+  user-scope row shaped for older clients plus the extension's catalog entry; `host/extensions.ts` answers
+  `extensions.remove` / `extensions.update` / `extensions.checkUpdates` against the runtime by `source`,
+  and `extensions.browse { force? }` (from `EXTENSION_BROWSE_PROTOCOL_VERSION`) by handing the runtime's
+  installed names to [[submodule-server-extension-catalog]], which owns the fetch, validation, cache and
+  its coded failures. An installed `extension.list` entry also carries its manifest `api` (from the same
+  version) so the client can say which way an incompatible extension is out of date.
+  The
   two authoritative publishers remain the clients' convergence path; the host-to-agent refresh changes
   runtime capability, not frontend state;
+  **extension queries** are composed here too: `extension.query` goes to one `createExtensionQueries` over
+  the `disabledExtensions` setting, whose `releaseDisabled()` the settings publisher calls
+  (`releaseDisabledExtensionQueries`) on every `disabledExtensions` change, so a switched-off extension's
+  table is aborted and dropped at once rather than at the next query; `extensionHost.ts` builds each
+  extension's `ExtensionHostServices` from projects, workspaces, chats and `agent` — host facts and
+  locations only, it parses no transcript: `signal` is the one its table was built with, `dataDir` is
+  `<dataDir>/extensions/<name>/`, `log` the `extension:<name>` logger scope, `sessionsRoot`
+  the `sessions` folder of pi's agent dir, read live. `sessionScope` reuses `history.search`'s `buildHistoryScope` +
+  `historyHiddenCwd` and places a cwd: a registered workspace is `open`; a cwd under
+  `<dataDir>/worktrees/<project slug>/` of an open project with no record at or above it is `removed`,
+  named by its path below the slug folder (`feat/x`); a chat whose deletion is pending is hidden (`null`);
+  anything else is `none`. `removed` and `none` are in an `all` scope, `removed` also in its project's; a
+  `chat` scope places nothing, since placement is by cwd. `childTranscriptDirs` is the
+  known workspace's delegation folder for the parent, else a scan of `<delegation root>/*/<parentSessionId>`,
+  existing folders only, none for an id that is not a pi session id; `sessionStatus` joins `hasSession`
+  with `agent`'s `sessionCompletionOf`; `messageAnchor(file, entryId)` reads a `.jsonl` strictly under
+  `sessionsRoot` (anything else is `null`) and answers `history`'s `locateEntry` — the entry's place in the
+  same display projection `session.getMessages` sends, or its nearest shown ancestor — so the chat jump
+  never needs a second copy of that pi mirror; `contextWindow(provider, model)` reads the active pi
+  runtime's `getModel(...).contextWindow` (catalog plus `models.json` overrides and custom endpoints),
+  `null` when the runtime has no such model or fails; `turnReceipts(sessionId)` gathers that session's
+  `turns` receipts across the registered workspaces (`listTurns`), oldest first, paths as git reported
+  them; `turnTree(sessionId, startedAt, limits)` finds that receipt and reads its `headTree` from the
+  workspace's repository (`git ls-tree -r --long`, regular files only — no links or submodules —, then
+  each blob), answering `tooLarge` past the file or byte limit before reading any blob and `null` when the
+  receipt, the workspace or the objects are gone; `ensureArtifactsDir(workspaceId)` seeds a registered
+  workspace's `.thinkrail/context/` with `seedArtifactsDir` (as `workspaceFiles.ensureArtifactsDir` does)
+  and answers it absolute and worktree-relative, `null` for an unknown workspace;
   **Review marks are memory-plus-disk, and only the disk half survives a restart.** The serial chain and
   the per-item latches are in-memory; `pending` marks are a disk sidecar. `createServer` calls
   **`reconcilePendingReviewsOnBoot`** once, before the server accepts connections: it walks every project's
@@ -995,7 +1043,8 @@ nudges `fsChanged`. Nothing cleans the folder: sent messages keep naming its fil
   skip chats; and
   `applyGitCeiling()` merges `<dataDir>/chats` into `GIT_CEILING_DIRECTORIES` before the server exists
   (the root created first), so git, `gh`, PTYs and pi's bash inherit a ceiling that stops any walk up
-  out of a chat folder into a repository that happens to enclose the data dir. The container is ensured
+  out of a chat folder into a repository that happens to enclose the data dir; `THINKRAIL_DATA_DIR` is set
+  to the resolved data dir at the same point, so agent shells find it ([[submodule-server-extensions-installed]]). The container is ensured
   at boot. **Older clients:** one visibility policy, `seesChats(protocolVersion)` (`chats.ts`), decides
   what a socket below `CHATS_PROTOCOL_VERSION` may learn — nothing of the container, its chats or their
   sessions. Its welcome, `project.list` and `session.stateList` omit them; `workspace.list` of the
@@ -1102,10 +1151,13 @@ enabled/confirmed choice before entering analytics attribution.
   `createIssueAgentSessionHost`, `IssueAgentSessionHost`, `IssueAgentSessionHostOptions`,
   `createIssueSessionStore`, `IssueSessionAssociation`, `IssueSessionStore`.
 - **Allowed deps:** `contracts` (`PROTOCOL_VERSION`, feature-introduction versions, `WS_CHANNELS`); `shared` (`freePort`, `shellEnv` — for
-  `boot.ts`; `codedError`; `paths` — the scratch-dir convention `chat.inspect` leaves uncounted); `persistence` (`dataDir` — where `crashLog.ts` writes); `pi-todos/core` (reduced synchronous
+  `boot.ts`; `codedError`; `paths` — the scratch-dir convention `chat.inspect` leaves uncounted); `persistence` (`dataDir` — where `crashLog.ts` writes,
+  and the extension host's data and worktree roots); `@earendil-works/pi-coding-agent` (`getAgentDir`, the extension host's
+  `sessionsRoot`); `pi-todos/core` (reduced synchronous
   task snapshots, with group status still core-owned); the feature modules it composes (per the parent dependency graph, incl. `fs`'s
   `resolveWorktreeFile`/`resourceMeta` and `git`'s `readBlobStreamAtAsync` for the `/files` + `/blob`
-  routes, `fonts`' `fontFileKind`/`saveUserFont` for `/fonts/`); Bun/Node.
+  routes, `fonts`' `fontFileKind`/`saveUserFont` for `/fonts/`, `extensions`' `resolveExtensionAsset`
+  for `/extensions/`); Bun/Node.
 - **Forbidden:** being imported by any feature module; importing `web`/`cli`/`desktop`.
 
 - **Settled-lifecycle wiring (`settledLifecycle.ts`).** The host is where the three activity sources meet the

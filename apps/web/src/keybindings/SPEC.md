@@ -60,6 +60,13 @@ binding does.
   `tab.close` is `Mod+W` (display-only) and `Mod+Alt+W`, `group.splitRight` is `Mod+\` (`Backslash`),
   and the group moves are `⌃⌘←` / `⌃⌘→` on Apple and `Ctrl+Alt+←` / `Ctrl+Alt+→` elsewhere (`Mod+Alt`
   would collide with the Mac browsers' tab switching).
+- **Hide all panels:** `view.toggleAllPanels` is `Mod+Shift+F12` (⇧⌘F12, Ctrl+Shift+F12) beside the
+  side and bottom toggles (`Mod+B`, `Mod+J`, `Mod+Shift+J`; [[submodule-web-shell]], *Global chords*, owns
+  what it does). It is JetBrains IDEs' *Hide All Tool Windows*, and no default table chord, browser-reserved
+  or desktop-native chord, element local key or bundled extension command holds it on any platform
+  (tested). An F-key chord is never plain, so it acts in text entry too; it takes the press from Monaco,
+  whose Peek Implementation shares the chord, as `Mod+K` does. A Mac whose top row sends media keys needs
+  Fn for it, as in JetBrains IDEs (accepted).
 - **Region and focus chords:** `region.next` `F6` and `region.previous` `Shift+F6` (no modifier, so
   `Ctrl+F6` stays the workbench's group cycling), `focus.composer` `Mod+L`, `focus.projects` `Mod+0`,
   `focus.group1…9` `Mod+1…9` (`FOCUS_GROUP_BINDINGS` lists them in group order), `shortcuts.open`
@@ -318,9 +325,13 @@ binding does.
 - **Extension rows.** After the catalog, `shortcutRows` lists every enabled extension command, global or
   local, from the resolved table as a General row with all its active chords (hint mode's `F` and `Mod+;`), then the
   `extra` entries: `shell` passes the `shortcuts` (in-mode, display-only keys) of every enabled web
-  extension ([[submodule-web-extensions]]). The catalog never imports an extension, and a switched-off
-  one's rows disappear. `extensions`' tests pin that plain `F` is bound nowhere in the table or the
-  catalog's feature keys.
+  extension ([[submodule-web-extensions]]). Each such row carries its `extension`, by which the cheatsheet
+  sections it under that extension rather than in General ([[submodule-web-shell]]). The catalog never
+  imports an extension, and a switched-off one's rows disappear. `extensions`' tests pin that plain `F` is bound nowhere in the table or the
+  catalog's feature keys. A command an extension panel's `rail` names (session insights'
+  `session-insights.openSessions`, `Ctrl+Alt+I` / ⌃⌥I) is such a global command: this module resolves,
+  lists and rebinds it like any other, and only the shell's binder decides that its press opens the
+  panel rather than reaching the overlay ([[submodule-web-shell]] § Extension panels).
 - Tested: every `KeybindingId` belongs to a titled entry, ids are unique, every title is an English key.
 
 ## Editor rows and edits

@@ -29,6 +29,7 @@ import type {
 	RefreshedModels,
 	RemovedQueuedMessage,
 	ReviewFixDetails,
+	SessionCompletion,
 	SessionCreatedPayload,
 	SessionDeletedPayload,
 	SessionEventPayload,
@@ -420,6 +421,10 @@ function persistedCompletion(sessionId: string) {
 	return stateReceipts?.baselineComplete
 		? (lifecycle().completionBySession[sessionId] ?? null)
 		: undefined;
+}
+
+export function sessionCompletionOf(sessionId: string): SessionCompletion | null {
+	return persistedCompletion(sessionId)?.completion ?? null;
 }
 
 function backgroundWorkActive(entry: Entry): boolean {
@@ -920,7 +925,7 @@ function enabledExtensionMissing(session: AgentSession, disabled: ReadonlySet<st
 			(path) => registryExtensionName(path),
 		),
 	);
-	return serverExtensions.some(
+	return serverExtensions().some(
 		({ extension }) =>
 			(extension.extensions.length > 0 || extension.sessionExtensions !== undefined) &&
 			!disabled.has(extension.name) &&

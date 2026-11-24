@@ -65,6 +65,7 @@ import {
 	focusProjects,
 	focusTerminal,
 	showFiles,
+	toggleAllPanels,
 	toggleBottomPanel,
 	toggleLeftSide,
 	toggleRightSide,
@@ -231,6 +232,7 @@ function ShellLayout() {
 			? {
 					onWorkspace: toggleRightSide,
 					onBottom: toggleBottomPanel,
+					onAllPanels: toggleAllPanels,
 					onFocusGroup: focusCenterGroup,
 					onTerminal: focusTerminal,
 					onFiles: () => showFiles("all"),

@@ -37,9 +37,13 @@ remote authorization.
 
 Reach `issue_context` and `issue_record_summary` by tool name and their advertised schemas only.
 The skill adds no tools and does not import or edit the host; [[submodule-server-issues]] owns
-provider state, association, worktree/session ownership, and authorization. Preflight the availability
-of `issue_context` before design or implementation work; a missing tool, failed read or identity
-mismatch blocks work. Summary publication is best-effort, not a work or session-completion gate.
+provider state, association, worktree/session ownership, and authorization. Attempt `issue_context` before Issue-dependent conclusions, Issue-specific requirements and remote
+operations. A missing tool or failed read prohibits inferring Issue content or identity, but does not
+block independent local research, repository inspection, tests, or work already specified by the user.
+Report context unavailability and distinguish local outcomes from unverified Issue requirements; never
+claim the Issue was read or updated without host evidence. A returned identity mismatch blocks
+Issue-dependent work and remote operations, but not independent local work. Summary publication is
+best-effort, not a work or session-completion gate.
 An unavailable summary tool or failed/uncertain publication is reported separately from the work
 outcome in the chat handoff; it does not require recovery authorization just to end the session.
 Attempt publication only when available and no prior summary write remains unresolved. Preserve

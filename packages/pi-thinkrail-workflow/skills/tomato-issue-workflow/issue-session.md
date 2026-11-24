@@ -8,10 +8,11 @@ Start only from the explicit launch, never from a referenced Issue or label. Req
 
 ## Automatic steps
 
-1. Require `issue_context` before work. Missing summary capability does not block work.
-2. Read fresh Issue description, returned comments and references. Verify returned identity matches the launch.
-3. Read each bound repository's instructions and relevant owning specs; do not combine or execute repository configuration.
-4. On resume, reread host context and structured operation state relevant to the next action.
+1. Attempt `issue_context` before Issue-dependent conclusions, Issue-specific requirements, and any remote operation. Missing summary capability does not block work.
+2. If the context tool is missing or its read fails, do not infer Issue content or identity. Continue only work that is independently safe without Issue context (for example public-source research, repository-local inspection, local tests, or changes already specified by the user's current request). Mark the Issue context as unavailable and distinguish local results from unverified Issue requirements; do not claim the Issue was read or updated.
+3. When context is available, read the fresh Issue description, returned comments and references, then verify returned provider, instance, project and Issue id against the launch before relying on Issue content or taking Issue-scoped action. A mismatch blocks Issue-dependent work and all remote operations, but does not prohibit independent local research or checks.
+4. Read each bound repository's instructions and relevant owning specs; do not combine or execute repository configuration.
+5. On resume, reread host context and structured operation state relevant to the next action. A remote mutation or Issue update still requires the applicable host capability and its identity/authorization checks.
 
 ## Host capabilities
 
@@ -19,7 +20,7 @@ Start only from the explicit launch, never from a referenced Issue or label. Req
 
 ## Completion, questions and recovery
 
-A valid session has matching Issue identity, explicit stage and usable context. Missing identity or failed context read blocks work. Ask only for a missing or conflicting requirement that changes the requested work. Never guess a repository, workspace, stage, target or permission.
+A fully Issue-informed session has matching Issue identity, explicit stage and usable context. Missing identity or failed context read blocks Issue-dependent conclusions and remote operations, not independent local work. Ask only for a missing or conflicting requirement that changes the requested work. Never guess a repository, workspace, stage, target or permission.
 
 ## Handoff
 

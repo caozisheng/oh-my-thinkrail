@@ -461,8 +461,7 @@ response locale, and instructs reading the entire context. Design delegates to t
 brainstorming process without implementation; implementation uses existing plans/TODOs, verification
 and review without a design approval gate. Both attempt best-effort `issue_record_summary` publication
 to the bound Issue comments before yielding, including blocked/partial work, with key decisions,
-results, validation and next steps only. Failed context reads and mismatched Issue identity block work;
-missing summary capability or failed/uncertain publication does not block work or session completion.
+results, validation and next steps only. Failed context reads do not block independent local research, repository inspection, tests, or work already specified by the user, but prohibit Issue-dependent conclusions and remote operations until fresh matching context is available. A mismatched Issue identity blocks Issue-dependent work and remote operations, not independent local work. The handoff reports unavailable/mismatched context and distinguishes local outcomes from unverified Issue requirements; it never claims the Issue was read or updated without host evidence. Missing summary capability or failed/uncertain publication does not block work or session completion.
 The chat handoff separates work outcome from publication status; recovery is deferred unless explicitly
 requested, preserving the original operation ID/body and prohibiting blind replay. The prompt adds no agent-side completeness gate;
 [[submodule-tomato-issue-workflow]] owns how the agent uses returned context and relevant references.

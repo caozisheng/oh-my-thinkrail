@@ -150,8 +150,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
   the four `feedback.survey.submit` refusals `SURVEY_INVALID`, `SURVEY_UNAVAILABLE`, `SURVEY_CHANGED` and
   `SURVEY_NOT_SENT`, and `fonts.installed`'s `INSTALLED_FONTS_UNAVAILABLE`: the host's OS font service could
   not be read, a failure analytics tells apart from a lost connection while the font picker offers Retry for
-  either; and the closed `SPEECH_ERROR_CODES` (§ Voice input), each naming a voice state the UI words
-  differently), so a client can react to one specific failure
+  either; the two `extension.query` refusals **`EXTENSION_DISABLED`** (the user switched the extension
+  off — its panel shows the off placeholder) and **`UNKNOWN_EXTENSION_QUERY`** (no such extension or method
+  on this host, or a malformed request); and the closed `SPEECH_ERROR_CODES` (§ Voice input), each naming
+  a voice state the UI words differently), so a client can react to one specific failure
   instead of pattern-matching an error message. A failure earns a code only when a client behaves differently
   for it or Error Tracking must tell it apart (it never sees `message`). Two codes exist for the latter:
   **`REQUEST_REPLAY_OVERFLOW`** — the host's replay namespace for this page is full
@@ -390,11 +392,19 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
     and mapped prompt-template listings), and **`SkillCatalogEntry`** + **`SkillDecision`** (`load`/`untrusted`/`pending-ack`/
     `disabled`) — the workspace Skills manager's `skills.state` rows; the additive optional `manualOnly`
     marks pi's `disable-model-invocation` skills, which pi never lists in the prompt (an older host omits it).
-  - **`ExtensionCatalogEntry`** (`{ name, title, description?, enabled, tools, hasChildExtensions, settings? }`) — one
+  - **`ExtensionCatalogEntry`** (`{ name, title, description?, enabled, tools, hasParentExtensions?, hasChildExtensions, settings?, apiVersion? }`) — one
     host-registry ThinkRail extension as `extension.list` reports it; `name` is the identity the
-    `AppConfig.disabledExtensions` list keys on, `tools` the names its parent factories register, and
+    `AppConfig.disabledExtensions` list keys on, `tools` the names its parent factories register,
+    `hasParentExtensions` (absent below `EXTENSION_QUERY_PROTOCOL_VERSION`) whether its descriptor
+    composes any parent factory at all — so an empty `tools` reads as "queries only by design" rather than
+    "its factories failed to load" ([[module-artifact-tests]]' smoke relies on it),
     `settings` (`ExtensionSettingDescriptor[]`, `{ key, default: boolean }`, absent below
-    `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) the boolean settings the extension declares.
+    `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) the boolean settings the extension declares, and
+    `apiVersion` (absent when undeclared, and below `EXTENSION_QUERY_PROTOCOL_VERSION` = v145) the version
+    of the payloads its server half answers through `extension.query`. Neither query methods nor panels are
+    in the catalog: the extension's own halves agree on the methods, and the web registry is the panels' one
+    authority. From `INSTALLED_EXTENSIONS_PROTOCOL_VERSION` (v146) an entry also says its `kind` and, for an
+    installed one, its install state (§ Installed extensions).
     `ASK_DISCUSS_PROTOCOL_VERSION` (v112) is the host version that renders `ask_user_question`
     `kind: "discuss"` answers; the card withholds Discuss below it.
   - **`SessionSummary`** — a chat session as the host reports it for hydration (read side); `live`
@@ -1125,7 +1135,13 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   frames to the workspaces whose diff base that ref is, so their git-derived reads re-converge) / **`skills.state`** (`SkillCatalogEntry[]` — full catalog +
   per-skill `decision` + `group` — for a `workspaceId`) / **`extension.list`** (`ExtensionCatalogEntry[]`,
   no params — the host registry joined with `disabledExtensions`; v82, **`EXTENSION_CATALOG_PROTOCOL_VERSION`**;
-  there is no write method — the Settings switch writes `settings.update { disabledExtensions }`) / **`packages.*`**
+  the Settings switch writes `settings.update { disabledExtensions }`; installed extensions add
+  `extensions.*`, § Installed extensions) /
+  **`extension.query`** (`ExtensionQueryParams` `{ extension, method, params? }` → `unknown`; v145,
+  **`EXTENSION_QUERY_PROTOCOL_VERSION`**: one query of a host-registry extension's server half (reads, and
+  writes only to the extension's own data folder or the workspace's Artifacts).
+  The payload is the extension's own, versioned by its catalog `apiVersion` rather than by the protocol,
+  and the extension validates `params`; refusals are `EXTENSION_DISABLED` / `UNKNOWN_EXTENSION_QUERY`) / **`packages.*`**
   (installed pi packages; v99, § pi packages below) / **`project.skills`** (the same, project-scoped, for
   the pre-session manager) / **`session.reloadResources`** (re-scan skills + rebuild the system prompt for one
   running session; rejected while streaming) /
@@ -1551,7 +1567,11 @@ and what it loaded, never pi's own types.
   (the host's effective state: `false` when any of `switchKeys` is in `disabledPackages`; a client
   renders it as is, never recomputes it), `shadowed` (a user declaration pi leaves aside because the
   repository declares the same identity outright; a repository `autoload: false` override is a delta
-  over the user install, so its resources land on the user row and nothing is shadowed), and
+  over the user install, so its resources land on the user row and nothing is shadowed), `supersededBy`
+  (`{ name, title }` of the ThinkRail extension, on now, whose `supersedesPackages` names this installed
+  package — host sessions leave its extensions out, so the row says it is replaced rather than showing a
+  package that never loads as merely enabled; absent otherwise and before v145; a switch of that
+  extension re-lists through `packages.changed`), and
   `resources: PiPackageResource[]` — every extension, skill and prompt file (themes are terminal-only and
   never listed) with pi's `enabled` (read-only here: a resource inside a package is switched with its
   package), pi's `pi config` display name, and for an extension some loader has recorded the `tools`
@@ -1573,7 +1593,7 @@ and what it loaded, never pi's own types.
   (opens the install folder or a loose file's folder; the path must be in the current catalog). The
   package switch is `settings.update { disabledPackages }`, converging on `settings.changed` like the
   extension switches. **`packages.changed`** (no payload) tells an open page to re-list after an outside
-  edit, a chat load that installed something, or an update.
+  edit, a chat load that installed something, an update, or a package or extension switch.
 - Error codes: `PACKAGE_SOURCE_INVALID` (also an unsupported `type` / `scope`, validated at the boundary),
   `PACKAGE_OFFLINE` (npm/git only; local installs work offline), `PACKAGE_UNTRUSTED`, `PACKAGE_UNKNOWN`,
   `PACKAGE_INSTALL_FAILED`, `PACKAGE_REMOVE_FAILED`, `PACKAGE_UPDATE_FAILED`,
@@ -1581,6 +1601,64 @@ and what it loaded, never pi's own types.
   the host could not produce the row; of the install codes only `PACKAGE_SOURCE_INVALID`,
   `PACKAGE_OFFLINE`, `PACKAGE_UNTRUSTED`, `PACKAGE_INSTALL_FAILED` and `PACKAGE_SETTINGS_WRITE_FAILED`
   are raised before anything is written, and a client may claim "nothing was added" only for those.
+
+## Installed extensions
+
+`INSTALLED_EXTENSIONS_PROTOCOL_VERSION` (131) gates what the host adds for extensions authored outside
+the repository ([[module-thinkrail-extensions]] § Installed extensions): the extra `extension.list`
+fields, the `extensions.*` methods, the `extensions.changed` channel and `packages.install`'s `installed`
+kind. Below it a client sees installed extensions as ordinary `extension.list` rows; built-in rows mean
+what they always did.
+
+- **`ExtensionCatalogEntry`** gains `kind` (`builtin` | `installed`; absent from an older host, read as
+  built in). An installed entry adds `source` (the declaration in `extensions.json`, exactly as written —
+  the target of the methods below), `version`, `state` (`InstalledExtensionState`: `loaded` — also a
+  web-only extension; `failed` — install or load error, a duplicate name; `incompatible` — the manifest's
+  `api` is not this host's major or is a newer minor), `error` (the reason, the host's or pi's text) and
+  `web` (`ExtensionWebHalf`, `{ url, styles?, shadowed? }`: host-relative URLs, only when the extension is
+  loaded, compatible and has a web half, whether switched on or off; `shadowed` names the tools its server
+  half registers that the host keeps, which the client never draws with this web half's renderers). `name` is the npm package name — the key of
+  `disabledExtensions` and `extensionSettings` as for a built-in; `title` is the manifest's, else the
+  name; `description` the package's. An installed entry's `settings` carry the extension's own `title` /
+  `description` (`ExtensionSettingDescriptor`), which a client shows instead of locale keys.
+- **Web half route:** `GET /extensions/<encodeURIComponent(name)>/<token>/<manifest path>`
+  (`EXTENSION_ASSETS_ROUTE`, a value export, is the `/extensions/` prefix) — the token
+  changes with the files, so the response is immutable; a client uses the URLs as given.
+- **`packages.install`** returns `PackageInstallResult`: the pi package row with `installed: "package"`,
+  or for a package whose `package.json` carries a `thinkrail` manifest `installed: "extension"`, the
+  `extension` entry, and the same fields shaped as a user-scope row with no resources (so an older
+  client's dialog still names what landed). Like a package, a confirmed extension install turns it on:
+  its `name` leaves `disabledExtensions` (its `extensionSettings` values are kept). The host fetches and
+  inspects first and declares last, so for an extension `PACKAGE_SOURCE_INVALID`, `PACKAGE_OFFLINE`,
+  `PACKAGE_INSTALL_FAILED`, **`EXTENSION_SCOPE_UNSUPPORTED`** (an extension asked for at repository
+  scope) and **`EXTENSIONS_FILE_INVALID`** are all raised before `extensions.json` is written.
+- **`extensions.remove { source }`** (drops the declaration; the host-owned install folder goes at the
+  next host start; a folder source's own folder is never touched) / **`extensions.update { source }`** (a fresh install of the
+  source in a new folder, or a re-load in place for a folder source; the old install stays when the new
+  one fails) / **`extensions.checkUpdates { force? }`** (the npm and git `{ source }`s with a newer
+  version, cached briefly unless `force`) — each resolves `Ack` / the list once the host reconciled.
+  Codes: **`EXTENSION_UNKNOWN`** (no such declaration), **`EXTENSIONS_FILE_INVALID`** (`extensions.json`
+  does not parse, so the host will not rewrite it), and the package codes `PACKAGE_SOURCE_INVALID`,
+  `PACKAGE_OFFLINE`, `PACKAGE_INSTALL_FAILED`, `PACKAGE_UPDATE_FAILED` for the install pipeline both share.
+- **`extensions.changed`** (no payload) follows every reconcile that changed what `extension.list`
+  reports; a client re-lists.
+
+### Community catalog (Browse)
+
+`EXTENSION_BROWSE_PROTOCOL_VERSION` (132) adds the in-app Browse read and one field:
+
+- **`extensions.browse { force? }` → `ExtensionBrowseResult`** (`{ generatedAt, extensions:
+  ExtensionBrowseEntry[] }`): the website's `catalog.json` ([[module-thinkrail-extensions]] § Catalog) as the
+  host fetched and validated it ([[submodule-server-extension-catalog]]), each `ExtensionListing` (`name`,
+  `version`, `title?`, `description`, `author?`, `api`, `halves` ⊆ `server`/`web`, `install`
+  = `npm:<name>`, `npm`, `repository?`, `publishedAt`) plus **`installed`** — an installed extension already
+  has that name. A listing carries no image: the host ignores a catalog entry's `image`
+  ([[submodule-server-extension-catalog]]), so no author-chosen URL reaches a client. The host caches the file for minutes; `force` refetches. Codes: **`EXTENSION_CATALOG_OFFLINE`**
+  (`PI_OFFLINE`), **`EXTENSION_CATALOG_UNREACHABLE`** (network, timeout, HTTP status) and
+  **`EXTENSION_CATALOG_INVALID`** (not the expected shape). `api` is passed through uninterpreted; the client
+  decides whether this app can load it.
+- An installed **`ExtensionCatalogEntry`** also carries **`api`** (the manifest's, when it was read), so a
+  client can say whether an `incompatible` extension needs a newer ThinkRail or was built for an older one.
 
 ## Voice input
 
@@ -1838,7 +1916,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v142. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v147. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1848,3 +1926,5 @@ upstream numbers.
 ## Latest upstream capability floors
 
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138, server fallback repair v139, and subagent catalog v140. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
+
+Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.

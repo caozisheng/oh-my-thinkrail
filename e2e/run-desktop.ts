@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { locateDesktopLauncher, waitForDocument, within } from "@thinkrail/artifact-tests";
 import { artifactHostEnvironment } from "./artifactPlaywright";
+import { buildExtensionFixtures } from "./extensionFixtures";
 import { assertE2eHost } from "./fixtures/isolation";
 import {
 	E2E_DESKTOP_CACHE,
@@ -40,6 +41,8 @@ function waitForReady(exited: Promise<number>): Promise<string> {
 
 await holdE2eIdleSleep();
 const playwrightArgs = ["-c", "e2e/playwright.desktop.config.ts", ...process.argv.slice(2)];
+const fixturesBuilt = await buildExtensionFixtures(playwrightArgs);
+if (fixturesBuilt !== 0) process.exit(fixturesBuilt);
 const listDir = mkdtempSync(join(tmpdir(), "thinkrail-e2e-test-lists-"));
 const testListArgs = shardTestListArgs(
 	playwrightArgs,

@@ -62,12 +62,13 @@ import {
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
 import { LoadingRegion } from "@thinkrail/ui/skeleton";
+import { useTreeItem } from "@thinkrail/ui/tree-item";
 import { cn } from "@thinkrail/ui/utils";
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { AttentionDot } from "@/components/AttentionDot";
 import { RunningIcon } from "@/components/RunningIcon";
-import { copyText } from "@/lib";
+import { type ChatAction, copyText } from "@/lib";
 import { useNow } from "../components/useNow";
 import {
 	isChatWorkspace,
@@ -117,7 +118,6 @@ import {
 	treeRowControlProps,
 	treeRowKey,
 	treeToggleProps,
-	useTreeItem,
 	useTreeKeys,
 } from "./treeNavigation";
 import { useOpenProject } from "./useOpenProject";
@@ -171,7 +171,13 @@ function groupCreationsByProject(
 	return grouped;
 }
 
-export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: readonly string[] }) {
+export function ProjectTree({
+	newWorkspaceShortcut,
+	chatActions,
+}: {
+	newWorkspaceShortcut: readonly string[];
+	chatActions?: readonly ChatAction[] | undefined;
+}) {
 	const t = useT();
 	const projects = useAppStore(useShallow(selectRepoProjects));
 	const recentProjects = useAppStore((s) => s.recentProjects);
@@ -508,7 +514,7 @@ export function ProjectTree({ newWorkspaceShortcut }: { newWorkspaceShortcut: re
 
 	return (
 		<nav data-testid="project-tree" className="flex flex-col gap-4">
-			<ChatsSection />
+			<ChatsSection chatActions={chatActions} />
 			<header className="flex h-panel-row items-center justify-between pr-4 pl-8">
 				<span className="tr-text-eyebrow text-text-muted">{t("panels.projectTree.title")}</span>
 				<AddProjectMenu

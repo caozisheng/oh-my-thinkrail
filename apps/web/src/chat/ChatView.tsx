@@ -30,6 +30,7 @@ import {
 } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useNow } from "@/components/useNow";
+import type { ChatAction } from "@/lib";
 import { type ParsedTemplate, templateToSlashCommand, useTemplateCommandPicker } from "@/prompt";
 import {
 	EMPTY_RUNTIME,
@@ -37,6 +38,7 @@ import {
 	SettingsSection,
 	selectCanRenameChat,
 	selectCatalogModel,
+	selectChatPersisted,
 	selectCompactionTurnIds,
 	selectComposerFocusRequested,
 	selectPickerModels,
@@ -61,8 +63,9 @@ import {
 } from "@/transport";
 import { withRestoredDraft } from "./attachments";
 import type { ResultTarget } from "./ChatActions";
-import { ChatHeader } from "./ChatHeader";
+import { ChatHeader, chatHeaderLinks } from "./ChatHeader";
 import { ChatMediaContext } from "./ChatImage";
+import { type ChatPaneSlot, ChatPaneSplit } from "./ChatPaneSplit";
 import ChatTranscript, { type ChatTranscriptHandle } from "./ChatTranscript";
 import {
 	Composer,
@@ -103,6 +106,7 @@ import { SkillsDialog } from "./SkillsDialog";
 import { SubagentTranscriptDialog, SubagentTranscriptPane } from "./SubagentTranscriptDialog";
 import { SuggestionChips, type SuggestionShortcut } from "./SuggestionChips";
 import { TemplateEditorDialog } from "./TemplateEditorDialog";
+import { useToolRegistry } from "./toolRegistry";
 import { useChatResources, useCommandLog } from "./useChatResources";
 import { useModelCatalog } from "./useModelCatalog";
 import { useModelPreferences } from "./useModelPreferences";
@@ -120,18 +124,24 @@ function renderSubagentModel({ model, thinkingLevel }: SubagentResourceSummary) 
 
 const FOCUS_CLAIM = "[data-focus-claim]";
 
+const NO_CHAT_ACTIONS: readonly ChatAction[] = [];
+
 export default function ChatView({
 	sessionId,
 	workspaceId,
 	onOpenFile,
 	landingChord,
 	suggestionShortcuts,
+	chatActions = NO_CHAT_ACTIONS,
+	pane,
 }: {
 	sessionId: string;
 	workspaceId: string;
 	onOpenFile?: ((path: string) => void) | undefined;
 	landingChord: string;
 	suggestionShortcuts: readonly SuggestionShortcut[];
+	chatActions?: readonly ChatAction[];
+	pane?: ChatPaneSlot | undefined;
 }) {
 	const t = useT();
 	const sessionExists = useAppStore((s) => s.sessions[sessionId] !== undefined);
@@ -155,8 +165,11 @@ export default function ChatView({
 		[imageDraft, sessionId],
 	);
 	const queue = useAppStore((s) => s.sessions[sessionId]?.queue ?? EMPTY_RUNTIME.queue);
+	const toolRegistry = useToolRegistry();
 	const suggestions = useAppStore(
-		useShallow((s) => deriveComposerSuggestions(s.sessions[sessionId], s.disabledExtensions)),
+		useShallow((s) =>
+			deriveComposerSuggestions(s.sessions[sessionId], s.disabledExtensions, toolRegistry),
+		),
 	);
 	const sessionModel = useAppStore((s) => s.sessions[sessionId]?.model ?? null);
 	const thinkingLevel = useAppStore(
@@ -214,6 +227,11 @@ export default function ChatView({
 	);
 	const [skillsOpen, setSkillsOpen] = useState(false);
 	const skillsStale = useAppStore((s) => selectSkillsStale(s, workspaceId, sessionId));
+	const persisted = useAppStore((s) => selectChatPersisted(s, workspaceId, sessionId));
+	const headerLinks = useMemo(
+		() => (persisted ? chatHeaderLinks(chatActions, { workspaceId, sessionId }, pane) : []),
+		[chatActions, pane, persisted, sessionId, workspaceId],
+	);
 	const workspaceRoot = useAppStore(
 		(s) => selectWorkspaceById(s, workspaceId)?.worktreePath ?? undefined,
 	);
@@ -911,7 +929,7 @@ export default function ChatView({
 		[],
 	);
 
-	return (
+	const chatBody = (
 		<div
 			ref={chatViewRef}
 			data-testid="chat-view"
@@ -946,6 +964,7 @@ export default function ChatView({
 					}
 					stats={stats}
 					statusEntries={Object.entries(extUiStatus)}
+					links={headerLinks}
 					skillsStale={skillsStale}
 					{...(projectId ? { onOpenSkills: () => setSkillsOpen(true) } : {})}
 				/>
@@ -1204,4 +1223,5 @@ export default function ChatView({
 			) : null}
 		</div>
 	);
+	return <ChatPaneSplit pane={pane}>{chatBody}</ChatPaneSplit>;
 }

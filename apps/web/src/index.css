@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "./styles/generated/fonts.css";
 @import "./styles/generated/typography.css";
 @import "./styles/generated/colors.css";
@@ -7,6 +7,9 @@
 @import "./styles/global.css";
 @import "./issues/labels.css";
 
+@source "./";
+@source not "./extensions/fixtures";
+@source "../index.html";
 @source "../../../packages/ui";
 @source "../../../packages/resource-renderers/src";
 @source "../../../thinkrail-extensions/*/web/**/*.{ts,tsx}";

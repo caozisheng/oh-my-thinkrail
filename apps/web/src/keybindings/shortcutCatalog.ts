@@ -76,6 +76,8 @@ interface CatalogEntryBase {
 	readonly surface: ShortcutSurface;
 	readonly desktop?: true;
 	readonly scope?: string;
+	/** The web extension contributing the row, which the cheatsheet lists under that extension. */
+	readonly extension?: string;
 }
 
 export type ShortcutCatalogEntry = CatalogEntryBase &
@@ -308,6 +310,12 @@ export const SHORTCUT_CATALOG: readonly ShortcutCatalogEntry[] = [
 		title: "shortcuts.toggleBottom",
 		surface: "panels",
 		bindings: ["view.toggleBottom"],
+	},
+	{
+		id: "view.toggleAllPanels",
+		title: "shortcuts.toggleAllPanels",
+		surface: "panels",
+		bindings: ["view.toggleAllPanels"],
 	},
 	{ id: "view.files", title: "shortcuts.showFiles", surface: "panels", bindings: ["view.files"] },
 	{
@@ -1165,6 +1173,7 @@ export interface ShortcutRow {
 	readonly id: string;
 	readonly title: MessageKey;
 	readonly surface: ShortcutSurface;
+	readonly extension?: string;
 	readonly chords: readonly ShortcutChordView[];
 	readonly conflicts: readonly ShortcutConflictView[];
 }
@@ -1248,12 +1257,15 @@ function bindingChords(
 }
 
 function row(
-	entry: Pick<ShortcutRow, "id" | "title" | "surface">,
+	entry: Pick<ShortcutRow, "id" | "title" | "surface" | "extension">,
 	chords: readonly ShortcutChordView[],
 	conflicts: readonly ShortcutConflictView[],
 ): ShortcutRow[] {
 	if (chords.length === 0 && conflicts.length === 0) return [];
-	return [{ id: entry.id, title: entry.title, surface: entry.surface, chords, conflicts }];
+	const { id, title, surface, extension } = entry;
+	return [
+		{ id, title, surface, ...(extension === undefined ? {} : { extension }), chords, conflicts },
+	];
 }
 
 export function keyChords(keys: readonly ShortcutKey[], platform: string): ShortcutChordView[] {
@@ -1337,7 +1349,7 @@ function extensionCommandRows({ desktop, keybindings }: ShortcutContext): Shortc
 	return keybindings.commands.flatMap(({ id, extension, enabled, title }) =>
 		extension !== null && enabled && title !== null
 			? row(
-					{ id, title, surface: "general" },
+					{ id, title, surface: "general", extension },
 					keybindingShortcuts(keybindings, id, { browser: !desktop }).map((shortcut) =>
 						chordView(shortcut, keybindings.platform),
 					),

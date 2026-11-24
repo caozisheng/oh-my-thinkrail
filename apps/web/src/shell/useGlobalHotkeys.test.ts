@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { RegisteredPanel } from "../extensions";
 import { type ResolvedKeybindings, resolveKeybindings } from "../keybindings";
+import { railCommandPanel } from "./extensionPanelHost";
 import type { ShortcutPlatform } from "./shortcutCommands";
 import { globalHotkeyCommand, routeHotkey } from "./useGlobalHotkeys";
 
@@ -113,6 +115,32 @@ describe("global hotkey routing", () => {
 			route(key("KeyF", { shiftKey: true, altKey: true }), withFind, false, "Linux"),
 		).toBeNull();
 		expect(route(key("KeyF", { shiftKey: true }), withFind, true, "Linux")).toBeNull();
+	});
+
+	test("routes Mod+Shift+F12 to hide all panels, from xterm too, never behind a modal or without a workspace", () => {
+		const withAllPanels = { ...all, onAllPanels: noop };
+		const hideAll = key("F12", { key: "F12", shiftKey: true });
+		expect(route(hideAll, withAllPanels, false, "Linux")).toBe("view.toggleAllPanels");
+		expect(
+			route(
+				key("F12", { key: "F12", ctrlKey: false, metaKey: true, shiftKey: true }),
+				withAllPanels,
+				false,
+				"MacIntel",
+			),
+		).toBe("view.toggleAllPanels");
+		expect(route(hideAll, withAllPanels, false, "Linux", true)).toBe("view.toggleAllPanels");
+		expect(route(hideAll, withAllPanels, true, "Linux")).toBeNull();
+		expect(route(hideAll, all, false, "Linux")).toBeNull();
+		expect(route(key("F12", { key: "F12" }), withAllPanels, false, "Linux")).toBeNull();
+		expect(
+			route(
+				key("F12", { key: "F12", ctrlKey: false, shiftKey: true }),
+				withAllPanels,
+				false,
+				"Linux",
+			),
+		).toBeNull();
 	});
 
 	test("does not claim unavailable workspace commands or any panel chord behind a modal", () => {
@@ -602,5 +630,66 @@ describe("routing a press", () => {
 		expect(routeHotkey(key("KeyR", { isComposing: true }), all, at("browser", defaults))).toEqual({
 			kind: "history",
 		});
+	});
+
+	test("a panel's rail chord opens the panel while it is openable and no modal is up, and reaches no overlay", () => {
+		const panel: RegisteredPanel = {
+			extension: "insights",
+			panel: "sessions",
+			declaration: {
+				title: "common.retry",
+				icon: () => null,
+				scopes: ["project"],
+				rail: { command: "insights.open" },
+				load: async () => ({ default: () => null }),
+			},
+		};
+		const extensions = [
+			{
+				extension: "insights",
+				enabled: true,
+				commands: [
+					{
+						id: "insights.open",
+						title: "common.retry" as const,
+						chords: [{ code: "KeyI", key: "I", ctrl: true, alt: true }],
+					},
+				],
+			},
+			hint,
+		];
+		const ctrlAltI = key("KeyI", { key: "i", altKey: true });
+		const openable = (panels: readonly RegisteredPanel[]) => (extension: string, id: string) =>
+			railCommandPanel(extension, id, () => panels, [panel]);
+		for (const platform of ["Linux", "MacIntel"]) {
+			const keybindings = resolveKeybindings({ platform, extensions });
+			const place = (panels: readonly RegisteredPanel[], modalOpen = false) => ({
+				...at("browser", keybindings),
+				modalOpen,
+				railPanel: openable(panels),
+			});
+			expect(routeHotkey(ctrlAltI, all, place([panel]))).toEqual({ kind: "panel", panel });
+			expect(routeHotkey(ctrlAltI, all, place([]))).toBeNull();
+			expect(routeHotkey(ctrlAltI, all, place([panel], true))).toBeNull();
+			const modSemicolon = key("Semicolon", {
+				ctrlKey: platform === "Linux",
+				metaKey: platform === "MacIntel",
+			});
+			expect(routeHotkey(modSemicolon, all, place([panel]))).toEqual(HINT);
+			const rebound = resolveKeybindings({
+				platform,
+				extensions,
+				overrides: { "insights.open": ["Mod+Shift+KeyY"] },
+			});
+			const modShiftY = key("KeyY", {
+				key: "y",
+				shiftKey: true,
+				ctrlKey: platform === "Linux",
+				metaKey: platform === "MacIntel",
+			});
+			const there = { ...place([panel]), keybindings: rebound };
+			expect(routeHotkey(modShiftY, all, there)).toEqual({ kind: "panel", panel });
+			expect(routeHotkey(ctrlAltI, all, there)).toBeNull();
+		}
 	});
 });

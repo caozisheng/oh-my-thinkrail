@@ -677,6 +677,29 @@ keeps the gh-less behaviour; `THINKRAIL_GH_OFFLINE` still keeps `pr.open` on the
 deletes the scenario and log and unsets the ssh config. The host caches repository merge settings per origin
 URL for the whole run, so a spec that sets its own repository settings names its own repository.
 
+**Installed extensions** (`installed-extensions.spec.ts`, `extension-browse.spec.ts`) run the real published
+sample, `extension-examples/palette`, never npm or thinkrail.ai.
+- **Built before the host.** `bun run build:e2e` builds the web app and the sample (the SDK first, through
+  turbo's `^build`); `run.ts` runs `build:extension-fixtures` instead when `THINKRAIL_E2E_SKIP_BUILD` says
+  the web is already built (CI builds only the web), `run-full.ts` and the agent plan use `build:e2e`, and the
+  binary and desktop runners build the fixtures before Playwright. Turbo caches it, so a repeat costs about
+  a second.
+- **Folder installs.** The sample installs from its repository folder (loaded in place, never modified);
+  failure-path fixtures (`fixtures/extensions/{incompatible,broken-server,throwing-card}`: an API 2.0
+  manifest whose server half would leave a marker file, a server half that throws at load, and a UI-only
+  extension with a throwing and a working card) are copied into the lane's `extension-fixtures/` per test.
+  `fixtures/installedExtensions.ts` declares them by writing the lane's `extensions.json` — the agent
+  skill's path — and polls `extension.list` until the host reconciled; the dialog specs use the real
+  Install package dialog. `resetState()` empties a non-empty `extensions.json`, and the specs' `afterEach`
+  also clears the palette's switch and setting, so no installed extension outlives its test.
+- **The catalog is a lane file.** Every host gets `THINKRAIL_EXTENSION_CATALOG_URL` = the lane's
+  `extension-catalog.json` as a `file:` URL, read even though the suite's hosts run with `PI_OFFLINE`. A spec
+  writes the file (or deletes it — the unreachable state) and forces one `extensions.browse` read, so the
+  host's cached copy matches before the page asks. Install from Browse confirms `npm:<name>` and, offline,
+  ends at the dialog's failure step; the install itself is proven by the folder specs.
+- **Live.** `extension-palette.live.spec.ts` (`@agent`) declares the sample before the chat exists (a reset
+  empties `extensions.json`), asks the agent for a `color_palette` call and asserts the rendered swatches.
+
 **Voice input** (`voice-input.spec.ts`) never reaches NVIDIA's servers or a microphone.
 - Every host gets `THINKRAIL_SPEECH_MANIFEST` pointing at the lane's `speech-fixture/manifest.json`, which
   global setup writes (`fixtures/speech.ts`):
@@ -845,7 +868,29 @@ real Settings → Extensions & skills switch of every shipped extension (`visual
 `web-access`, and the web-only `hint-mode` row the host catalog lacks) through `settings.update`, proves it
 survives a reload, and seeds a historical `visualize` call that must still render
 its diagram and an answered `ask_user_question` call that must still render its record while the extension is
-off; each test restores every switch in `afterEach` because the shard shares one host. `environment-settings.spec.ts` drives Settings →
+off; each test restores every switch in `afterEach` because the shard shares one host. Session insights
+coverage (`session-insights.spec.ts`) seeds transcripts with recorded provider/model/usage, failing tool
+results, a $0 model and subagents whose child transcripts sit in the host's delegation folder, enters the
+Default workspace and waits for its auto-restored chat (a tab activated after the panel opened would hide
+it) before driving the panel. The tests cover: the list with pi's figures and their provenance (tooltips,
+outside-subagent spend, the all-projects grouping, whole columns at the default 1920×1080 layout, *Open
+chat*); the disabled placeholder and re-enabling through *Open Settings*; a session's trace, call
+details (with the trace's `z` zoom leaving plain `F` to hint mode) and *Open in chat* landing on the row
+that holds the call; a failed call folded into a repeat (the command passed, then failed) shown for a
+search jump to it and for the Errors filter; turn cards, the actor timeline and the
+day view; subagent waves, the plan and skill bands and errors as recovery chains (with a retry key rebound
+through `settings.update` acting in the trace and shown in its legend, reset in `afterEach`); context and
+cache — reached through the Overview's Context link, which reveals the context half once, a return to the
+section opening at its top —, cost and files; statistics (findings, usage by day, hotspots); action
+sequences, a slice comparison and a step-aligned diff of two sessions; faceted search opening a session's analysis at a hit; and labels with
+exports of a masked page, a Chrome trace and a fixture into Artifacts. The fixture writer records
+`durationMs` so the spans are pi's. The app reset leaves the delegation folder and the extension's data
+folder (`<data>/extensions/session-insights/`) alone, so the spec removes the delegation folders it wrote
+and clears the data folder before each test; every test opens the panel through one
+`openInsightsPanel(page, { rows })`, which refreshes (`fresh: true`) until the index is ready and the list
+holds exactly that test's sessions, since the host's index may still list the previous test's. Its shots
+under `e2e/screenshots/session-insights*/` are review evidence only.
+`environment-settings.spec.ts` drives Settings →
 Environment through rejected and accepted saves and a reload; the host was launched with
 `PI_CODING_AGENT_DIR`, so it also proves the launch value stays in use and is reported as set at launch. It
 clears the stored record in `afterEach` so no later restart-based spec boots with it. The provider-backed counterpart in
