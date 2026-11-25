@@ -98,6 +98,35 @@ test("reference repositories are read-only context, joinable only through the jo
 	expect(plain).not.toContain("readable for context only");
 });
 
+test("design startup tells the agent how to read reference repositories from their advertised paths", () => {
+	const prompt = createIssueStartupPrompt({
+		...context(),
+		repositories: [
+			{
+				projectId: "local",
+				workspaceId: "w",
+				name: "app",
+				path: "/work/app",
+				role: "primary",
+			},
+			{
+				projectId: "core",
+				workspaceId: "core-default",
+				name: "core",
+				path: "/work/core",
+				role: "reference",
+			},
+		],
+	});
+
+	expect(prompt).toContain(
+		"For design, read reference repositories through their advertised absolute paths with the read-only file tools",
+	);
+	expect(prompt).toContain(
+		"do not use the primary workspace's relative path to look for reference files",
+	);
+});
+
 test("design startup is explicit, Chinese, pure and preserves the whole Issue and every comment", () => {
 	const input = context();
 	const before = structuredClone(input);

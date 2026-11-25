@@ -446,7 +446,9 @@ factory and association/context types are exported through the Issues barrel for
 client, binding, credential or approval state. `IssueStartupContext` optionally includes host-projected repository entries with local project/workspace
 ids, display name, actual path and primary/associated/reference role. They are data, not executable configuration;
 the prompt requires per-repository instruction lookup, forbids combining project configuration, and
-states that membership is not a shell sandbox or proof that cross-repository builds work.
+states that membership is not a shell sandbox or proof that cross-repository builds work. In design,
+reference repositories are read through their advertised absolute paths using the read-only file tools;
+the prompt does not imply that the primary workspace's relative paths can address them or grant write access.
 `contexts(reference, stage)` verifies source Default directories for design and every recorded completed
 worktree for implementation without creating implementation directories. Host composition refreshes
 this projection at startup and on bound `issue_context` reads; the pure prompt factory performs no I/O.
