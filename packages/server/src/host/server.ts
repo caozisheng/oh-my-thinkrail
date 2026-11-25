@@ -209,6 +209,7 @@ import {
 	syncWorkspaceBranch,
 	type WorkspaceLifecycleEvent,
 } from "../workspaces";
+import { AbandonmentReporter } from "./abandonmentReporter";
 import { createArtifactEventMapper } from "./artifactEvents";
 import { serveChatAttachments } from "./attachments";
 import { seesChats } from "./chats";
@@ -253,7 +254,6 @@ import {
 	setupObservation,
 } from "./productAnalytics";
 import {
-	AbandonmentReportBudget,
 	heaviestReplayMethod,
 	type ReplayLoad,
 	RequestAbandonedError,
@@ -367,12 +367,6 @@ function formatReplayLoad(load: ReplayLoad): string {
 const warnSlowConsumer = (message: string, error: SlowConsumerError): void =>
 	log.warn(message, error);
 
-function countMethods(methods: readonly string[]): string {
-	const counts = new Map<string, number>();
-	for (const method of methods) counts.set(method, (counts.get(method) ?? 0) + 1);
-	return [...counts].map(([method, count]) => `${method} ×${count}`).join(", ");
-}
-
 function clientProtocolVersion(value: string | null): number {
 	const parsed = Number(value);
 	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
@@ -439,15 +433,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	const sockets = new Map<string, Bun.ServerWebSocket<SocketData>>();
 	const reapTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const requestReplays = new RequestReplayCache<string>();
-	const abandonmentReports = new AbandonmentReportBudget();
-	const reportAbandoned = (methods: readonly string[]): void => {
-		if (methods.length === 0) return;
-		log.warn(`requests abandoned before their handlers settled: ${countMethods(methods)}`);
-		for (const method of new Set(methods)) {
-			if (abandonmentReports.admit(method))
-				reportError(new RequestAbandonedError(), requestErrorReport(method));
-		}
-	};
+	const abandonmentReports = new AbandonmentReporter(log, (method) =>
+		reportError(new RequestAbandonedError(), requestErrorReport(method)),
+	);
 	const terminalBackpressured = new Set<string>();
 	let hostUpdateNotice: HostUpdateNotice | undefined;
 	let hostUpdateTimer: ReturnType<typeof setInterval> | undefined;
@@ -653,13 +641,15 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 				}
 				if (typeof req !== "object" || req === null) return;
 				if ("ack" in req && Array.isArray(req.ack)) {
-					reportAbandoned(
+					abandonmentReports.record(
 						requestReplays.acknowledge(ws.data.clientKey, req.ack.filter(isRequestId)),
 					);
 					return;
 				}
 				if ("resume" in req && Array.isArray(req.resume)) {
-					reportAbandoned(requestReplays.retain(ws.data.clientKey, req.resume.filter(isRequestId)));
+					abandonmentReports.record(
+						requestReplays.retain(ws.data.clientKey, req.resume.filter(isRequestId)),
+					);
 					return;
 				}
 				if (
@@ -1346,6 +1336,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		if (stopping) return;
 		stopping = true;
 		clearInterval(reviewRefreshTimer);
+		clearInterval(abandonmentSummaryTimer);
+		abandonmentReports.flush();
 		setupObservation.clear();
 		runObservation.reset();
 		taskObservation.clear();
@@ -1401,6 +1393,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 		const config = getConfig();
 		if (config.analyticsEnabled && config.analyticsConsentConfirmed) startAttributionClaim();
 	};
+
+	const abandonmentSummaryTimer = setInterval(() => abandonmentReports.flush(), 60_000);
+	abandonmentSummaryTimer.unref?.();
 
 	return {
 		get port() {
