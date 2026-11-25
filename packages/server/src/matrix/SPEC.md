@@ -87,7 +87,23 @@ contains a credential UUID and closed operation fence, never passwords or access
 initial sync is a baseline; controller events from that batch and all offline backlog are never run.
 
 Project/session mappings use stable host ids. Transcript projections use stable Matrix transaction ids
-and exclude thinking, tool output and ThinkRail control messages. A dispatch fence is persisted before
+and send both standard plain-text `body` and sanitized Markdown-derived `formatted_body`. New
+session mappings persist `historyFormat: markdown-v1` before their first send; existing mappings
+without that marker are never backfilled and retain the historical plain-text notice format with
+12,000-code-unit chunking, including short chunks and retries. Formatting uses an explicit
+tag/property/URI allow-list; raw HTML and images are rendered as text, and converter failures fall
+back to plain text. Edits include formatting on both the replacement event and
+`m.new_content`; bounded stream chunks retain the plain fallback. New stream receipts persist an
+explicit 2,500-code-unit stride before intermediate delivery state; receipts without a stride retain
+the legacy 12,000-code-unit stride even when their delivered chunks are short. Pending text and its
+exact Matrix content are saved together before sending. Recovery reuses exact persisted content;
+legacy pending text without content reconstructs only the original plain notice or replacement.
+New sends measure the complete serialized content (including replacement envelopes) against 60,000
+bytes, fall back to full plain text when formatting expands too far, and reject oversized plain
+content without truncation. Historical pending transactions are retried unchanged even if oversized.
+Fence continuations use projected source offsets, preserve partially consumed closing lines, and
+conservatively suppress formatting after partially consumed opening markers. Projections
+exclude thinking, tool output and ThinkRail control messages. A dispatch fence is persisted before
 prompt/answer/stop; after restart, an unfinished dispatch is unknown and is never replayed. The host
 rechecks project trust, openness, workspace ownership and current run/interaction identity before control.
 

@@ -1,17 +1,24 @@
 import { createHash } from "node:crypto";
 import type { SessionState } from "@thinkrail/contracts";
 import {
+	ContentHelpers,
 	EventType,
 	type MatrixClient,
 	type MatrixEvent,
-	MsgType,
 	Preset,
 	ReceiptType,
 	RelationType,
 	RoomType,
 	Visibility,
 } from "matrix-js-sdk";
-import { projectionTransactionId, transcriptProjection } from "./bridge";
+import {
+	isMarkdownContinuation,
+	MATRIX_EVENT_CONTENT_MAX_BYTES,
+	MATRIX_STREAM_CHUNK_MAX_BYTES,
+	matrixFormattedContent,
+	projectionTransactionId,
+	transcriptProjection,
+} from "./bridge";
 import { assistantMessageKey } from "./liveEvents";
 import type { MatrixDiagnosticCode } from "./service";
 
@@ -33,6 +40,7 @@ export interface MatrixHostPort {
 	answer(target: MatrixSessionTarget, interactionId: string, text: string): Promise<void>;
 }
 export interface MatrixRoomMapping {
+	historyFormat?: "markdown-v1";
 	roomId?: string;
 	creating?: true;
 	projectId: string;
@@ -46,7 +54,14 @@ export interface MatrixRoomMapping {
 		{
 			text?: string;
 			final?: boolean;
-			chunks: { eventId?: string; text?: string; revision: number; pending?: string }[];
+			chunkSize?: number;
+			chunks: {
+				eventId?: string;
+				text?: string;
+				revision: number;
+				pending?: string;
+				pendingContent?: object;
+			}[];
 			pending?: { text: string; final: boolean };
 		}
 	>;
@@ -104,14 +119,25 @@ export function createMatrixProjection(options: {
 	const assertActive = () => {
 		if (!options.allowed()) throw new Error("Matrix integration stopped");
 	};
-	const send = async (roomId: string, text: string, key: string) => {
+	const send = async (
+		roomId: string,
+		text: string,
+		key: string,
+		allowFormatted = true,
+		prefix = "",
+	) => {
 		assertActive();
 		await ensureSafe(roomId);
 		assertActive();
+		const markdown = prefix && text.startsWith(prefix) ? text.slice(prefix.length) : text;
+		const rendered = await matrixFormattedContent(prefix, markdown, { allowFormatted });
+		const content = rendered.formatted_body
+			? ContentHelpers.makeHtmlNotice(rendered.body, rendered.formatted_body)
+			: ContentHelpers.makeNotice(rendered.body);
 		await options.client.sendEvent(
 			roomId,
 			EventType.RoomMessage,
-			{ msgtype: MsgType.Notice, body: text },
+			content as never,
 			projectionTransactionId(key),
 		);
 	};
@@ -282,6 +308,7 @@ export function createMatrixProjection(options: {
 				}
 				if (!mapping) {
 					mapping = {
+						historyFormat: "markdown-v1",
 						projectId: target.projectId,
 						workspaceId: target.workspaceId,
 						sessionId: target.sessionId,
@@ -355,11 +382,19 @@ export function createMatrixProjection(options: {
 						}
 						const hash = createHash("sha256").update(text).digest("hex");
 						if (mapping.sent.includes(hash)) continue;
-						for (let offset = 0; offset < text.length; offset += 12000) {
+						const chunkSize =
+							mapping.historyFormat === "markdown-v1"
+								? Math.floor(MATRIX_STREAM_CHUNK_MAX_BYTES / 4)
+								: 12_000;
+						for (let offset = 0; offset < text.length; offset += chunkSize) {
+							const chunk = text.slice(offset, offset + chunkSize);
+							const prefix = offset === 0 ? (/^(Assistant|User): /.exec(chunk)?.[0] ?? "") : "";
 							await send(
 								mapping.roomId,
-								text.slice(offset, offset + 12000),
+								chunk,
 								`${target.sessionId}:${hash}:${offset}`,
+								mapping.historyFormat === "markdown-v1" && !isMarkdownContinuation(text, offset),
+								mapping.historyFormat === "markdown-v1" ? prefix : "",
 							);
 							yield;
 							if (generation !== controlGeneration) return summary();
@@ -437,37 +472,91 @@ export function createMatrixProjection(options: {
 			};
 			if (!(await validate())) return;
 			mapping.streams ??= {};
-			mapping.streams[key] ??= { chunks: [] };
+			mapping.streams[key] ??= {
+				chunks: [],
+				chunkSize: Math.floor(MATRIX_STREAM_CHUNK_MAX_BYTES / 4),
+			};
 			const receipt = mapping.streams[key];
 			const deliver = async () => {
 				const pending = receipt.pending;
 				if (!pending) return true;
-				const count = Math.max(receipt.chunks.length, Math.ceil(pending.text.length / 12000));
+				const effectiveChunkSize = receipt.chunkSize ?? 12_000;
+				receipt.chunkSize = effectiveChunkSize;
+				const count = Math.max(
+					receipt.chunks.length,
+					Math.ceil(pending.text.length / effectiveChunkSize),
+				);
 				for (let i = 0; i < count; i++) {
 					receipt.chunks[i] ??= { revision: 0 };
 					const chunk = receipt.chunks[i];
 					if (!chunk) throw new Error("Missing stream chunk receipt");
-					const body = pending.text.slice(i * 12000, (i + 1) * 12000);
+					const body = pending.text.slice(i * effectiveChunkSize, (i + 1) * effectiveChunkSize);
+					const markdownOffset = i * effectiveChunkSize;
 					if (chunk.text === body && chunk.pending === undefined) continue;
-					chunk.pending ??= body;
-					await save();
+					const hadPendingPayload = chunk.pending !== undefined;
+
 					if (!(await validate())) return false;
-					const content = { msgtype: MsgType.Notice as const, body: chunk.pending };
+					const payload = chunk.pending ?? body;
+					const prefix = i === 0 && payload.startsWith("Assistant: ") ? "Assistant: " : "";
+					const markdown = prefix ? payload.slice(prefix.length) : payload;
+					const rendered: Awaited<ReturnType<typeof matrixFormattedContent>> =
+						await matrixFormattedContent(prefix, markdown, {
+							allowFormatted:
+								!hadPendingPayload &&
+								!(i > 0 && isMarkdownContinuation(pending.text, markdownOffset)),
+						});
+					const replacement = rendered.formatted_body
+						? {
+								...ContentHelpers.makeNotice(rendered.body),
+								format: "org.matrix.custom.html" as const,
+								formatted_body: rendered.formatted_body,
+							}
+						: ContentHelpers.makeNotice(rendered.body);
+					if (!chunk.pendingContent) {
+						const candidate = chunk.eventId
+							? {
+									...replacement,
+									"m.new_content": replacement,
+									"m.relates_to": {
+										rel_type: RelationType.Replace,
+										event_id: chunk.eventId,
+									},
+								}
+							: replacement;
+						let content = candidate;
+						if (Buffer.byteLength(JSON.stringify(candidate)) > MATRIX_EVENT_CONTENT_MAX_BYTES) {
+							const plain = ContentHelpers.makeNotice(rendered.body);
+							content = chunk.eventId
+								? {
+										...plain,
+										"m.new_content": plain,
+										"m.relates_to": {
+											rel_type: RelationType.Replace,
+											event_id: chunk.eventId,
+										},
+									}
+								: plain;
+						}
+						if (
+							!hadPendingPayload &&
+							Buffer.byteLength(JSON.stringify(content)) > MATRIX_EVENT_CONTENT_MAX_BYTES
+						)
+							throw new Error("Matrix event content exceeds size limit");
+						chunk.pending = payload;
+						chunk.pendingContent = content;
+						await save();
+					}
+					const sendContent = chunk.pendingContent;
 					const result = await options.client.sendEvent(
 						roomId,
 						EventType.RoomMessage,
-						chunk.eventId
-							? {
-									...content,
-									"m.new_content": content,
-									"m.relates_to": { rel_type: RelationType.Replace, event_id: chunk.eventId },
-								}
-							: content,
+						sendContent as never,
 						projectionTransactionId(`stream:${sessionId}:${messageKey}:${i}:${chunk.revision}`),
 					);
 					chunk.eventId ??= result.event_id;
-					chunk.text = chunk.pending;
+					chunk.text = payload;
 					delete chunk.pending;
+					delete chunk.pendingContent;
 					chunk.revision++;
 					await save();
 				}
@@ -485,6 +574,7 @@ export function createMatrixProjection(options: {
 			// never with the newer snapshot under that transaction ID.
 			if (receipt.pending && !(await deliver())) return;
 			if (receipt.final || (receipt.text === text && !final)) return;
+			receipt.chunkSize ??= 12_000;
 			receipt.pending = { text, final };
 			await save();
 			await deliver();

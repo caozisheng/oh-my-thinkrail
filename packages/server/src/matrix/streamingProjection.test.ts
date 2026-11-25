@@ -1,8 +1,16 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { MatrixClient } from "matrix-js-sdk";
+import { isMarkdownContinuation, projectionTransactionId } from "./bridge";
 import { createMatrixProjection, emptyProjection, type MatrixSessionTarget } from "./projection";
 
-function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => void } = {}) {
+function fixture(
+	hooks: {
+		prompt?: () => void;
+		diagnostic?: (code: string) => void;
+		save?: (state: ReturnType<typeof emptyProjection>) => void;
+	} = {},
+) {
 	let saved = emptyProjection();
 	let allowed = true;
 	let safe = true;
@@ -29,12 +37,12 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 			backgroundWork: false,
 		},
 	};
-	const message = (text: string) => ({
+	const message = (text: string, type = "text") => ({
 		role: "assistant",
 		timestamp: 1730000000000,
 		content: [
 			{ type: "thinking", thinking: "SECRET" },
-			{ type: "text", text },
+			{ type, text },
 			{ type: "toolCall", name: "shell", arguments: { command: "SECRET" } },
 		],
 		api: "anthropic-messages",
@@ -47,7 +55,14 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 		content: {
 			msgtype?: string;
 			body: string;
-			"m.new_content"?: { body: string };
+			format?: string;
+			formatted_body?: string;
+			"m.new_content"?: {
+				msgtype?: string;
+				body: string;
+				format?: string;
+				formatted_body?: string;
+			};
 			"m.relates_to"?: { event_id: string; rel_type: string };
 		};
 		txn: string;
@@ -72,7 +87,7 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 			content: (typeof sends)[number]["content"],
 			txn: string,
 		) {
-			sends.push({ content, txn });
+			sends.push({ content: structuredClone(content), txn });
 			if (lose) {
 				lose = false;
 				throw new Error("lost");
@@ -94,6 +109,7 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 				},
 				async save(state) {
 					saved = structuredClone(state);
+					hooks.save?.(structuredClone(saved));
 				},
 			},
 			host: {
@@ -118,6 +134,9 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 	return {
 		make,
 		message,
+		seed: (value: ReturnType<typeof emptyProjection>) => {
+			saved = structuredClone(value);
+		},
 		sends,
 		target,
 		history: (value: unknown[]) => {
@@ -143,6 +162,121 @@ function fixture(hooks: { prompt?: () => void; diagnostic?: (code: string) => vo
 		},
 	};
 }
+
+test("formatted streaming messages stay within the serialized Matrix event size budget", async () => {
+	const f = fixture();
+	const p = f.make();
+	await p.reconcile();
+	const ascii = "a".repeat(12_000);
+	await p.stream("s", "1730000000000", f.message(ascii), false);
+	await p.stream("s", "1730000000000", f.message("你".repeat(12_000)), true);
+	for (const send of f.sends) {
+		expect(Buffer.byteLength(JSON.stringify(send.content))).toBeLessThanOrEqual(60_000);
+		if (send.content["m.new_content"])
+			expect(Object.hasOwn(send.content["m.new_content"], "m.new_content")).toBe(false);
+	}
+	expect(f.sends.every((send) => send.content.format === "org.matrix.custom.html")).toBe(true);
+});
+
+test("formatted streaming messages carry a single m.new_content per replacement", async () => {
+	const f = fixture();
+	const p = f.make();
+	await p.reconcile();
+	await p.stream("s", "1730000000000", f.message("**partial**"), false);
+	await p.stream("s", "1730000000000", f.message("**final**"), true);
+	const replacement = f.sends.at(-1)?.content;
+	expect(replacement?.["m.new_content"]?.formatted_body).toContain("<strong>final</strong>");
+});
+
+test("legacy pending stream chunks retry the exact persisted payload and transaction", async () => {
+	const f = fixture();
+	const seeded = emptyProjection();
+	seeded.sessions.s = {
+		projectId: "p",
+		workspaceId: "w",
+		sessionId: "s",
+		roomId: "!legacy",
+		sent: [],
+		streams: {
+			[projectionTransactionId("s:1730000000000")]: {
+				chunks: [
+					{
+						eventId: "$legacy",
+						text: "",
+						pending: `Assistant: ${"x".repeat(12_000)}`,
+						revision: 0,
+					},
+				],
+				chunkSize: 12_000,
+				pending: { text: `Assistant: ${"x".repeat(12_000)}tail`, final: false },
+			},
+		},
+	};
+	f.seed(seeded);
+	f.lose();
+	const p = f.make();
+	await expect(
+		p.stream("s", "1730000000000", f.message(`${"x".repeat(12_000)}tail`), false),
+	).rejects.toThrow("lost");
+	expect(f.sends[0]?.content.body).toBe(`Assistant: ${"x".repeat(12_000)}`);
+	expect(f.sends[0]?.txn).toBe(projectionTransactionId(`stream:s:1730000000000:0:0`));
+});
+
+test("markdown split inside a fenced code block falls back to text", async () => {
+	const f = fixture();
+	const p = f.make();
+	await p.reconcile();
+	const markdown = `\`\`\`text\n${"![image](url)\n".repeat(500)}`;
+	await p.stream("s", "1730000000000", f.message(markdown), true);
+	expect(f.sends.length).toBeGreaterThan(1);
+	expect(f.sends.slice(1).every(({ content }) => content.formatted_body === undefined)).toBe(true);
+});
+
+test("fence continuation uses full projected offsets for assistant and user prefixes", async () => {
+	for (const role of ["Assistant", "User"]) {
+		const content = `${role}: \`\`\`ts\n${"x".repeat(2_480)}\n![literal](https://example.org/image)`;
+		expect(isMarkdownContinuation(content, 2_500)).toBe(true);
+	}
+	const nearBoundary = `Assistant: \`\`\`ts\n${"x".repeat(2_479)}\n\`\`\`ts\n**literal**`;
+	expect(isMarkdownContinuation(nearBoundary, 2_500)).toBe(true);
+	expect(isMarkdownContinuation("Assistant: ```ts\ncode\n```ts", 25)).toBe(true);
+	expect(isMarkdownContinuation("Assistant: ```ts\ncode\n```", 27)).toBe(false);
+	expect(isMarkdownContinuation("User: ```ts\ncode\n```", 0)).toBe(false);
+	expect(isMarkdownContinuation("User: ```ts\ncode\n```", 12)).toBe(true);
+	const partialClosing = `Assistant: \`\`\`ts\n${"x".repeat(2_481)}\n\`\`\`\ntext`;
+	expect(isMarkdownContinuation(partialClosing, 2_500)).toBe(true);
+});
+
+test("streaming Markdown headings and leading code fences retain their structure", async () => {
+	for (const [text, expected] of [
+		["# A heading", "<h1>A heading</h1>"],
+		[`\`\`\`ts\nconst value = 1;\n\`\`\``, '<pre><code class="language-ts">const value = 1;'],
+	] as const) {
+		const f = fixture();
+		const p = f.make();
+		await p.reconcile();
+		await p.stream("s", "1730000000000", f.message(text), false);
+		expect(f.sends[0]?.content.formatted_body).toContain(expected);
+	}
+});
+
+test("streaming message creates and replaces include formatted custom HTML content", async () => {
+	const f = fixture();
+	const p = f.make();
+	await p.reconcile();
+	await p.stream("s", "1730000000000", f.message("**partial**"), false);
+	await p.stream("s", "1730000000000", f.message("**finished**"), true);
+	expect(f.sends).toHaveLength(2);
+	for (const send of f.sends) {
+		const content = send.content["m.new_content"] ?? send.content;
+		expect(Buffer.byteLength(JSON.stringify(send.content))).toBeLessThanOrEqual(60_000);
+		expect(content.format).toBe("org.matrix.custom.html");
+		expect(content.formatted_body).toContain("<strong>");
+	}
+	expect(f.sends.at(-1)?.content["m.new_content"]?.formatted_body).toContain(
+		"<strong>finished</strong>",
+	);
+});
 
 test("empty and whitespace snapshots never create or replace Matrix messages", async () => {
 	const f = fixture();
@@ -172,12 +306,21 @@ test("first partial -> replacement -> final -> settled history has no duplicate"
 	await p.stream("s", "1730000000000", f.message("Hi there"), false);
 	await p.stream("s", "1730000000000", f.message("Hi there!"), true);
 	expect(f.sends).toHaveLength(3);
-	expect(f.sends[0]?.content).toEqual({ msgtype: "m.notice", body: "Assistant: Hi" });
-	for (const send of f.sends.slice(1))
+	expect(f.sends[0]?.content).toMatchObject({
+		msgtype: "m.notice",
+		body: "Assistant: Hi",
+		format: "org.matrix.custom.html",
+		formatted_body: "<p>Assistant: </p><p>Hi</p>",
+	});
+	expect(f.sends[0]?.content["m.new_content"]).toBeUndefined();
+	for (const send of f.sends.slice(1)) {
+		expect(send.content["m.new_content"]?.format).toBe("org.matrix.custom.html");
+		expect(send.content["m.new_content"]?.formatted_body).toContain("<p>Assistant: </p><p>Hi");
 		expect(send.content["m.relates_to"]).toEqual({
 			rel_type: "m.replace",
 			event_id: `$${f.sends[0]?.txn}`,
 		});
+	}
 	expect(f.sends[2]?.content["m.new_content"]?.body).toBe("Assistant: Hi there!");
 	expect(JSON.stringify(f.sends)).not.toContain("SECRET");
 	f.history([f.message("Hi there!")]);
@@ -209,6 +352,9 @@ test("restart retries unknown original and edit with stable transactions before 
 	await expect(p.stream("s", "1730000000000", f.message("A"), false)).rejects.toThrow("lost");
 	p = f.make();
 	await p.stream("s", "1730000000000", f.message("AB"), false);
+	expect(f.sends.findLast((send) => send.txn === f.sends[0]?.txn)?.content).toEqual(
+		f.sends[0]?.content,
+	);
 	expect(f.sends[0]?.txn).toBe(f.sends[1]?.txn);
 	expect(f.sends[1]?.content.body).toBe("Assistant: A");
 	f.lose();
@@ -247,11 +393,13 @@ test("long streaming text uses bounded chunks with stable original identities", 
 	const p = f.make();
 	await p.reconcile();
 	await p.stream("s", "1730000000000", f.message("x".repeat(24000)), false);
-	expect(f.sends).toHaveLength(3);
+	const originals = f.sends.length;
+	expect(originals).toBe(10);
 	await p.stream("s", "1730000000000", f.message("y".repeat(24000)), true);
-	for (const send of f.sends) expect(send.content.body.length).toBeLessThanOrEqual(12000);
-	expect(f.sends.slice(3).map((s) => s.content["m.relates_to"]?.event_id)).toEqual(
-		f.sends.slice(0, 3).map((s) => `$${s.txn}`),
+	for (const send of f.sends)
+		expect(Buffer.byteLength(JSON.stringify(send.content))).toBeLessThanOrEqual(60_000);
+	expect(f.sends.slice(originals).map((s) => s.content["m.relates_to"]?.event_id)).toEqual(
+		f.sends.slice(0, originals).map((s) => `$${s.txn}`),
 	);
 });
 
@@ -425,3 +573,213 @@ for (const checkpoint of ["reconcile-session", "reconcile-transcript", "reconcil
 		expect(f.sends.at(-1)?.content["m.relates_to"]?.event_id).toBe(`$${f.sends.at(-2)?.txn}`);
 	});
 }
+
+test("legacy short receipts retain the original stride", async () => {
+	const f = fixture();
+	const seeded = emptyProjection();
+	seeded.sessions.s = {
+		projectId: "p",
+		workspaceId: "w",
+		sessionId: "s",
+		roomId: "!old",
+		sent: [],
+		streams: {
+			[projectionTransactionId("s:1730000000000")]: {
+				text: "Assistant: short",
+				chunks: [{ eventId: "$old", text: "Assistant: short", revision: 1 }],
+			},
+		},
+	};
+	f.seed(seeded);
+	const text = "0123456789".repeat(2500);
+	await f.make().stream("s", "1730000000000", f.message(text), true);
+	expect(f.sends.map((s) => s.content.body).join("")).toBe(`Assistant: ${text}`);
+	expect(f.sends[0]?.content.body.length).toBe(12000);
+});
+
+test("partial fence markers retain context and invalid info does not open a fence", () => {
+	expect(isMarkdownContinuation("User: ```ts\ncode", 7)).toBe(true);
+	expect(isMarkdownContinuation("Assistant: ```bad`info\ntext", 30)).toBe(false);
+});
+
+test("restart after persisting exact modern pending content preserves every projected source offset", async () => {
+	let crash = true;
+	const key = projectionTransactionId("s:1730000000000");
+	const f = fixture({
+		save: (state) => {
+			if (crash && state.sessions.s?.streams?.[key]?.chunks[0]?.pendingContent) {
+				crash = false;
+				throw new Error("crash after pending content save");
+			}
+		},
+	});
+	const text = "0123456789abcdef".repeat(1_700);
+	const body = `Assistant: ${text}`;
+	const p = f.make();
+	await p.reconcile();
+	await expect(p.stream("s", "1730000000000", f.message(text), true)).rejects.toThrow(
+		"crash after pending content save",
+	);
+	expect(f.sends).toHaveLength(0);
+	const receipt = f.state().sessions.s?.streams?.[key];
+	expect(receipt?.chunkSize).toBe(2_500);
+	expect(receipt?.chunks[0]?.pending).toBe(body.slice(0, 2_500));
+	const pendingContent = structuredClone(receipt?.chunks[0]?.pendingContent);
+	expect(pendingContent).toMatchObject({
+		msgtype: "m.notice",
+		body: body.slice(0, 2_500),
+		format: "org.matrix.custom.html",
+	});
+	await f.make().stream("s", "1730000000000", f.message(text), true);
+	expect(pendingContent).toEqual(f.sends[0]?.content);
+	expect(f.sends).toHaveLength(Math.ceil(body.length / 2_500));
+	expect(f.sends.every(({ content }) => content["m.relates_to"] === undefined)).toBe(true);
+	expect(f.sends.map(({ content }) => content.body).join("")).toBe(body);
+	for (const [i, send] of f.sends.entries()) {
+		expect(send.content.body).toBe(body.slice(i * 2_500, (i + 1) * 2_500));
+		expect(send.txn).toBe(projectionTransactionId(`stream:s:1730000000000:${i}:0`));
+	}
+});
+
+test("expansion-heavy Markdown replacement measures the complete JSON envelope and falls back to plain", async () => {
+	const f = fixture();
+	const p = f.make();
+	await p.reconcile();
+	await p.stream("s", "1730000000000", f.message("partial"), false);
+	const text = `${"[^a]".repeat(600)}\n\n[^a]: note`;
+	await p.stream("s", "1730000000000", f.message(text), true);
+	expect(f.sends).toHaveLength(2);
+	const original = f.sends[0];
+	const replacement = f.sends[1]?.content;
+	expect(replacement).toEqual({
+		msgtype: "m.notice",
+		body: `Assistant: ${text}`,
+		"m.new_content": { msgtype: "m.notice", body: `Assistant: ${text}` },
+		"m.relates_to": { rel_type: "m.replace", event_id: `$${original?.txn}` },
+	});
+	for (const send of f.sends) {
+		expect(Buffer.byteLength(JSON.stringify(send.content))).toBeLessThanOrEqual(60_000);
+	}
+});
+
+for (const eventId of [undefined, "$legacy-original"]) {
+	test(`legacy short pending ${eventId ? "edit" : "original"} without chunkSize replays exact plain content before 12000-stride updates`, async () => {
+		const f = fixture();
+		const seeded = emptyProjection();
+		const pending = "Assistant: **short pending**";
+		seeded.sessions.s = {
+			projectId: "p",
+			workspaceId: "w",
+			sessionId: "s",
+			roomId: "!legacy",
+			sent: [],
+			streams: {
+				[projectionTransactionId("s:1730000000000")]: {
+					chunks: [
+						{
+							...(eventId ? { eventId, text: "Assistant: old" } : {}),
+							pending,
+							revision: eventId ? 1 : 0,
+						},
+					],
+					pending: { text: pending, final: false },
+				},
+			},
+		};
+		f.seed(seeded);
+		const text = "0123456789abcdef".repeat(1_700);
+		const body = `Assistant: ${text}`;
+		await f.make().stream("s", "1730000000000", f.message(text), true);
+		const notice = { msgtype: "m.notice", body: pending };
+		expect(f.sends[0]?.content).toEqual(
+			eventId
+				? {
+						...notice,
+						"m.new_content": notice,
+						"m.relates_to": { rel_type: "m.replace", event_id: eventId },
+					}
+				: notice,
+		);
+		expect(f.sends[0]?.txn).toBe(
+			projectionTransactionId(`stream:s:1730000000000:0:${eventId ? 1 : 0}`),
+		);
+		const updates = f.sends.slice(1);
+		expect(updates).toHaveLength(Math.ceil(body.length / 12_000));
+		expect(updates.map(({ content }) => content.body).join("")).toBe(body);
+		for (const [i, send] of updates.entries()) {
+			expect(send.content.body).toBe(body.slice(i * 12_000, (i + 1) * 12_000));
+			expect(send.content["m.relates_to"]).toEqual(
+				i === 0
+					? {
+							rel_type: "m.replace",
+							event_id: eventId ?? `$${f.sends[0]?.txn}`,
+						}
+					: undefined,
+			);
+		}
+		expect(
+			f.state().sessions.s?.streams?.[projectionTransactionId("s:1730000000000")]?.chunkSize,
+		).toBe(12_000);
+	});
+}
+
+test("legacy unversioned mapping keeps plain 12000 chunks and stable historical transactions", async () => {
+	const f = fixture();
+	const seeded = emptyProjection();
+	seeded.explicitSessionIds = ["s"];
+	seeded.sessions.s = {
+		projectId: "p",
+		workspaceId: "w",
+		sessionId: "s",
+		roomId: "!legacy",
+		sent: [],
+	};
+	f.seed(seeded);
+	const text = "0123456789abcdef".repeat(1_600);
+	f.history([{ role: "user", timestamp: 1730000000000, content: [{ type: "text", text }] }]);
+	f.target.state.execution = "idle";
+	f.target.state.backgroundWork = true;
+	const body = `User: ${text}`;
+	const hash = createHash("sha256").update(body).digest("hex");
+	// The old server accepted offset zero, but its response was lost before
+	// the bridge could persist the message hash. Model Matrix txn dedup below.
+	const accepted = {
+		content: { msgtype: "m.notice", body: body.slice(0, 12_000) },
+		txn: projectionTransactionId(`s:${hash}:0`),
+	};
+	const p = f.make();
+	await p.reconcile();
+	const firstPass = f.sends.slice();
+	expect(firstPass[0]).toEqual(accepted);
+	const delivered = new Map([accepted, ...firstPass].map((send) => [send.txn, send.content]));
+	expect([...delivered.values()].map((content) => content.body).join("")).toBe(body);
+	expect(delivered.size).toBe(Math.ceil(body.length / 12_000));
+	expect(firstPass.map(({ content }) => content.body)).toEqual(
+		Array.from({ length: Math.ceil(`User: ${text}`.length / 12_000) }, (_, i) =>
+			`User: ${text}`.slice(i * 12_000, (i + 1) * 12_000),
+		),
+	);
+	expect(firstPass.every(({ content }) => content.formatted_body === undefined)).toBe(true);
+	await p.reconcile();
+	expect(f.sends).toEqual(firstPass);
+	expect(f.state().sessions.s?.historyFormat).toBeUndefined();
+});
+
+test("user history leading fenced code renders pre/code only before the plain continuation", async () => {
+	const f = fixture();
+	const text = `\`\`\`ts\n${"const value = 1;\n".repeat(400)}\`\`\``;
+	f.history([{ role: "user", timestamp: 1730000000000, content: [{ type: "text", text }] }]);
+	f.target.state.execution = "idle";
+	f.target.state.backgroundWork = true;
+	await f.make().reconcile();
+	expect(f.state().sessions.s?.historyFormat).toBe("markdown-v1");
+	expect(f.sends.length).toBeGreaterThan(1);
+	expect(f.sends[0]?.content.format).toBe("org.matrix.custom.html");
+	expect(f.sends[0]?.content.formatted_body).toContain('<pre><code class="language-ts">');
+	expect(f.sends[0]?.content.formatted_body).toContain("const value = 1;");
+	for (const send of f.sends.slice(1)) {
+		expect(send.content.format).toBeUndefined();
+		expect(send.content.formatted_body).toBeUndefined();
+	}
+	expect(f.sends.map(({ content }) => content.body).join("")).toBe(`User: ${text}`);
+});
