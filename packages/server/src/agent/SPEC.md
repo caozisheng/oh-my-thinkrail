@@ -1168,7 +1168,7 @@ recovery; they are not the default execution path when the direct capability is 
     composes `agent` + `workspaces`.
     The bound Issue tools (`issueTools.ts`) are registered for top-level sessions by the named
     `issue-tools` inline extension in `sharedFactories`, shared by source/dev and bundled CLI/desktop
-    loaders, never by the curated child extension set. `IssueSessionStore` association probing runs at
+    loaders, never by the curated child extension set. It is always-on, not a `builtin:` slot: pi package switches must not disable it. Its name is reserved in `HOST_EXTENSION_NAMES`, separately from the optional `HOST_BUILTIN_EXTENSION_NAMES` slots. Host descriptor registration claims include it so installed extensions cannot take its tools. `IssueSessionStore` association probing runs at
     registration reconciliation points; if a bound session is missing its core tool definitions and the
     extension is not intentionally disabled, one gated resource reload is requested per attachment. The
     probe fails closed and never reconstructs tools or binding from transcript content. `issue_join_repository` accepts exactly

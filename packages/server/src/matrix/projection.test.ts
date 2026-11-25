@@ -97,9 +97,21 @@ function fixture() {
 			if (receiptFailure) throw new Error("receipt rejected");
 			return {};
 		},
-		async sendEvent(_room: string, _type: string, content: { body: string }, txid: string) {
+		async sendEvent(
+			_room: string,
+			_type: string,
+			content: {
+				body: string;
+				format?: string;
+				formatted_body?: string;
+				"m.new_content"?: { body: string; format?: string; formatted_body?: string };
+				"m.relates_to"?: { rel_type: string; event_id: string };
+			},
+			txid: string,
+		) {
 			txids.push(txid);
 			sent.push(content.body);
+			calls.push(content);
 			if (loseSendResponse) {
 				loseSendResponse = false;
 				throw new Error("sendEvent response lost");
@@ -128,7 +140,7 @@ function fixture() {
 					return targets;
 				},
 				async transcript() {
-					return [{ role: "assistant", content: [{ type: "text", text: "Hello" }] }];
+					return [{ role: "assistant", content: [{ type: "text", text: "**Hello**" }] }];
 				},
 				async prompt(_target, text) {
 					prompts.push(text);
@@ -205,11 +217,17 @@ test("lost output send response reuses the exact transaction ID after restart", 
 	await expect(f.make().reconcile()).rejects.toThrow("sendEvent response lost");
 	const txid = f.txids.at(-1);
 	if (!txid) throw new Error("Expected output transaction ID");
-	expect(f.sent).toEqual(["Assistant: Hello"]);
+	expect(f.sent).toEqual(["Assistant: **Hello**"]);
+	expect(f.calls).toContainEqual(
+		expect.objectContaining({
+			format: "org.matrix.custom.html",
+			formatted_body: "<p>Assistant: </p><p><strong>Hello</strong></p>",
+		}),
+	);
 	expect(f.state().sessions.s1?.sent).toEqual([]);
 	await f.make().reconcile();
 	expect(f.txids).toEqual([txid, txid]);
-	expect(f.sent).toEqual(["Assistant: Hello", "Assistant: Hello"]);
+	expect(f.sent).toEqual(["Assistant: **Hello**", "Assistant: **Hello**"]);
 	expect(f.state().sessions.s1?.sent).toHaveLength(1);
 	await f.make().reconcile();
 	expect(f.txids).toEqual([txid, txid]);
@@ -262,7 +280,8 @@ test("control center attach maps only exact available session IDs without prompt
 	await f.make().reconcile();
 	expect(f.state().sessions.s1?.roomId).toBeDefined();
 	expect(Object.keys(f.state().sessions)).toEqual(["s1"]);
-	expect(f.sent.at(-1)).toBe("Assistant: Hello");
+	expect(f.sent.at(-1)).toBe("Assistant: **Hello**");
+	expect(f.calls.at(-1)?.formatted_body).toContain("<strong>Hello</strong>");
 	expect(f.prompts).toEqual([]);
 });
 
@@ -294,7 +313,13 @@ test("running transcripts are not projected until execution settles", async () =
 	expect(f.sent).toEqual([]);
 	mutable.state = { ...target.state, execution: "idle" };
 	await f.make().reconcile();
-	expect(f.sent).toEqual(["Assistant: Hello"]);
+	expect(f.sent).toEqual(["Assistant: **Hello**"]);
+	expect(f.calls).toContainEqual(
+		expect.objectContaining({
+			format: "org.matrix.custom.html",
+			formatted_body: "<p>Assistant: </p><p><strong>Hello</strong></p>",
+		}),
+	);
 });
 
 test("controller changes invite the new controller and downgrade the previous one", async () => {

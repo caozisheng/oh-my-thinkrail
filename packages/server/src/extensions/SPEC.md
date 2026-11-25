@@ -125,7 +125,7 @@ lookup, skill roots — defaults to it, so an installed extension is composed ex
   the same name would share their on/off switch; a test holds the list to the `thinkrail-extensions/`
   packages — and the `hostExtensionNames` the host hands in: the names of its own named inline
   extensions, pi's built-in slots it supplies (`mcp`, `tool-search`; `agent`'s
-  `HOST_BUILTIN_EXTENSION_NAMES`, the constant that names them, and a test fails when the composed loader
+  `HOST_EXTENSION_NAMES`, the reservation list including the always-on named inline `issue-tools` factory (which is not a pi built-in slot), and a test fails when the composed loader
   holds a named host inline outside it). The host's other inline factories are unnamed (`<inline:<n>>`);
   the `ext:` namespace keeps every one of them apart from an installed extension —
   `skillPackageRoots` as its resolver and the catalog's tool names for its status file, makes it the

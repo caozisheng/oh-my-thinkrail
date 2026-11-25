@@ -105,6 +105,9 @@ function engineApi(
 /** The pi built-in extensions the host supplies as its own replaceable inline factories. */
 export const HOST_BUILTIN_EXTENSION_NAMES = ["mcp", "tool-search"] as const;
 
+/** All named host factories reserved against installed package names, including always-on tools. */
+export const HOST_EXTENSION_NAMES = [...HOST_BUILTIN_EXTENSION_NAMES, "issue-tools"] as const;
+
 export function createMcpEngine(options: {
 	loadConfig: (ctx: ExtensionContext) => LoadedMcpConfig;
 	lockSignIns?: boolean;

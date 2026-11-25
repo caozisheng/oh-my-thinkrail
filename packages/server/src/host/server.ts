@@ -46,7 +46,7 @@ import {
 	disposeAllSessions,
 	getSessionAttribution,
 	getSessionWorkspaceId,
-	HOST_BUILTIN_EXTENSION_NAMES,
+	HOST_EXTENSION_NAMES,
 	HOST_INLINE_FACTORIES,
 	handlePiSettingsFileChanged,
 	handleProjectPiSettingsChanged,
@@ -1078,7 +1078,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<R
 	const stopInstalledExtensions = startInstalledExtensions({
 		dataDir: dataDir(),
 		npmCommand: piNpmCommand,
-		hostExtensionNames: HOST_BUILTIN_EXTENSION_NAMES,
+		hostExtensionNames: HOST_EXTENSION_NAMES,
 		hostToolFactories: HOST_INLINE_FACTORIES,
 		onChange: () => {
 			refreshInstalledExtensions();
