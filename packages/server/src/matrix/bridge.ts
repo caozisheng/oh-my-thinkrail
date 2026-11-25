@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { isControlMessage } from "@thinkrail/contracts";
+import rehypeSanitize from "rehype-sanitize";
+import rehypeStringify from "rehype-stringify";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
 
 export type MatrixCommand =
 	| { kind: "prompt" | "followup"; text: string }
@@ -17,6 +23,78 @@ export function parseMatrixCommand(text: string): MatrixCommand {
 	if (text === "!omt status") return { kind: "status" };
 	if (text === "!omt help") return { kind: "help" };
 	return { kind: "invalid" };
+}
+
+const matrixHtmlSchema: Parameters<typeof rehypeSanitize>[0] = {
+	tagNames: [
+		"a",
+		"blockquote",
+		"br",
+		"code",
+		"del",
+		"em",
+		"h1",
+		"h2",
+		"h3",
+		"h4",
+		"hr",
+		"li",
+		"ol",
+		"p",
+		"pre",
+		"strong",
+		"table",
+		"tbody",
+		"td",
+		"th",
+		"thead",
+		"tr",
+		"ul",
+	],
+	attributes: {
+		a: ["href"],
+		code: [["className", /^language-[a-zA-Z0-9_+-]+$/]],
+	},
+	protocols: { href: ["http", "https", "mailto"] },
+};
+const matrixMarkdownProcessor = unified()
+	.use(remarkParse)
+	.use(remarkGfm)
+	.use(remarkRehype, {
+		handlers: {
+			html(_state, node) {
+				return { type: "text", value: node.value };
+			},
+			image(_state, node) {
+				return { type: "text", value: node.alt ?? "" };
+			},
+		},
+	})
+	.use(rehypeSanitize, matrixHtmlSchema)
+	.use(rehypeStringify);
+
+export interface MatrixFormattedText {
+	body: string;
+	formattedBody?: string;
+}
+
+/** Render untrusted agent Markdown to Matrix's safe custom HTML with a plain-text fallback. */
+export async function renderMatrixMarkdown(markdown: string): Promise<MatrixFormattedText> {
+	const body = markdown;
+	const formattedBody = String(await matrixMarkdownProcessor.process(markdown));
+	return formattedBody ? { body, formattedBody } : { body };
+}
+
+export async function matrixFormattedContent(prefix: string, markdown: string) {
+	const rendered = await renderMatrixMarkdown(markdown);
+	if (!rendered.formattedBody)
+		return { msgtype: "m.notice" as const, body: `${prefix}${rendered.body}` };
+	return {
+		msgtype: "m.notice" as const,
+		body: `${prefix}${rendered.body}`,
+		format: "org.matrix.custom.html" as const,
+		formatted_body: `${prefix ? `<p>${prefix.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</p>` : ""}${rendered.formattedBody}`,
+	};
 }
 
 export function transcriptProjection(message: unknown): string | null {
