@@ -42,7 +42,7 @@ import {
 } from "./extensions";
 import { headlessSearchPolicy } from "./headlessSearch";
 import { oversizedImageGuard } from "./imageGuard";
-import { createMcpEngine, HOST_BUILTIN_EXTENSION_NAMES } from "./mcp";
+import { createMcpEngine, HOST_EXTENSION_NAMES } from "./mcp";
 import { createPiSettings } from "./packages";
 import { writeFixturePiPackage } from "./packages/testFixtures";
 import type { SkillAdmissionContext } from "./skillAdmission";
@@ -788,6 +788,7 @@ describe("registry extensions", () => {
 			"Agent",
 			"tool_search",
 			"mcp__docs__search",
+			"issue_context",
 			"weather",
 			"shadow_own",
 		];
@@ -841,6 +842,7 @@ describe("registry extensions", () => {
 			for (const name of ["set_title", "Agent", "mcp__docs__search"]) {
 				expect(owner(name)).toMatch(/^<inline:\d+>$/);
 			}
+			expect(owner("issue_context")).toBe("<inline:issue-tools>");
 			expect(owner("tool_search")).toBe("builtin:tool-search");
 			expect(owner("weather")).toBe(join(agentDir, "extensions", "weather.ts"));
 			expect(owner("shadow_own")).toBe("<inline:ext:shadow>");
@@ -849,7 +851,14 @@ describe("registry extensions", () => {
 			const status = JSON.parse(readFileSync(join(dataDir, "extensions", "status.json"), "utf8"));
 			expect(status.extensions[0]).toMatchObject({
 				state: "loaded",
-				tools: ["Agent", "tool_search", "mcp__docs__search", "weather", "shadow_own"],
+				tools: [
+					"Agent",
+					"tool_search",
+					"mcp__docs__search",
+					"issue_context",
+					"weather",
+					"shadow_own",
+				],
 				shadowed: ["ask_user_question", "set_title"],
 			});
 		} finally {
@@ -890,7 +899,7 @@ describe("registry extensions", () => {
 				.map((inline) => nameOf(inline).replace(/#\d+$/, ""))
 				.filter((name) => name !== "fn" && !registry.has(name));
 			for (const name of [...hostNamed, ...children]) {
-				expect<readonly string[]>(HOST_BUILTIN_EXTENSION_NAMES).toContain(name);
+				expect<readonly string[]>(HOST_EXTENSION_NAMES).toContain(name);
 			}
 		} finally {
 			restore();

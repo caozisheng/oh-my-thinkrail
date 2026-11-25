@@ -79,14 +79,14 @@ describe("extension catalog selectors", () => {
 		]);
 		expect(selectInstalledWebHalves({ ...state, extensionCatalog: "loading" })).toBeNull();
 		expect(selectInstalledWebHalves({ ...state, protocolVersion: null })).toBeNull();
-		expect(selectInstalledWebHalves({ ...state, protocolVersion: 130 })).toEqual([]);
+		expect(selectInstalledWebHalves({ ...state, protocolVersion: 145 })).toEqual([]);
 	});
 
 	test("the installed and Browse features are gated by their protocol versions", () => {
-		expect(selectSupportsInstalledExtensions({ protocolVersion: 130 })).toBe(false);
-		expect(selectSupportsInstalledExtensions({ protocolVersion: 131 })).toBe(true);
-		expect(selectSupportsExtensionBrowse({ protocolVersion: 131 })).toBe(false);
-		expect(selectSupportsExtensionBrowse({ protocolVersion: 132 })).toBe(true);
+		expect(selectSupportsInstalledExtensions({ protocolVersion: 145 })).toBe(false);
+		expect(selectSupportsInstalledExtensions({ protocolVersion: 146 })).toBe(true);
+		expect(selectSupportsExtensionBrowse({ protocolVersion: 146 })).toBe(false);
+		expect(selectSupportsExtensionBrowse({ protocolVersion: 147 })).toBe(true);
 		expect(selectSupportsExtensionBrowse({ protocolVersion: null })).toBe(false);
 	});
 });

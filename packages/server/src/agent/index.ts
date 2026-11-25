@@ -51,6 +51,7 @@ export { type IssueSummaryRecovery, type IssueToolHost, setIssueToolHost } from 
 export {
 	effectiveMcpServerConfig,
 	HOST_BUILTIN_EXTENSION_NAMES,
+	HOST_EXTENSION_NAMES,
 	type McpConfigFile,
 	mcpEntryFingerprint,
 	mcpPolicyOf,

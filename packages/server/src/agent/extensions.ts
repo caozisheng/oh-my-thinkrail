@@ -541,12 +541,10 @@ function builtinSlotClaims(): {
 	};
 	return {
 		record: (inline) =>
-			typeof inline !== "function" && inline.builtin
-				? wrap(inline, (key) => {
-						claimed.add(key);
-						return true;
-					})
-				: inline,
+			wrap(inline, (key) => {
+				claimed.add(key);
+				return true;
+			}),
 		refuse: (inline) => wrap(inline, (key) => !claimed.has(key)),
 		reset: () => claimed.clear(),
 	};
@@ -596,7 +594,7 @@ function createRegistryLoader(
 		...(bundled?.factories ?? []),
 		...registryFactories(false),
 		...HOST_INLINE_FACTORIES,
-		{ name: "issue-tools", factory: issueToolsExtension, builtin: true },
+		{ name: "issue-tools", factory: issueToolsExtension },
 		...extraFactories,
 	];
 	const extensionFactories = [

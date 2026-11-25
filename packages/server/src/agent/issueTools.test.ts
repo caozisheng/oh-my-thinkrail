@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
@@ -349,6 +349,11 @@ test("the shared resource loader registers issue tools as a named inline extensi
 	const root = mkdtempSync(join(tmpdir(), "thinkrail-issue-tools-"));
 	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 	process.env.PI_CODING_AGENT_DIR = root;
+	// Always-on host tools must ignore pi package switches for optional built-in slots.
+	writeFileSync(
+		join(root, "settings.json"),
+		JSON.stringify({ extensions: ["-builtin:issue-tools"] }),
+	);
 	try {
 		const loader = await buildResourceLoader(
 			root,
