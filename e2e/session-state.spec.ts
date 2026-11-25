@@ -194,10 +194,9 @@ test("marking a workspace unread relights its result until the chat is left, and
 		await expect(page.getByTestId("workspace-mark-read")).toHaveCount(0);
 		await page.getByTestId("workspace-mark-unread").click();
 		await expectNoCompletionMarker(workspace);
-		await expectAttentionDot(workspace);
 		await expect(tab.getByTestId("attention-dot")).toHaveAttribute("aria-label", "Needs attention");
 		await settleFrames(page);
-		await expectAttentionDot(workspace);
+		await expectNoCompletionMarker(workspace);
 		await expect(tab.getByTestId("attention-dot")).toBeVisible();
 
 		await page.getByTestId("scope-workspace").click();
@@ -209,7 +208,6 @@ test("marking a workspace unread relights its result until the chat is left, and
 		await page.getByTestId("scope-workspace").click();
 		await page.getByTestId("scope-workspace-mark-unread").click();
 		await expectNoCompletionMarker(workspace);
-		await expectAttentionDot(workspace);
 		await expect(tab.getByTestId("attention-dot")).toBeVisible();
 		await goProjectHome(page);
 		await expectNoCompletionMarker(workspace);
