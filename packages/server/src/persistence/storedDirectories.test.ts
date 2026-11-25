@@ -78,6 +78,25 @@ test("a value that is not an absolute path on this host is left as stored", () =
 	expect(loadWorkspaces()[0]?.worktreePath).toBe(foreign);
 });
 
+test("a blank THINKRAIL_DATA_DIR falls back to ~/.oh-my-thinkrail instead of the host's cwd", () => {
+	for (const value of ["", "  "]) {
+		process.env.THINKRAIL_DATA_DIR = value;
+		expect(dataDir()).toBe(join(homedir(), ".oh-my-thinkrail"));
+	}
+});
+
+test("a nonblank THINKRAIL_DATA_DIR keeps its surrounding spaces", () => {
+	process.env.THINKRAIL_DATA_DIR = `${root} `;
+	expect(dataDir()).toBe(`${root} `);
+});
+
+test("a THINKRAIL_DATA_DIR starting with ~ is under the home directory", () => {
+	process.env.THINKRAIL_DATA_DIR = "~/.local/state/thinkrail";
+	expect(dataDir()).toBe(join(homedir(), ".local", "state", "thinkrail"));
+	process.env.THINKRAIL_DATA_DIR = "~";
+	expect(dataDir()).toBe(homedir());
+});
+
 test("a relative THINKRAIL_DATA_DIR still names one absolute data directory", () => {
 	process.env.THINKRAIL_DATA_DIR = relative(process.cwd(), root);
 	expect(dataDir()).toBe(root);

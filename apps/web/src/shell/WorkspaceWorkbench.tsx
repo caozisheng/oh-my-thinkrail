@@ -22,6 +22,7 @@ import { useShallow } from "zustand/react/shallow";
 import { prepareChatTitle } from "../chat/chatTitle";
 import type { SuggestionShortcut } from "../chat/SuggestionChips";
 import { useAutoPlanSummary } from "../chat/useChatTodos";
+import { AttentionDot } from "../components/AttentionDot";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { preloadedLazy } from "../components/preloadedLazy";
 import { QuietScrollArea } from "../components/QuietScrollArea";
@@ -73,6 +74,7 @@ import {
 	selectDiffTabTargetRef,
 	selectRailPlanSessionId,
 	selectReviewDraftCount,
+	selectSessionNeedsAttention,
 	selectUnnamedChatFirstPrompts,
 	selectWorkspaceById,
 	selectWorkspaceNavTick,
@@ -126,6 +128,13 @@ import { registerTabCommands } from "./workbenchCommands";
 
 /** Re-exported for callers that open a host-launched Issue session from the workbench. */
 export { openIssueSession };
+
+function ChatTabAttention({ workspaceId, sessionId }: { workspaceId: string; sessionId: string }) {
+	const needsAttention = useAppStore((state) =>
+		selectSessionNeedsAttention(state, workspaceId, sessionId),
+	);
+	return needsAttention ? <AttentionDot /> : null;
+}
 
 function PlanSummaryAutoDraft({
 	workspaceId,
@@ -901,6 +910,9 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 
 	const renderTabAdornment = useCallback(
 		(tab: LayoutTab): ReactNode => {
+			if (tab.kind === "chat") {
+				return <ChatTabAttention workspaceId={workspaceId} sessionId={tab.sessionId} />;
+			}
 			if (tab.kind === "tool" && tab.tool === "artifacts" && artifactsUnseen) {
 				return (
 					<span
@@ -936,7 +948,7 @@ export function WorkspaceWorkbench({ workspaceId }: { workspaceId: string }) {
 				</span>
 			) : null;
 		},
-		[artifactsUnseen, reviewDraftCount, reviewFlagByPath, t],
+		[artifactsUnseen, reviewDraftCount, reviewFlagByPath, t, workspaceId],
 	);
 
 	const renderEmptyCenter = useCallback(
