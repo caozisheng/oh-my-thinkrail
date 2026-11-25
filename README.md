@@ -194,7 +194,7 @@ Issue association and Tomato sessions.
 
 - **Your `pi` setup.** ThinkRail reads your existing `pi` configuration (`~/.pi/agent`). To use another one (for example, a personal `~/.pi/agent-personal`), or to pass extra environment variables to the agent, terminals and MCP servers, set them in Settings → Environment. The configuration becomes active on the next start. Settings → Models also holds `pi`'s prompt-cache warming (off, only while a run is active, or also between runs); ThinkRail keeps it to active runs unless you choose otherwise, so idle chats don't spend in the background.
 
-- **Your language.** ThinkRail uses your system language or a language you pick in Settings → Language: English, Japanese, Russian, Simplified Chinese, Spanish, or Traditional Chinese (Taiwan). You can add a language ThinkRail doesn't ship yet by putting a translated locale file, for example `de.json`, in `~/.oh-my-thinkrail/locales`. (Tell your AI agent to do it for you!)
+- **Your language.** ThinkRail uses your system language or a language you pick in Settings → Language: English, Japanese, Korean, Polish, Russian, Simplified Chinese, Spanish, or Traditional Chinese (Taiwan). You can add a language ThinkRail doesn't ship yet by putting a translated locale file, for example `de.json`, in `~/.oh-my-thinkrail/locales`. (Tell your AI agent to do it for you!)
 
 - **Your fonts.** In Settings → Text & fonts, you can pick the interface and code fonts and set separate line widths for chat and for code. You can choose from the bundled Geist and JetBrains Mono, any font installed on your computer, and font files kept in `~/.oh-my-thinkrail/fonts`, with fallback fonts for icon glyphs, a code size, ligatures, and a text-weight slider.
 
