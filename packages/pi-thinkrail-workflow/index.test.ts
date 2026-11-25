@@ -188,13 +188,33 @@ describe("pi-thinkrail-workflow extension", () => {
 		);
 		expect(skill).not.toContain("if either is unavailable, stop before work");
 		expect(entry).toContain("Missing summary capability does not block work");
-		expect(entry).toContain("Continue only work that is independently safe without Issue context");
+		expect(entry).toContain(
+			"Continue ordinary repository work requested by the user through the normal repository workflow",
+		);
+		expect(entry).toContain(
+			"Issue capability failure blocks only actions that depend on that capability",
+		);
+		expect(entry).toContain("Do not infer Issue-specific requirements from unavailable context");
 		expect(entry).toContain("A mismatch blocks Issue-dependent work and all remote operations");
 		expect(entry).not.toContain("Missing identity or failed context read blocks work.");
 		expect(skill).toContain("never claim the Issue was read or updated");
 		expect(skill).toContain("A mismatch blocks");
+		const normalizedSkill = skill.replaceAll(/\s+/g, " ");
+		expect(normalizedSkill).toContain(
+			"Issue capability failures do not disable ordinary repository tools",
+		);
+		expect(normalizedSkill).toContain(
+			"do not interpret them as withdrawal of the user's repository-work authorization",
+		);
+		expect(normalizedSkill).toContain(
+			"Continue ordinary repository work requested by the user through the normal repository workflow",
+		);
 		expect(entry).not.toContain("return to the caller after publishing");
 		expect(recovery).toContain("summary publication follows the best-effort ending in `SKILL.md`");
+		expect(recovery).toContain(
+			"isolate the failed Issue action and continue unrelated repository work",
+		);
+		expect(recovery).toContain("does not require session-wide recovery");
 		expect(recovery).toContain("A failed mutation authorizes no separate comment");
 		expect(recovery).toContain("do not infer remote state from a refusal");
 		const closing = readFileSync(

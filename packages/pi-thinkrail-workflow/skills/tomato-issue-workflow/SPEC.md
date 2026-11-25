@@ -39,8 +39,11 @@ Reach `issue_context` and `issue_record_summary` by tool name and their advertis
 The skill adds no tools and does not import or edit the host; [[submodule-server-issues]] owns
 provider state, association, worktree/session ownership, and authorization. Attempt `issue_context` before Issue-dependent conclusions, Issue-specific requirements and remote
 operations. A missing tool or failed read prohibits inferring Issue content or identity, but does not
-block independent local research, repository inspection, tests, or work already specified by the user.
-Report context unavailability and distinguish local outcomes from unverified Issue requirements; never
+block ordinary repository work requested by the user through the normal repository workflow. The
+missing Issue capability blocks only actions that depend on that capability or verified Issue context;
+it does not disable ordinary repository tools or withdraw repository-work authorization. Do not infer
+Issue-specific requirements from unavailable context. Report context unavailability and distinguish
+local outcomes from unverified Issue requirements; never
 claim the Issue was read or updated without host evidence. A returned identity mismatch blocks
 Issue-dependent work and remote operations, but not independent local work. Summary publication is
 best-effort, not a work or session-completion gate.
@@ -118,8 +121,10 @@ not handing the work back. The final summary lists documents and confirmed comme
 Packaging relies on the existing `pi.skills: ["./skills"]` discovery; no manifest or runtime change
 is needed. `index.test.ts` checks that the spine routes to every lifecycle document, each document
 has a handoff, and stage/delivery and close-authorization invariants remain explicit, including the
-direct-operation/no-extra-questionnaire behavior, legacy fallback and refusal-stop boundaries. Local package
-tests and skill discovery checks need no real provider. Behavioral use is unverified until a real
+direct-operation/no-extra-questionnaire behavior, legacy fallback and refusal-stop boundaries. Local
+package tests also pin Issue-tool failure isolation: ordinary repository work continues through its
+normal workflow while Issue-dependent actions still require matching host context and capabilities.
+Tests and skill discovery checks need no real provider. Behavioral use is unverified until a real
 session is observed; the authoritative roster records that debt in [[submodule-workflow-skills]].
 
 Explicit exact-lease delivery is the sole workflow exception for updating an existing opened

@@ -16,10 +16,13 @@ framework.
   labels, comments or a bare number.
 - State the session intent in the user's language. Attempt `issue_context` before Issue-dependent
   conclusions, Issue-specific requirements or remote operations. Summary capability is optional.
-  If the tool is unavailable or its read fails, do not infer Issue content or identity; continue only
-  independent local research, repository inspection, tests, or work already specified by the user.
-  Clearly mark Issue context unavailable, distinguish local results from unverified Issue requirements,
-  and never claim the Issue was read or updated. When context is available, read fresh context before
+  If the tool is unavailable or its read fails, do not infer Issue content or identity; continue
+  ordinary repository work requested by the user through the normal repository workflow. The missing
+  Issue capability blocks only actions that depend on that capability or verified Issue context. Issue
+  capability failures do not disable ordinary repository tools; do not interpret them as withdrawal of
+  the user's repository-work authorization. Clearly mark Issue context unavailable, distinguish local
+  results from unverified Issue requirements, and never claim the Issue was read or updated. When
+  context is available, read fresh context before
   Issue conclusions or edits; use what the host returns without imposing a completeness-marker gate.
   A successful context read with `comments: []` is valid and means no comments were returned; do not
   block on an empty list, missing completeness marker, or comment segmentation. Still verify that the
@@ -101,9 +104,10 @@ user prompt. If neither path is available, report the capability gap; no shell/p
 Report the concise work result, remaining work and summary publication status in chat.
 Return to the caller even when publication is unavailable, failed or uncertain: **Issue session handed off**
 (not necessarily Issue complete or summary published). Claim remote publication only with a confirmed
-noteId. Failed context reads or identity mismatch must be reported as **Issue context unavailable**;
-continue or hand off independent local work when possible, but do not make Issue-dependent claims or
-remote changes without verified matching context. Summary publication alone never blocks the session.
+noteId. Failed context reads or identity mismatch must be reported as **Issue context unavailable**.
+Continue ordinary repository work requested by the user through the normal repository workflow; report
+Issue-dependent conclusions or remote actions as blocked without verified matching context. Summary
+publication alone never blocks the session.
 Recovery is deferred unless explicitly requested.
 
 For an explicitly requested rebased update of an existing opened same-repository PR/MR only, see
