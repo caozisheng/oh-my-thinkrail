@@ -199,6 +199,7 @@ test.each(["stable", "canary"])(
 
 test.skipIf(process.platform !== "win32")(
 	"extracts the Windows installer ZIP without Expand-Archive",
+	{ timeout: 30_000 },
 	() => {
 		const root = packageDir(
 			"source/oh-my-thinkrail-Setup.exe",

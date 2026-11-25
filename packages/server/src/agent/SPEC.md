@@ -1059,10 +1059,11 @@ recovery; they are not the default execution path when the direct capability is 
     factories see a view of `pi` that silently refuses any tool, command or flag the host's slots
     registered earlier in the same load (recorded per reload), so an installed `tool_search` or `/mcp`
     never replaces the host's (registered in [[pi-compatibility]] § Registry tool precedence). The child
-    set keeps the same rule: `childExtensionFactories` ends with the registry's child factories, built-ins
-    before installed ones; `pi-delegation` appends its own (`dropCancelledPrompt`, a DAG resource's worker
-    factories) after that list, so an installed child factory can still shadow a DAG worker tool until
-    `pi-delegation` places resource factories ahead of the installed child set. `piPackagesInstall` applies the kind rule ([[submodule-server-agent-packages]]
+    set keeps the same rule: `childExtensionFactories` ends with the built-in registry child factories, and
+    the installed ones go to `pi-delegation` apart, as `childInstalledExtensionFactories()`, which it loads
+    after a DAG resource's worker factories (and before its tool-less `dropCancelledPrompt`, which stays last),
+    so an installed child factory never shadows a host or DAG worker tool. A child loads no `builtin:` slot, so pi's first-registration
+    rule is the whole guard there. `piPackagesInstall` applies the kind rule ([[submodule-server-agent-packages]]
     § Kind detection) and returns `{ installed: "package" | "extension", … }`. The pi runtime build forces
     jiti's transform through the shared `withForcedJitiTransform`, serialized with installed-extension
     loads because the env is process-wide.
@@ -1071,7 +1072,8 @@ recovery; they are not the default execution path when the direct capability is 
     settings edge; a throwing resolver means nothing disabled) is read by `buildResourceLoader` at **every
     loader reload** (snapshotted beside project trust), so the gated registry factories skip a disabled
     extension and `extensionsOverride` omits its `<inline:…>` entry — new parents never load it — and by
-    `childExtensionFactories(workspaceId)` when a hidden child's loader runs. `refreshExtensionTools()`
+    `childExtensionFactories(workspaceId)` / `childInstalledExtensionFactories()` when a hidden child's
+    loader runs. `refreshExtensionTools()`
     updates live sessions: tools whose `sourceInfo.path` belongs to a disabled registry extension leave
     the active set (remembered per entry so re-enabling restores exactly the withheld tools, never ones
     that were inactive by default) idle-sync / streaming-deferred to `agent_settled`, latest policy wins, and
@@ -1286,8 +1288,9 @@ recovery; they are not the default execution path when the direct capability is 
     Children opting into extensions
     (`extensions: true` in their definition) get the **curated child set**
     (`childExtensionFactories` in `extensions`, pi `InlineExtension`s): the headless-search policy +
-    `pi-spec-graph` + every registry extension's `childExtensions` (named inline, from
-    [[submodule-server-extensions]]; today `web-access`'s `pi-web-access`) — deliberately not the parent's
+    `pi-spec-graph` + every built-in registry extension's `childExtensions` (named inline, from
+    [[submodule-server-extensions]]; today `web-access`'s `pi-web-access`; installed extensions' child halves
+    come from `childInstalledExtensionFactories()`, loaded after a resource's factories) — deliberately not the parent's
     full set
     (rationale + the listed-children carve-out: core decision #25). **Every** child, opted in or not,
     also loads the core's base set (`childBaseExtensionFactories`, same decision): `oversizedImageGuard`,
@@ -1631,7 +1634,7 @@ context-budget limitations and their upgrade checks live in [[pi-compatibility]]
 
 Pi owns provider retry; the host never adds one. Pi retries only errors that match its retryable
 patterns: "Anthropic stream ended before message_stop" does, "Could not parse Anthropic SSE event" does
-not. `patches/@earendil-works%2Fpi-ai@1.5.2.patch` (root `patchedDependencies`, upstream
+not. `patches/@earendil-works%2Fpi-ai@1.6.0.patch` (root `patchedDependencies`, upstream
 earendil-works/pi#10390, #564) fixes two defects in pi-ai's `anthropic-messages` SSE parser that end a
 turn with that parse error. The two fixes have different outcomes:
 
