@@ -50,6 +50,7 @@ import {
 	selectCurrentRouteChatTarget,
 	selectDiffScope,
 	selectFilesTreeView,
+	selectForegroundNeedsInput,
 	selectQuestionMayClaimFocus,
 	selectReadyCompletionAck,
 	selectSkillsStale,
@@ -5652,3 +5653,90 @@ test("agent availability hydrates from welcome and settings.changed, with old-ho
 	store.applyConfig(older);
 	expect(useAppStore.getState().disabledSubagents).toEqual([]);
 });
+
+for (const selectedByGroup of [{}, { foreground: "stale-placement" }]) {
+	test(`a host question push marks the rendered fallback without navigation (${JSON.stringify(selectedByGroup)})`, () => {
+		const document: WorkspaceLayoutDocument = {
+			version: 2,
+			center: {
+				kind: "group",
+				id: "foreground",
+				tabs: [
+					{ id: "chat:live", kind: "chat", sessionId: "live", name: "Live" },
+					{ id: "file", kind: "file", path: "a.ts", name: "a.ts" },
+				],
+			},
+			left: { visible: false, width: 0.2, groups: [] },
+			right: { visible: false, width: 0.2, groups: [] },
+			bottom: { visible: false, height: 0.3, alignment: "center", groups: [] },
+			toolRestoreTargets: {},
+		};
+		const attention = {
+			lastFocusedCenterGroupId: "foreground",
+			selectedByGroup,
+			lastFocusedSideGroupId: {},
+			navigationClockByGroup: { foreground: 0 },
+		};
+		useAppStore.setState({
+			activeWorkspaceId: "ws1",
+			layoutDocumentsByWorkspace: { ws1: document },
+			layoutAttentionByWorkspace: { ws1: attention },
+		});
+		const quiet: SessionStateRecord = {
+			sessionId: "live",
+			workspaceId: "ws1",
+			projectId: "p1",
+			state: {
+				execution: "running",
+				runId: "run",
+				needsInput: null,
+				completion: null,
+				completionUnread: false,
+				queuedCount: 0,
+				backgroundWork: false,
+			},
+		};
+		useAppStore.getState().applySessionState(quiet);
+		expect(selectForegroundNeedsInput(useAppStore.getState())).toBeNull();
+		expect(selectChatAttended(useAppStore.getState(), "ws1", "live")).toBe(true);
+		const observed: Array<SessionStateRecord | null> = [];
+		const unsubscribe = useAppStore.subscribe((state) =>
+			observed.push(selectForegroundNeedsInput(state)),
+		);
+		const question: SessionStateRecord = {
+			...quiet,
+			state: {
+				...quiet.state,
+				needsInput: { kind: "tool-response", interactionId: "tool:q", toolCallId: "q" },
+			},
+		};
+		try {
+			useAppStore.getState().applySessionState(question);
+			expect(observed.at(-1)).toEqual(question);
+			expect(useAppStore.getState().layoutAttentionByWorkspace.ws1).toBe(attention);
+			expect(attention.selectedByGroup).toEqual(selectedByGroup);
+			useAppStore.setState({
+				layoutAttentionByWorkspace: {
+					ws1: {
+						...attention,
+						selectedByGroup: { foreground: "file" },
+					},
+				},
+			});
+			expect(observed.at(-1)).toBeNull();
+			useAppStore.setState({
+				layoutDocumentsByWorkspace: {
+					ws1: { ...document, center: { kind: "group", id: "foreground", tabs: [] } },
+				},
+				layoutAttentionByWorkspace: { ws1: attention },
+			});
+			useAppStore.getState().applySessionState({ ...question, sessionId: "background" });
+			expect(observed.at(-1)).toBeNull();
+			expect(
+				useAppStore.getState().sessionStateByWorkspace.ws1?.live?.state.needsInput,
+			).not.toBeNull();
+		} finally {
+			unsubscribe();
+		}
+	});
+}

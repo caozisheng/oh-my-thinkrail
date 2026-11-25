@@ -643,10 +643,7 @@ export function selectWorkspaceNeedsAttention(
 	);
 }
 
-interface ForegroundNeedsInputState extends ChatAttentionState, SessionStateProjection {
-	tabsByWorkspace: Record<string, EditorTab[]>;
-	activeTabByWorkspace: Record<string, string | null>;
-}
+interface ForegroundNeedsInputState extends ChatAttentionState, SessionStateProjection {}
 
 /** The sole needs-input record eligible to mark Projects: the currently displayed center chat. */
 export function selectForegroundNeedsInput(
@@ -655,14 +652,7 @@ export function selectForegroundNeedsInput(
 	const workspaceId = state.activeWorkspaceId;
 	if (!workspaceId) return null;
 	const tab = selectAttentionCenterTab(state, workspaceId);
-	const attention = state.layoutAttentionByWorkspace[workspaceId];
-	if (
-		tab?.kind !== "chat" ||
-		!attention ||
-		readLayoutSelection(attention, attention.lastFocusedCenterGroupId) !== tab.id ||
-		!selectChatAttended(state, workspaceId, tab.sessionId)
-	)
-		return null;
+	if (tab?.kind !== "chat" || !selectChatAttended(state, workspaceId, tab.sessionId)) return null;
 	const record = state.sessionStateByWorkspace[workspaceId]?.[tab.sessionId];
 	return record && record.state.needsInput !== null ? record : null;
 }
