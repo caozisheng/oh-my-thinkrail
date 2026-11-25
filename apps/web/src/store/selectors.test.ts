@@ -311,8 +311,6 @@ test("Projects needs-input follows only the foreground chat placement", () => {
 		},
 		historyOpenRequest: null,
 		obscuredChatSessions: {},
-		tabsByWorkspace: {},
-		activeTabByWorkspace: {},
 		sessionStateByWorkspace: {
 			w1: { s1: question("s1", "w1", "p1"), s3: question("s3", "w1", "p1") },
 			w2: { s2: question("s2", "w2", "p2") },
@@ -340,7 +338,8 @@ test("Projects needs-input follows only the foreground chat placement", () => {
 	expect(record?.workspaceId).toBe("w1");
 	expect(record?.projectId).toBe("p1");
 	expect(foreground({ g1: "file" })).toBeNull();
-	expect(foreground({ g1: "missing" })).toBeNull();
+	expect(foreground({})?.sessionId).toBe("s1");
+	expect(foreground({ g1: "missing" })?.sessionId).toBe("s1");
 	expect(foreground({ g1: "chat:s1" }, "w2")?.sessionId).toBe("s2");
 	expect(foreground({ g1: "chat:s1" }, null)).toBeNull();
 	expect(selectForegroundNeedsInput({ ...state, obscuredChatSessions: { s1: true } })).toBeNull();
