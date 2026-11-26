@@ -138,7 +138,7 @@ in `dependencies`. A `sessionExtensions` that throws or does not return a list b
 load error in each chat; other extensions are not affected.
 
 <!-- guard: built-in-only-fields -->
-`queries`, `apiVersion` and `supersedesPackages` are fields only ThinkRail's built-in extensions
+`queries`, `apiVersion`, `supersedesPackages` and `childSessionExtensions` are fields only ThinkRail's built-in extensions
 declare; they are not part of extension API 1.0, and `satisfies ServerExtension` rejects them. A server
 half that declares one does not load, and its row names the field, as in "\"queries\" is not part of
 extension API 1.0: only a built-in extension declares it". A default export that is not an object with
