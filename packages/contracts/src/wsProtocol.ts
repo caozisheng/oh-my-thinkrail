@@ -64,6 +64,11 @@ import type {
 	ProviderStatusReport,
 	ProviderWarning,
 	PrPreview,
+	PullRequestAuthorPage,
+	PullRequestFilter,
+	PullRequestPage,
+	PullRequestSizeEntry,
+	PullRequestSummary,
 	ResourceHistoryCursor,
 	ResourceHistoryPage,
 	ResourceKind,
@@ -178,7 +183,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 150;
+export const PROTOCOL_VERSION = 151;
 export const MATRIX_PROTOCOL_VERSION = 143;
 export const MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION = 144;
 export const ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION = 149;
@@ -226,6 +231,7 @@ export const CHAT_ATTACHMENTS_PROTOCOL_VERSION = 142;
 export const INSTALLED_EXTENSIONS_PROTOCOL_VERSION = 146;
 export const EXTENSION_BROWSE_PROTOCOL_VERSION = 147;
 export const EXTENSION_QUERY_PROTOCOL_VERSION = 145;
+export const PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151;
 export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
 export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";
@@ -561,6 +567,10 @@ export const WS_METHODS = {
 	prReady: "pr.ready",
 	prMerge: "pr.merge",
 	prReopen: "pr.reopen",
+	prList: "pr.list",
+	prGet: "pr.get",
+	prSizes: "pr.sizes",
+	prAuthors: "pr.authors",
 	fsReadDir: "fs.readDir",
 	fsReadFile: "fs.readFile",
 	fsCopy: "fs.copy",
@@ -1301,6 +1311,19 @@ export interface WsMethodMap {
 		params: { workspaceId: string; branch: string; number: number };
 		result: Ack;
 	};
+	"pr.list": {
+		params: { projectId: string; filter: PullRequestFilter; query?: string; cursor?: string };
+		result: PullRequestPage;
+	};
+	"pr.get": { params: { projectId: string; number: number }; result: PullRequestSummary | null };
+	"pr.authors": {
+		params: { projectId: string; cursor?: string };
+		result: PullRequestAuthorPage;
+	};
+	"pr.sizes": {
+		params: { projectId: string; numbers: number[] };
+		result: PullRequestSizeEntry[];
+	};
 	"pr.open": {
 		params: {
 			workspaceId: string;
@@ -1846,6 +1869,8 @@ export type WsErrorCode =
 	| "PACKAGE_UNTRUSTED"
 	| "PACKAGE_UNKNOWN"
 	| "PACKAGE_INSTALL_FAILED"
+	| "PACKAGE_NOT_FOUND"
+	| "PACKAGE_REGISTRY_UNREACHABLE"
 	| "PACKAGE_INSTALLED_UNLISTED"
 	| "PACKAGE_REMOVE_FAILED"
 	| "PACKAGE_UPDATE_FAILED"

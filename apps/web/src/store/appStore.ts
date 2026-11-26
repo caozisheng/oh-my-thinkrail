@@ -66,6 +66,7 @@ import {
 	isControlMessage,
 	isLineWidth,
 	isLocalePreference,
+	isPullRequestFilter,
 	isQuestionPanelHeight,
 	isSettleIdleDays,
 	isSubagentCompletionMessage,
@@ -75,6 +76,7 @@ import {
 	type KeybindingOverrides,
 	normalizeFontSettings,
 	normalizeThemePreference,
+	type PullRequestFilter,
 	readToolResponseMessage,
 	sameModel,
 } from "@thinkrail/contracts";
@@ -1323,6 +1325,7 @@ interface AppState {
 	disabledExtensions: string[];
 	extensionSettings: ExtensionSettingValues;
 	keybindingOverrides: KeybindingOverrides;
+	pullRequestFilters: Record<string, PullRequestFilter>;
 	otherAgentSkills: boolean;
 	disabledPackages: string[];
 	locale: string;
@@ -1830,6 +1833,11 @@ function configPatch(config: AppConfig) {
 			!Array.isArray(config.keybindings)
 				? config.keybindings
 				: DEFAULT_CONFIG.keybindings,
+		pullRequestFilters: Object.fromEntries(
+			Object.entries(config.pullRequestFilters ?? {}).filter((entry) =>
+				isPullRequestFilter(entry[1]),
+			),
+		),
 		otherAgentSkills: typeof config.otherAgentSkills === "boolean" ? config.otherAgentSkills : true,
 		disabledPackages: Array.isArray(config.disabledPackages)
 			? config.disabledPackages
@@ -2838,6 +2846,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 	disabledExtensions: DEFAULT_CONFIG.disabledExtensions,
 	extensionSettings: DEFAULT_CONFIG.extensionSettings,
 	keybindingOverrides: DEFAULT_CONFIG.keybindings,
+	pullRequestFilters: DEFAULT_CONFIG.pullRequestFilters,
 	otherAgentSkills: DEFAULT_CONFIG.otherAgentSkills,
 	disabledPackages: DEFAULT_CONFIG.disabledPackages,
 	locale: DEFAULT_CONFIG.locale,

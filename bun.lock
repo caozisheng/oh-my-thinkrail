@@ -22,23 +22,23 @@
         "pi-spec-graph": "workspace:*",
         "pi-todos": "workspace:*",
         "turbo": "2.11.10",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "apps/cli": {
       "name": "@thinkrail/cli",
       "version": "0.0.0",
       "bin": {
-        "thinkrail": "./src/index.ts",
+        "thinkrail": "./src/index.ts"
       },
       "dependencies": {
         "@thinkrail/server": "workspace:*",
-        "@thinkrail/shared": "workspace:*",
+        "@thinkrail/shared": "workspace:*"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "apps/desktop": {
       "name": "@thinkrail/desktop",
@@ -47,14 +47,14 @@
         "@thinkrail/contracts": "workspace:*",
         "@thinkrail/locales": "workspace:*",
         "@thinkrail/server": "workspace:*",
-        "@thinkrail/shared": "workspace:*",
+        "@thinkrail/shared": "workspace:*"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
         "electrobun": "2.0.5",
         "resedit": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "apps/web": {
       "name": "@thinkrail/web",
@@ -89,7 +89,7 @@
         "react-markdown": "catalog:",
         "react-virtuoso": "catalog:",
         "remark-gfm": "catalog:",
-        "zustand": "5.0.16",
+        "zustand": "5.0.16"
       },
       "devDependencies": {
         "@babel/core": "7.29.7",
@@ -107,8 +107,8 @@
         "resedit": "catalog:",
         "tailwindcss": "catalog:",
         "typescript": "catalog:",
-        "vite": "8.3.5",
-      },
+        "vite": "8.3.5"
+      }
     },
     "apps/website": {
       "name": "@thinkrail/website",
@@ -117,7 +117,7 @@
         "@thinkrail/website-analytics": "workspace:*",
         "lucide-react": "catalog:",
         "react": "catalog:",
-        "react-dom": "catalog:",
+        "react-dom": "catalog:"
       },
       "devDependencies": {
         "@astrojs/markdown-satteri": "0.4.6",
@@ -138,12 +138,12 @@
         "sharp": "0.35.5",
         "tailwindcss": "catalog:",
         "tw-animate-css": "1.4.0",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "extension-examples/palette": {
       "name": "@thinkrail/example-extension-palette",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@remixicon/react": "catalog:",
@@ -154,12 +154,12 @@
         "react": "catalog:",
         "react-dom": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "packages/artifact-tests": {
       "name": "@thinkrail/artifact-tests",
@@ -167,13 +167,13 @@
       "dependencies": {
         "@thinkrail/cli": "workspace:*",
         "@thinkrail/server": "workspace:*",
-        "@thinkrail/shared": "workspace:*",
+        "@thinkrail/shared": "workspace:*"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
         "resedit": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "packages/contracts": {
       "name": "@thinkrail/contracts",
@@ -182,42 +182,42 @@
         "@earendil-works/pi-agent-core": "catalog:",
         "@earendil-works/pi-ai": "catalog:",
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "packages/extension-api": {
       "name": "@thinkrail/extension-api",
       "version": "0.0.0",
       "dependencies": {
         "@thinkrail/contracts": "workspace:*",
-        "@thinkrail/locales": "workspace:*",
+        "@thinkrail/locales": "workspace:*"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
-        "react": "catalog:",
+        "react": "catalog:"
       },
       "optionalPeers": [
         "@earendil-works/pi-coding-agent",
-        "react",
-      ],
+        "react"
+      ]
     },
     "packages/extension-sdk": {
       "name": "@thinkrail/extension-sdk",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "bin": {
-        "thinkrail-extension": "./bin/thinkrail-extension.js",
+        "thinkrail-extension": "./bin/thinkrail-extension.js"
       },
       "dependencies": {
         "@tailwindcss/node": "catalog:",
         "@tailwindcss/oxide": "catalog:",
         "rolldown": "1.2.15",
-        "tailwindcss": "catalog:",
+        "tailwindcss": "catalog:"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -230,25 +230,25 @@
         "react": "catalog:",
         "react-dom": "catalog:",
         "rolldown-plugin-dts": "0.30.2",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
         "@types/react": "^19.3.0",
-        "@types/react-dom": "^19.3.0",
+        "@types/react-dom": "^19.3.0"
       },
       "optionalPeers": [
         "@earendil-works/pi-coding-agent",
         "@types/react",
-        "@types/react-dom",
-      ],
+        "@types/react-dom"
+      ]
     },
     "packages/locales": {
       "name": "@thinkrail/locales",
       "version": "0.0.0",
       "dependencies": {
         "i18next": "26.5.11",
-        "react-i18next": "17.1.9",
+        "react-i18next": "17.1.9"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
@@ -256,11 +256,11 @@
         "@types/react-dom": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
-        "react": "catalog:",
-      },
+        "react": "catalog:"
+      }
     },
     "packages/pi-background-commands": {
       "name": "pi-background-commands",
@@ -270,18 +270,18 @@
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "packages/pi-dag": {
       "name": "pi-dag",
       "version": "0.0.0",
       "dependencies": {
-        "pi-delegation": "workspace:*",
+        "pi-delegation": "workspace:*"
       },
       "devDependencies": {
         "@earendil-works/pi-agent-core": "catalog:",
@@ -289,14 +289,14 @@
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-agent-core": "*",
         "@earendil-works/pi-ai": "*",
         "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "packages/pi-delegation": {
       "name": "pi-delegation",
@@ -307,19 +307,19 @@
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-agent-core": "*",
         "@earendil-works/pi-ai": "*",
-        "@earendil-works/pi-coding-agent": "*",
-      },
+        "@earendil-works/pi-coding-agent": "*"
+      }
     },
     "packages/pi-subagents": {
       "name": "pi-subagents",
       "version": "0.0.0",
       "dependencies": {
-        "pi-delegation": "workspace:*",
+        "pi-delegation": "workspace:*"
       },
       "devDependencies": {
         "@earendil-works/pi-agent-core": "catalog:",
@@ -327,14 +327,14 @@
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-agent-core": "*",
         "@earendil-works/pi-ai": "*",
         "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "packages/pi-thinkrail-workflow": {
       "name": "pi-thinkrail-workflow",
@@ -342,11 +342,11 @@
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
-        "@earendil-works/pi-coding-agent": "*",
-      },
+        "@earendil-works/pi-coding-agent": "*"
+      }
     },
     "packages/pi-todos": {
       "name": "pi-todos",
@@ -355,12 +355,12 @@
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "packages/resource-renderers": {
       "name": "@thinkrail/resource-renderers",
@@ -382,15 +382,15 @@
         "react-markdown": "catalog:",
         "react-virtuoso": "catalog:",
         "rehype-raw": "7.0.0",
-        "rehype-sanitize": "6.0.0",
+        "rehype-sanitize": "6.0.0"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
         "remark-gfm": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "packages/server": {
       "name": "@thinkrail/server",
@@ -430,42 +430,42 @@
         "remark-rehype": "11.1.2",
         "trash": "10.1.1",
         "typebox": "catalog:",
-        "unified": "11.0.5",
+        "unified": "11.0.5"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "packages/shared": {
       "name": "@thinkrail/shared",
       "version": "0.0.0",
       "dependencies": {
-        "@thinkrail/contracts": "workspace:*",
+        "@thinkrail/contracts": "workspace:*"
       },
       "devDependencies": {
         "@resvg/resvg-js": "catalog:",
         "@types/bun": "catalog:",
         "resedit": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "packages/spec-graph": {
       "name": "pi-spec-graph",
       "version": "0.0.0",
       "dependencies": {
-        "yaml": "2.9.1",
+        "yaml": "2.9.1"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "packages/ui": {
       "name": "@thinkrail/ui",
@@ -485,22 +485,22 @@
         "react": "catalog:",
         "react-dom": "catalog:",
         "react-resizable-panels": "2.1.9",
-        "tailwind-merge": "3.7.0",
+        "tailwind-merge": "3.7.0"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "packages/website-analytics": {
       "name": "@thinkrail/website-analytics",
       "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "pi-extensions/ask-user-question": {
       "name": "@thinkrail/pi-ask-user-question",
@@ -511,13 +511,13 @@
         "@earendil-works/pi-tui": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
         "@earendil-works/pi-tui": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "pi-extensions/next-steps": {
       "name": "@thinkrail/pi-next-steps",
@@ -527,13 +527,13 @@
         "@earendil-works/pi-tui": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
         "@earendil-works/pi-tui": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "pi-extensions/session-insights": {
       "name": "@thinkrail/pi-session-insights",
@@ -542,30 +542,30 @@
         "@earendil-works/pi-ai": "catalog:",
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
-        "@earendil-works/pi-coding-agent": "*",
-      },
+        "@earendil-works/pi-coding-agent": "*"
+      }
     },
     "pi-extensions/visualize": {
       "name": "@thinkrail/pi-visualize",
       "version": "0.3.0",
       "dependencies": {
-        "lovely-mermaid": "0.3.3",
+        "lovely-mermaid": "0.3.3"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@earendil-works/pi-tui": "catalog:",
         "@types/bun": "catalog:",
         "typebox": "catalog:",
-        "typescript": "catalog:",
+        "typescript": "catalog:"
       },
       "peerDependencies": {
         "@earendil-works/pi-coding-agent": "*",
         "@earendil-works/pi-tui": "*",
-        "typebox": "*",
-      },
+        "typebox": "*"
+      }
     },
     "thinkrail-extensions/ask-user-question": {
       "name": "@thinkrail/ext-ask-user-question",
@@ -578,7 +578,7 @@
         "@thinkrail/pi-ask-user-question": "workspace:*",
         "@thinkrail/resource-renderers": "workspace:*",
         "@thinkrail/ui": "workspace:*",
-        "react": "catalog:",
+        "react": "catalog:"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -586,8 +586,8 @@
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
         "react-dom": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "thinkrail-extensions/hint-mode": {
       "name": "@thinkrail/ext-hint-mode",
@@ -597,14 +597,14 @@
         "@thinkrail/locales": "workspace:*",
         "@thinkrail/ui": "workspace:*",
         "react": "catalog:",
-        "react-dom": "catalog:",
+        "react-dom": "catalog:"
       },
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "thinkrail-extensions/next-steps": {
       "name": "@thinkrail/ext-next-steps",
@@ -613,14 +613,14 @@
         "@thinkrail/extension-api": "workspace:*",
         "@thinkrail/locales": "workspace:*",
         "@thinkrail/pi-next-steps": "workspace:*",
-        "react": "catalog:",
+        "react": "catalog:"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "thinkrail-extensions/outputs": {
       "name": "@thinkrail/ext-outputs",
@@ -630,14 +630,14 @@
         "@thinkrail/locales": "workspace:*",
         "@thinkrail/resource-renderers": "workspace:*",
         "react": "catalog:",
-        "typebox": "catalog:",
+        "typebox": "catalog:"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "thinkrail-extensions/session-insights": {
       "name": "@thinkrail/ext-session-insights",
@@ -651,7 +651,7 @@
         "@thinkrail/ui": "workspace:*",
         "@xyflow/react": "catalog:",
         "react": "catalog:",
-        "react-virtuoso": "catalog:",
+        "react-virtuoso": "catalog:"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -659,8 +659,8 @@
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
         "react-dom": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "thinkrail-extensions/visualize": {
       "name": "@thinkrail/ext-visualize",
@@ -674,51 +674,51 @@
         "@thinkrail/ui": "workspace:*",
         "linkedom": "0.18.14",
         "mermaid": "catalog:",
-        "react": "catalog:",
+        "react": "catalog:"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
-        "typescript": "catalog:",
-      },
+        "typescript": "catalog:"
+      }
     },
     "thinkrail-extensions/web-access": {
       "name": "@thinkrail/ext-web-access",
       "version": "0.0.0",
       "dependencies": {
         "@thinkrail/extension-api": "workspace:*",
-        "pi-web-access": "0.45.0",
+        "pi-web-access": "0.45.0"
       },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
+        "typescript": "catalog:"
+      }
+    }
   },
   "trustedDependencies": [
-    "@biomejs/biome",
+    "@biomejs/biome"
   ],
   "patchedDependencies": {
     "react-virtuoso@4.18.19": "patches/react-virtuoso@4.18.19.patch",
-    "@earendil-works/pi-ai@1.6.0": "patches/@earendil-works%2Fpi-ai@1.6.0.patch",
     "pi-web-access@0.45.0": "patches/pi-web-access@0.45.0.patch",
     "@pierre/diffs@1.6.4": "patches/@pierre%2Fdiffs@1.6.4.patch",
+    "@earendil-works/pi-ai@1.6.1": "patches/@earendil-works%2Fpi-ai@1.6.1.patch"
   },
   "overrides": {
     "dompurify": "3.4.17",
     "react": "catalog:",
-    "react-dom": "catalog:",
+    "react-dom": "catalog:"
   },
   "catalog": {
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "@dagrejs/dagre": "3.1.3",
-    "@earendil-works/pi-agent-core": "1.6.0",
-    "@earendil-works/pi-ai": "1.6.0",
-    "@earendil-works/pi-coding-agent": "1.6.0",
-    "@earendil-works/pi-tui": "1.6.0",
+    "@earendil-works/pi-agent-core": "1.6.1",
+    "@earendil-works/pi-ai": "1.6.1",
+    "@earendil-works/pi-coding-agent": "1.6.1",
+    "@earendil-works/pi-tui": "1.6.1",
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@fontsource-variable/orbitron": "5.3.0",
@@ -746,7 +746,7 @@
     "resedit": "3.1.0",
     "tailwindcss": "4.3.3",
     "typebox": "1.3.27",
-    "typescript": "7.1.0-beta",
+    "typescript": "7.1.0-beta"
   },
   "packages": {
     "@acemir/cssom": ["@acemir/cssom@0.9.32", "https://registry.npmmirror.com/@acemir/cssom/-/cssom-0.9.32.tgz", {}, "sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ=="],
@@ -809,7 +809,7 @@
 
     "@aws-sdk/credential-provider-login": ["@aws-sdk/credential-provider-login@3.972.78", "https://registry.npmmirror.com/@aws-sdk/credential-provider-login/-/credential-provider-login-3.972.78.tgz", { "dependencies": { "@aws-sdk/core": "^3.978.0", "@aws-sdk/nested-clients": "^3.997.45", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-eUtswnXu0+Ii9ieRK+0L7aPFV3Z/dnW2VntJzjBP9xs8s+8p5nBNuymIXtXwZ+5r5+XJP3e32nMkuZ/r0HozEA=="],
 
-    "@aws-sdk/credential-provider-node": ["@aws-sdk/credential-provider-node@3.972.83", "https://registry.npmmirror.com/@aws-sdk/credential-provider-node/-/credential-provider-node-3.972.83.tgz", { "dependencies": { "@aws-sdk/credential-provider-env": "^3.972.71", "@aws-sdk/credential-provider-http": "^3.972.73", "@aws-sdk/credential-provider-ini": "^3.973.16", "@aws-sdk/credential-provider-process": "^3.972.71", "@aws-sdk/credential-provider-sso": "^3.973.15", "@aws-sdk/credential-provider-web-identity": "^3.972.77", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/credential-provider-imds": "^4.4.16", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-jdso7ejzfRnatxMUZK4S/U6KbaDPCvfIV4XL+IQAPFDBt5rj5Fq595euqlK8Le4lNCMFR9oUpt+1l0aMgaayOQ=="],
+    "@aws-sdk/credential-provider-node": ["@aws-sdk/credential-provider-node@3.972.82", "", { "dependencies": { "@aws-sdk/credential-provider-env": "^3.972.70", "@aws-sdk/credential-provider-http": "^3.972.72", "@aws-sdk/credential-provider-ini": "^3.973.15", "@aws-sdk/credential-provider-process": "^3.972.70", "@aws-sdk/credential-provider-sso": "^3.973.14", "@aws-sdk/credential-provider-web-identity": "^3.972.76", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/credential-provider-imds": "^4.4.16", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-znDkEOGXB8W3kG1LJUKP3foBZY/9qLM0eil/DxWXSp37XsdsRLQHE/d/OaCGGVgKpA6znR38h/+INk8do1FjiA=="],
 
     "@aws-sdk/credential-provider-process": ["@aws-sdk/credential-provider-process@3.972.71", "https://registry.npmmirror.com/@aws-sdk/credential-provider-process/-/credential-provider-process-3.972.71.tgz", { "dependencies": { "@aws-sdk/core": "^3.978.0", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-lYmXJa4gvq4xN1lrT5NiP5vIYYKcGWAdj8y+8o6dlcateB5eF3Dn8DtmjjHKfMBrTPAMr2pebIiX/UOj8c1/UA=="],
 
@@ -973,21 +973,21 @@
 
     "@dnd-kit/utilities": ["@dnd-kit/utilities@3.2.2", "https://registry.npmmirror.com/@dnd-kit/utilities/-/utilities-3.2.2.tgz", { "dependencies": { "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0" } }, "sha512-+MKAJEOfaBe5SmV6t34p80MMKhjvUz0vRrvVJbPT0WElzaOJ/1xs+D+KDv+tD/NE5ujfrChEcshd4fLn0wpiqg=="],
 
-    "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@1.6.0", "",  { "dependencies": { "@earendil-works/pi-ai": "1.6.0", "@earendil-works/pi-schema": "1.6.0" } }, "sha512-IU/x+2XtE4KIdIkEndZssdLPbIUR38Btj+Q7vjIIXIK7GSamLtDH5jOw/dzBWAvWFAgZ2dslF5sPc6GcGOnS+w=="],
+    "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@1.6.1", "", { "dependencies": { "@earendil-works/pi-ai": "1.6.1", "@earendil-works/pi-schema": "1.6.1" } }, "sha512-1pkZKTaO1sSY0xVw/W45ULLQRg0rOOt6oJdeTG06upAeIq1UGHA0o+MR9UN6efPi7yW48uVinlFId7fwQilxvg=="],
 
-    "@earendil-works/pi-ai": ["@earendil-works/pi-ai@1.6.0", "",  { "dependencies": { "@anthropic-ai/sdk": "0.129.0", "@aws-sdk/client-bedrock-runtime": "3.1127.0", "@earendil-works/pi-schema": "1.6.0", "@earendil-works/pi-telemetry": "1.6.0", "@google/genai": "2.32.0", "@smithy/node-http-handler": "4.12.1", "http-proxy-agent": "9.1.0", "https-proxy-agent": "9.1.0", "openai": "7.59.0", "partial-json": "0.1.7" }, "bin": { "pi-ai": "dist/cli.js" } }, "sha512-9hL+eygFDEiFp//cydeUfmFsKmEqpmvsNPb10Y1W8+m5K9O+sx1hMStfu6nukrBD5sl6mP4RykCYBBNEgsVLfw=="],
+    "@earendil-works/pi-ai": ["@earendil-works/pi-ai@1.6.1", "", { "dependencies": { "@anthropic-ai/sdk": "0.129.0", "@aws-sdk/client-bedrock-runtime": "3.1127.0", "@aws-sdk/credential-provider-node": "3.972.82", "@earendil-works/pi-schema": "1.6.1", "@earendil-works/pi-telemetry": "1.6.1", "@google/genai": "3.6.1", "@smithy/node-http-handler": "4.12.1", "http-proxy-agent": "9.1.0", "https-proxy-agent": "9.1.0", "openai": "7.59.0", "partial-json": "0.1.7" }, "bin": { "pi-ai": "dist/cli.js" } }, "sha512-EyorgVyA2s4MxNl7YOapzOpdxrc8HUgxHEIOo8QRMK35P7PCOsSiWzMLf6ixKl3/obkg7I3wGJWHq+FdbUz43g=="],
 
-    "@earendil-works/pi-codemode": ["@earendil-works/pi-codemode@1.6.0", "",  { "dependencies": { "quickjs-wasi": "3.6.2" } }, "sha512-GAgAy7iJCVbeiuqq2dTIuNj3aXTMUeTF8Nu8LZs72e8ueGGDU5L3/D8VxzTHALIpQ1/q8u1tfmB3iYS2Nopchw=="],
+    "@earendil-works/pi-codemode": ["@earendil-works/pi-codemode@1.6.1", "", { "dependencies": { "quickjs-wasi": "3.6.2" } }, "sha512-xogcFe38Ek/9cabCz6sP52FjUKtuNDwLmqeM1aQiwOF5rg7jZ//FRpnMeYyhvRyod2UYhhf/ojfg6rRdXi0peQ=="],
 
-    "@earendil-works/pi-coding-agent": ["@earendil-works/pi-coding-agent@1.6.0", "",  { "dependencies": { "@earendil-works/pi-agent-core": "1.6.0", "@earendil-works/pi-ai": "1.6.0", "@earendil-works/pi-codemode": "1.6.0", "@earendil-works/pi-mcp": "1.6.0", "@earendil-works/pi-tui": "1.6.0", "@silvia-odwyer/photon-node": "0.3.4", "brace-expansion": "5.0.12", "chalk": "6.0.0", "cross-spawn": "7.0.6", "diff": "8.0.4", "highlight.js": "10.7.3", "hosted-git-info": "9.0.3", "ignore": "7.0.8", "jiti": "2.7.0", "lovely-mermaid": "0.3.3", "minimatch": "11.0.3", "proper-lockfile": "4.1.2", "quickjs-wasi": "3.6.2", "semver": "7.8.5", "typebox": "1.3.27", "undici": "8.12.4", "yaml": "2.9.0" }, "bin": { "pi": "dist/bundle/cli.js" } }, "sha512-zX1BVEsshx7A2MRuQ6jfr3RJGWw4Wn+vLq5ZfmlvS1RskhRmByaSZVXH/zcwRrWHO7qPgs98pNCbPOEti/t0fQ=="],
+    "@earendil-works/pi-coding-agent": ["@earendil-works/pi-coding-agent@1.6.1", "", { "dependencies": { "@earendil-works/pi-agent-core": "1.6.1", "@earendil-works/pi-ai": "1.6.1", "@earendil-works/pi-codemode": "1.6.1", "@earendil-works/pi-mcp": "1.6.1", "@earendil-works/pi-tui": "1.6.1", "@silvia-odwyer/photon-node": "0.3.4", "brace-expansion": "5.0.12", "chalk": "6.0.0", "cross-spawn": "7.0.6", "diff": "8.0.4", "highlight.js": "10.7.3", "hosted-git-info": "9.0.3", "ignore": "7.0.8", "jiti": "2.7.0", "lovely-mermaid": "0.3.3", "minimatch": "11.0.3", "proper-lockfile": "4.1.2", "quickjs-wasi": "3.6.2", "semver": "7.8.5", "typebox": "1.3.27", "undici": "8.12.4", "yaml": "2.9.0" }, "bin": { "pi": "dist/bundle/cli.js" } }, "sha512-+VSb95N4PB+G7TLceg7wkbJT31BEeIBnUT9500g9a1rOsCx78CUw1YFGtLcRhS6jj8pdfm0fFwrakrMLu6lVAQ=="],
 
-    "@earendil-works/pi-mcp": ["@earendil-works/pi-mcp@1.6.0", "",  { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-dhqAR6MP8Fp3b8LEcBFOyxMZpGSozUAdzF0Dbl7OvojsjZrQsDV3ZKn85WRbwjHb4WjQUCVBsIZXwoyQxXeunw=="],
+    "@earendil-works/pi-mcp": ["@earendil-works/pi-mcp@1.6.1", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-qGdAuqMsXjvOURevlc5alxPO1tRthTumFiSHU+QtNfCQpFIEMaec3RZC3mdjqLxRTKHjPBkJXzYPBGdB8bf1Zg=="],
 
-    "@earendil-works/pi-schema": ["@earendil-works/pi-schema@1.6.0", "",  {}, "sha512-jD0VRCUcFzWQ5zN82pOuoHNN42/3pu4E5krtpiKknvPq4g2m+fuO38lj+xnZhuVpYcd2G0qlmr8lE6ZMzkad7Q=="],
+    "@earendil-works/pi-schema": ["@earendil-works/pi-schema@1.6.1", "", {}, "sha512-Q/6W4IiDdIQUochCuvXFpglTByNTFTuMYvMqXjcRiOnxOl/3mQYLAZpZTpBSRWiS4WgeV7NyH/8dQp6ipYZeNg=="],
 
-    "@earendil-works/pi-telemetry": ["@earendil-works/pi-telemetry@1.6.0", "",  {}, "sha512-MNL0TvtpgoSfX7mBLSVgzxTW6yvT8VLEpHvbWnZsIp92FtqVvx+4q9DxWZdX8KvcQqBs0GseAgVnLdVFinjN9Q=="],
+    "@earendil-works/pi-telemetry": ["@earendil-works/pi-telemetry@1.6.1", "", {}, "sha512-3gyjVQlVrPwEq7ZCea8++prMwUkuNXM3v/mzTJ9knJAhqrYLxSVAjYzA1iC3KLq8ismmSQIcnFp++qTwQwNToA=="],
 
-    "@earendil-works/pi-tui": ["@earendil-works/pi-tui@1.6.0", "",  { "dependencies": { "get-east-asian-width": "1.6.0", "marked": "18.0.11", "marked-cjk-friendly": "0.1.2" } }, "sha512-nVtWZ4rYr3KHDla3skGAWG5XoITEUJCoEx1AsWv1yKxV7+v86ulD2hxVn/P+COI6jsoeQmj3orqHbCHZwAUsUg=="],
+    "@earendil-works/pi-tui": ["@earendil-works/pi-tui@1.6.1", "", { "dependencies": { "get-east-asian-width": "1.6.0", "marked": "18.0.11", "marked-cjk-friendly": "0.1.2" } }, "sha512-6WQPbhuoQKCIiu5Jp4S/cFdeqdm4SbAXlgCytsY/4ycR1sqHY4nB8xPTfGUucn61hVnN7hkOzI1CWNmE8UDQ3A=="],
 
     "@emnapi/core": ["@emnapi/core@1.11.3", "https://registry.npmmirror.com/@emnapi/core/-/core-1.11.3.tgz", { "dependencies": { "@emnapi/wasi-threads": "1.2.3", "tslib": "^2.4.0" } }, "sha512-zLpS5asjEb7lq8jYLq37N6XKaE41DIexlY1rF/z4/tIl3wo13Sqm28fRyfIsKZD+NZ8mM5RoKkpW/rBcuoSZSg=="],
 
@@ -1009,7 +1009,7 @@
 
     "@fontsource-variable/orbitron": ["@fontsource-variable/orbitron@5.3.0", "https://registry.npmmirror.com/@fontsource-variable/orbitron/-/orbitron-5.3.0.tgz", {}, "sha512-KwW0YX1DJNqF0v86W1hZonuauypCFaltGdpB6qwCeu5bUyHoFpeZ84aAjChZSRF7RWZFithg/il0nMwYxJgqDA=="],
 
-    "@google/genai": ["@google/genai@2.32.0", "",  { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"], "hasInstallScript": true }, "sha512-60c79uXpR0a47bmGqDxbXEBuQUalNmwo5mx5kqb91jIW4FoqpsLSt86DeVhRhtH5+s/16Wqxt3sXzFQn2U1OHQ=="],
+    "@google/genai": ["@google/genai@3.6.1", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.6.5", "ws": "^8.21.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-DQIkZkl+VoZc+RUSaJ41vRuywjQDpP0t/oUf5/ddQhNW6JsPjVULW2EgHmuJ1mrr6ACtrmUdPlqtNXF1yfKySg=="],
 
     "@hono/node-server": ["@hono/node-server@2.1.7", "https://registry.npmmirror.com/@hono/node-server/-/node-server-2.1.7.tgz", { "peerDependencies": { "hono": "^4 || ^5.0.0-0" } }, "sha512-Wr0E6S+v2Bw9FkpGNP5BQ5QbJvclUa06UVehd65WFZe6XeJwbrKQQ5wPDevc0IC+QyzbO7v3Llh5uo45IZcSnA=="],
 
@@ -2643,7 +2643,7 @@
 
     "property-information": ["property-information@7.2.0", "https://registry.npmmirror.com/property-information/-/property-information-7.2.0.tgz", {}, "sha512-IAtzIB6sUiWaJYrX9smp3V46pBGbBeLFRGdh25kg1334VcBlD8HzhPeNIWQH9zhGmo2itIe25EHt9dQP7G5hmg=="],
 
-    "protobufjs": ["protobufjs@7.6.4", "https://registry.npmmirror.com/protobufjs/-/protobufjs-7.6.4.tgz", { "dependencies": { "@protobufjs/aspromise": "^1.1.2", "@protobufjs/base64": "^1.1.2", "@protobufjs/codegen": "^2.0.5", "@protobufjs/eventemitter": "^1.1.1", "@protobufjs/fetch": "^1.1.1", "@protobufjs/float": "^1.0.2", "@protobufjs/path": "^1.1.2", "@protobufjs/pool": "^1.1.0", "@protobufjs/utf8": "^1.1.1", "@types/node": ">=13.7.0", "long": "^5.3.2" } }, "sha512-RJJPTTpvFfHcWLkIa2JFWK4XvtSzS0yEWDmunqHXli1h3JlkbcQZXDZdcWxv+JK3Xsl5/UFDPZ0iGm7DAengYw=="],
+    "protobufjs": ["protobufjs@7.6.6", "", { "dependencies": { "@protobufjs/aspromise": "^1.1.2", "@protobufjs/base64": "^1.1.2", "@protobufjs/codegen": "^2.0.5", "@protobufjs/eventemitter": "^1.1.1", "@protobufjs/fetch": "^1.1.1", "@protobufjs/float": "^1.0.2", "@protobufjs/path": "^1.1.2", "@protobufjs/pool": "^1.1.0", "@protobufjs/utf8": "^1.1.1", "@types/node": ">=13.7.0", "long": "^5.3.2" }, "hasInstallScript": true }, "sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg=="],
 
     "proxy-addr": ["proxy-addr@2.0.8", "https://registry.npmmirror.com/proxy-addr/-/proxy-addr-2.0.8.tgz", { "dependencies": { "forwarded": "0.2.0", "ipaddr.js": "1.9.1" } }, "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ=="],
 
@@ -3414,5 +3414,7 @@
     "svgo/css-select/domutils/dom-serializer/entities": ["entities@4.5.0", "https://registry.npmmirror.com/entities/-/entities-4.5.0.tgz", {}, "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="],
 
     "pi-web-access/linkedom/css-select/domutils/dom-serializer/entities": ["entities@4.5.0", "https://registry.npmmirror.com/entities/-/entities-4.5.0.tgz", {}, "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="],
-  }
+
+    "@aws-sdk/client-bedrock-runtime/@aws-sdk/credential-provider-node": ["@aws-sdk/credential-provider-node@3.972.83", "", { "dependencies": { "@aws-sdk/credential-provider-env": "^3.972.71", "@aws-sdk/credential-provider-http": "^3.972.73", "@aws-sdk/credential-provider-ini": "^3.973.16", "@aws-sdk/credential-provider-process": "^3.972.71", "@aws-sdk/credential-provider-sso": "^3.973.15", "@aws-sdk/credential-provider-web-identity": "^3.972.77", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/credential-provider-imds": "^4.4.16", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-jdso7ejzfRnatxMUZK4S/U6KbaDPCvfIV4XL+IQAPFDBt5rj5Fq595euqlK8Le4lNCMFR9oUpt+1l0aMgaayOQ=="],
+  },
 }

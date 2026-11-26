@@ -1,6 +1,6 @@
 ---
 name: choosing-a-workflow
-description: "Use at the start of an explicitly requested Tomato Issue design or implementation session, new project onboarding, PR lifecycle work including PR checks, or any change to what the product does — a feature, a behavior change, or a bug fix. Not for continuing work already routed to a workflow, incidental Issue references, non-PR questions, checks, explanations, or edits that change no behavior outside an explicit Issue session."
+description: "Use at the start of an explicitly requested Tomato Issue design or implementation session, new project onboarding, PR lifecycle work including PR checks, reviewing a pull request you are not shipping, or any change to what the product does — a feature, a behavior change, or a bug fix. Not for continuing work already routed to a workflow, incidental Issue references, non-PR questions, checks, explanations, or edits that change no behavior outside an explicit Issue session."
 ---
 
 # Choosing a Workflow
@@ -15,14 +15,17 @@ it from memory.
 First, an **explicitly requested Tomato Issue design or implementation session** routes to
 **tomato-issue-workflow**. An incidental Issue number, URL, bug reference, or PR's linked Issue
 is not this route. Work already in an Issue session resumes that worker rather than re-routing.
-For all other new work, read the request and use what is already known to answer three questions:
+For all other new work, read the request and use what is already known to answer four questions:
 
 1. **Is this project onboarding?** No spec graph yet — an empty or effectively empty workspace where
    the user brings a raw idea, or an existing codebase being set up or specced for the first time.
 2. **Is this the PR lifecycle?** Finished work shipping as a pull request, or an existing PR being
    tended — created, brought up to date, given screenshots, its checks watched, or its review comments
    addressed. Fixes that flow from a PR's own review comments belong here.
-3. **Does the work change what the product does?** A new feature, a change in behavior, or a bug
+3. **Is this reviewing a pull request the user is not shipping?** Someone else's PR, or one picked
+   from a prompt's pull-request completion, named by link or number — to judge it and draft a
+   review, not to create, sync or fix it.
+4. **Does the work change what the product does?** A new feature, a change in behavior, or a bug
    fix — however small, and even when the request already spells out the design. A detailed request
    shortens the interview; it never skips it.
 
@@ -40,6 +43,7 @@ If the route is genuinely ambiguous from the request alone, ask one short clarif
 | Explicit Tomato Issue design or implementation session | Read and follow **tomato-issue-workflow** |
 | Project onboarding — no spec graph yet | Read and follow **setting-up-a-project** |
 | PR lifecycle work | Read and follow **shipping-a-pr** |
+| Reviewing a PR the user is not shipping | Read and follow **reviewing-a-pr** |
 | A feature, behavior change, or bug fix | Read and follow **brainstorming** |
 | None of the above | No matching workflow; proceed directly without announcing the routing result |
 
@@ -58,6 +62,6 @@ implementation first and return to **shipping-a-pr** only after it lands.
 
 ## Handoff
 
-This skill ends by naming exactly one of: **tomato-issue-workflow**, **setting-up-a-project**, **shipping-a-pr**,
+This skill ends by naming exactly one of: **tomato-issue-workflow**, **setting-up-a-project**, **shipping-a-pr**, **reviewing-a-pr**,
 **brainstorming**, or **no matching workflow** (proceed directly). Adding a workflow to the family
 adds a row to the table above — see the **writing-workflow-skills** skill.

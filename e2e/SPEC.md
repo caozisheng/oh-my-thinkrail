@@ -121,6 +121,11 @@ compaction to keep the request small and deterministic, restoring the settings b
 It neither changes the provider/effort selection nor proves removal of a fixed output cap; the focused
 SDK reserve-independence canary owns that assertion.
 
+The focused `outputs.live` probe also requests a report in an explicit project directory outside
+`.thinkrail/context/`, checking the actual file, its final handoff, and the absence of an artifact copy
+or publication attempt. This complements the default Outputs case and `artifacts.live`'s temporary-file
+protection; only the tagged live probes spend provider tokens.
+
 ## Optional GitLab association
 
 Project opening now offers a skippable GitLab association dialog. Generic workspace fixtures register a
@@ -708,7 +713,18 @@ receive-pack from a local bare repo, so pushes, fetches, and remote-branch delet
 local path and never find a PR. The lane's fake **`gh`** (`fixtures/fakeGh.ts`, launched by a generated
 fake-bin shim under the runner's bun, since the host PATH has none) answers `pr list|view` and `repo view`
 from a test-written scenario file, applies `pr ready|merge|reopen` to it, and logs every argv so a spec
-asserts the exact mutations. Without a scenario it fails like an unauthenticated gh, so every other spec
+asserts the exact mutations. `api graphql` answers the pull-request completion's two queries from the
+same scenario: a `search(...)` honours `is:open`, `review-requested:@me`, `author:@me` (the scenario's
+`viewer`, default `me`), `author:<login>`, `draft:false` and title words, sorted by `updatedAt`, paged by
+the query's `first:` with the offset as cursor; aliased `p<N>: pullRequest(...)` fields return sizes. `pr
+view <n>` answers in any state; rows carry `title`, `author` (a login, projected as `{ login }`), size and
+`updatedAt` with defaults. `review-pull-request.spec.ts` points the lane fixture repository's own
+`origin` at that seam (the reset removes it again), so the completion and the review workspace's
+`origin/main` base resolve without a network; signed out, the lane shows the failed-with-Retry state,
+because `THINKRAIL_GH_OFFLINE` makes the host's gh setup probe answer `null`. The host keeps successful
+pull-request answers for 60 s per repository slug, and a scenario's own success fills that cache, so a
+spec that must see a fresh failure names a repository unique to the run (a timestamp and the repeat
+index); a spec that changes the remembered filter forgets it again in `finally` over the wire. Without a scenario it fails like an unauthenticated gh, so every other spec
 keeps the gh-less behaviour; `THINKRAIL_GH_OFFLINE` still keeps `pr.open` on the compare hand-off. The reset
 deletes the scenario and log and unsets the ssh config. The host caches repository merge settings per origin
 URL for the whole run, so a spec that sets its own repository settings names its own repository.
