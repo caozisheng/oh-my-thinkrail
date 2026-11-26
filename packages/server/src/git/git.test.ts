@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import {
 	chmodSync,
 	existsSync,
@@ -8,6 +8,7 @@ import {
 	truncateSync,
 	writeFileSync,
 } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { Workspace } from "@thinkrail/contracts";
@@ -247,6 +248,50 @@ test("gitStatus attaches per-file +/- counts, incl. untracked line counts", asyn
 	const untracked = changes.find((c) => c.path === "new.txt");
 	expect(untracked).toMatchObject({ status: "untracked", added: 2, removed: 0 });
 });
+
+for (const operation of ["stat", "readFile"] as const) {
+	test(`gitStatus bounds concurrent untracked ${operation} calls and continues after a failure`, async () => {
+		seedWorkspace();
+		const paths = Array.from({ length: 24 }, (_, index) => `untracked-${index}.txt`);
+		for (const path of paths) writeFileSync(join(repo, path), "one\ntwo\n");
+		const absolutePaths = new Set(paths.map((path) => join(repo, path)));
+		let active = 0;
+		let peak = 0;
+		let calls = 0;
+		const original = operation === "stat" ? fsPromises.stat : fsPromises.readFile;
+		const spy = spyOn(fsPromises, operation).mockImplementation(
+			new Proxy(original, {
+				async apply(target, receiver, args) {
+					if (!absolutePaths.has(String(args[0]))) return Reflect.apply(target, receiver, args);
+					active++;
+					calls++;
+					peak = Math.max(peak, active);
+					try {
+						await new Promise<void>((resolve) => setImmediate(resolve));
+						if (String(args[0]) === join(repo, paths[0] ?? "")) throw new Error("file disappeared");
+						return await Reflect.apply(target, receiver, args);
+					} finally {
+						active--;
+					}
+				},
+			}),
+		);
+		try {
+			const { changes } = await gitStatus("w1");
+			expect(calls).toBe(paths.length);
+			expect(peak).toBe(8);
+			expect(active).toBe(0);
+			expect(changes).toHaveLength(paths.length);
+			for (const path of paths) {
+				expect(changes.find((change) => change.path === path)?.added).toBe(
+					path === paths[0] ? undefined : 2,
+				);
+			}
+		} finally {
+			spy.mockRestore();
+		}
+	});
+}
 
 test("gitStatus stops counting untracked lines once the read budget is spent", async () => {
 	seedWorkspace();
