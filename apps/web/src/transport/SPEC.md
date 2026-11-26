@@ -217,7 +217,8 @@ The browser never scrubs or holds a vendor client: the host is the only sanitize
   refusal code, a non-JSON answer's HTTP status, an unreachable host or a failed socket request — which
   `attachmentFailureText` words from the catalog, always naming the file — while `hostUrl` resolves a host-relative path
   (custom face URLs, and chat image references through `chat`'s `ChatMediaContext`) against the endpoint; `supportsExtensionSettings` (v112) lets `ExtensionsSettings`
-  offer per-extension setting switches only to a host that stores `extensionSettings`;
+  offer boolean per-extension setting switches only to a host that stores `extensionSettings`;
+  `supportsExtensionCidrSettings` (v150) independently gates CIDR-list controls and writes;
   `supportsKeybindings` (`KEYBINDINGS_PROTOCOL_VERSION`, v136) gates the user's keybindings both ways —
   `shell` ignores stored overrides below it — and `updateKeybindings(map)` is the one write: it resolves
   `false` without sending to an older host (which would reject the unknown key), else sends the whole map as

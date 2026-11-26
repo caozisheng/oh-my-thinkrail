@@ -27,7 +27,7 @@ lookup, skill roots — defaults to it, so an installed extension is composed ex
 ## Boundary
 
 - **Owns:** `serverExtensions` (the ordered entries), `registryInlineExtensions(kind, isDisabled?,
-  entries?, session?)` (flattens `extensions` / `childExtensions` into pi `InlineExtension`s named after
+  entries?, session?, settingValue?)` (flattens `extensions` / `childExtensions` and child-session factories into pi `InlineExtension`s named after
   the extension — one factory keeps the bare name, several get `name#n` — so pi diagnostics show
   `<inline:visualize>` instead of a position; an installed extension's names live in their own namespace,
   `ext:<name>` / `ext:<name>#n` (`<inline:ext:weather>`): an npm name holds no `:`, so an installed
@@ -35,6 +35,9 @@ lookup, skill roots — defaults to it, so an installed extension is composed ex
   a reload re-decides membership without rebuilding the loader. A parent flatten given the host's
   `HostSessionServices` appends `sessionExtensions(services)` after the static factories under the same
   naming; it calls it once per flatten, so every parent session's factories close over its own services.
+  A child flatten also calls a built-in's `childSessionExtensions(settings)` with only that extension's
+  declared-setting reader; it receives the current global config snapshot and no workspace or mailbox
+  services. Installed extensions cannot declare child-session factories or CIDR-list settings.
   A `sessionExtensions` that throws, or returns anything but a list of factories, becomes one factory that rethrows when pi loads it, so the failure is
   that extension's `<inline:name>` load error rather than a loader that cannot be built (the catalog's
   inert-session call likewise keeps only the static tools). An **installed** extension's factory, static
@@ -43,8 +46,9 @@ lookup, skill roots — defaults to it, so an installed extension is composed ex
   pi stages a factory's registrations until it returns and discards them when it throws, so a late settle
   registers nothing; built-ins are ours and are not raced. The bound is per factory, as pi loads them one at
   a time: an extension whose several factories all hang delays a chat's start by 10 s each. Each extension gets its **own view** (`extensionSessionServices`): `setting(key)` answers only that
-  extension's declared settings — the stored value from the injected `ExtensionSettingValue` lookup, else
-  the declared default; an undeclared key throws — and is read **inside the factory body**, so every pi
+  extension's declared boolean or CIDR-list settings — `setting(key)` and `cidrListSetting(key)` read the
+  stored value from the injected `ExtensionSettingValue` lookup, else the declared default; an undeclared
+  or wrong-type key throws — and these are read **inside the factory body**, so every pi
   (re)load sees current values. Without services, and in the child set, session factories are absent),
   `workspaceFiles` (the host's file check shared by extension server halves through the session seam —
   `checkWorkspaceFile` + `MOCKUP_DIR` (`contracts`' `WORKSPACE_MOCKUP_DIR` with a trailing slash, the one
@@ -88,7 +92,7 @@ lookup, skill roots — defaults to it, so an installed extension is composed ex
   description first), `hasParentExtensions` (the descriptor declares `extensions` or
   `sessionExtensions`), `hasChildExtensions`, `enabled = !disabled.has(name)`, `kind`, for installed
   `source` / `version` / `state` / `error` / `web` (`webHalfOf`), the declared
-  `settings` (`key` + `default`, plus an installed setting's own `title` / `description`), and the tool names
+  `settings` (boolean `key` + `default`, or built-in CIDR-list `type` + list `default`; installed entries remain boolean-only), and the tool names
   its **parent** factories register against a recording stub `ExtensionAPI` whose every other member is
   inert — for an installed row only the names it owns (`extensionToolNames` below). Per-session factories are built for this with an inert session whose `awaitToolResponse` and
   `workspaceFiles.check` reject and whose `setting` answers the declared defaults. The tools are computed once per descriptor object (a reloaded installed extension is a new one), never from a live session, and a factory that throws against the stub,

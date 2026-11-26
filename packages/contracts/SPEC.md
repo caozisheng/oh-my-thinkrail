@@ -420,8 +420,8 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
     `hasParentExtensions` (absent below `EXTENSION_QUERY_PROTOCOL_VERSION`) whether its descriptor
     composes any parent factory at all — so an empty `tools` reads as "queries only by design" rather than
     "its factories failed to load" ([[module-artifact-tests]]' smoke relies on it),
-    `settings` (`ExtensionSettingDescriptor[]`, `{ key, default: boolean }`, absent below
-    `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) the boolean settings the extension declares, and
+    `settings` (`ExtensionSettingDescriptor[]`, boolean descriptors at v112 and `cidr-list` descriptors
+    at `EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION` = v150) the typed settings the extension declares, and
     `apiVersion` (absent when undeclared, and below `EXTENSION_QUERY_PROTOCOL_VERSION` = v145) the version
     of the payloads its server half answers through `extension.query`. Neither query methods nor panels are
     in the catalog: the extension's own halves agree on the methods, and the web registry is the panels' one
@@ -778,8 +778,9 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   from `EXTENSION_CATALOG_PROTOCOL_VERSION` = v82) names the host-registry extensions the user switched off —
   unknown names are kept and ignored, and the host applies it to new and open sessions (see
   [[submodule-server-extensions]]); `extensionSettings` (`ExtensionSettingValues`, default `{}`, on the wire from
-  `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) maps extension name → setting key → boolean for the settings
-  an `ExtensionCatalogEntry` declares — an absent key means the descriptor's `default`, and
+  `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) maps extension name → setting key → boolean or a
+  validated CIDR string list for the settings an `ExtensionCatalogEntry` declares — CIDR lists are
+  available at `EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION` = v150; an absent key means the descriptor's `default`, and
   `settings.update { extensionSettings }` merges per key; `keybindings` (`KeybindingOverrides`, default `{}`,
   on the wire from **`KEYBINDINGS_PROTOCOL_VERSION`** = v136) maps a command id — the app's or a web
   extension's — to the user's chords, replacing its defaults (`[]` unbinds, an absent id keeps them); an
@@ -1774,12 +1775,13 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 132`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 150`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
 hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 125`, on-demand Issue joins v126 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` (below), allocated above upstream's v118–v124 floors. Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
 `WORKSPACE_CREATION_PROTOCOL_VERSION = 111`; extension settings and Discuss answers share
 `EXTENSION_SETTINGS_PROTOCOL_VERSION = 112` and `ASK_DISCUSS_PROTOCOL_VERSION = 112`.
+The built-in web-access CIDR-list setting uses the additive `EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION = 150`.
 The existing Issues feature floors v103–v110 remain unchanged; the historical sections below
 record their introduction, not the current wire version.
 
@@ -1938,7 +1940,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v149. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v150. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1949,7 +1951,7 @@ upstream numbers.
 
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138, server fallback repair v139, and subagent catalog v140. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
 
-Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
+Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
 
 ## Workspace capability boundary
 

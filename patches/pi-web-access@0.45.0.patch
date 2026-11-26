@@ -1,0 +1,54 @@
+diff --git a/dist/index.js b/dist/index.js
+index a3e4a53be027098e2500059f363f5a487ac1c60d..f0b0b0505347de5e94ef636f88067cc3632921fb 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4979,6 +4979,12 @@ var init_querit = __esm({
+ import { lookup as dnsLookup } from "node:dns/promises";
+ import { existsSync as existsSync20, readFileSync as readFileSync20, statSync as statSync2 } from "node:fs";
+ import net from "node:net";
++var thinkrailSsrfAllowRanges = new AsyncLocalStorage();
++function runWithThinkrailSsrfAllowRanges(input, task) {
++  const ranges = input ?? [];
++  parseAllowRanges(ranges);
++  return thinkrailSsrfAllowRanges.run([...ranges], task);
++}
+ function loadConfigRoot() {
+   if (!existsSync20(WEB_SEARCH_CONFIG_PATH)) return null;
+   let signature;
+@@ -5068,10 +5074,11 @@ function normalizeDomainEntry(entry) {
+   return hostname2;
+ }
+ function loadSsrfConfig() {
++  const thinkrailAllowRanges = thinkrailSsrfAllowRanges.getStore() ?? [];
+   const parsed = loadConfigRoot();
+-  if (!parsed) return { allowRanges: [], trustEnvProxy: false };
++  if (!parsed) return { allowRanges: thinkrailAllowRanges, trustEnvProxy: false };
+   const ssrf = parsed.ssrf;
+-  if (ssrf === void 0 || ssrf === null) return { allowRanges: [], trustEnvProxy: false };
++  if (ssrf === void 0 || ssrf === null) return { allowRanges: thinkrailAllowRanges, trustEnvProxy: false };
+   if (typeof ssrf !== "object" || Array.isArray(ssrf)) {
+     throw new Error(`ssrf in ${WEB_SEARCH_CONFIG_PATH} must be an object`);
+   }
+@@ -5083,12 +5090,13 @@ function loadSsrfConfig() {
+     throw new Error(`ssrf.trustEnvProxy in ${WEB_SEARCH_CONFIG_PATH} must be a boolean`);
+   }
+   const allowRangesValue = Array.isArray(config.allowRanges) ? config.allowRanges : [];
+-  const allowRanges = allowRangesValue.map((entry, index) => {
++  const configuredAllowRanges = allowRangesValue.map((entry, index) => {
+     if (typeof entry !== "string") {
+       throw new Error(`ssrf.allowRanges in ${WEB_SEARCH_CONFIG_PATH} must contain only CIDR strings; entry ${index + 1} is ${typeof entry}`);
+     }
+     return entry.trim();
+   }).filter(Boolean);
++  const allowRanges = [...new Set([...configuredAllowRanges, ...thinkrailAllowRanges])];
+   parseAllowRanges(allowRanges);
+   return { allowRanges, trustEnvProxy: config.trustEnvProxy === true };
+ }
+@@ -28337,5 +28345,6 @@ export {
+   index_default as default,
+   getSummaryGenerationDeadlineMs,
+   getSummaryInstructions,
+-  resolveCuratorDefaultProvider
++  resolveCuratorDefaultProvider,
++  runWithThinkrailSsrfAllowRanges
+ };

@@ -64,12 +64,16 @@ async function describe(extension: ServerExtension): Promise<ExtensionDescriptio
 	const factories = [...extension.extensions, ...inertSessionFactories(extension)];
 	const tools = (await Promise.all(factories.map(recordToolNames))).flat();
 	const settings = Object.entries(extension.settings ?? {}).map(
-		([key, setting]): ExtensionSettingDescriptor => ({
-			key,
-			default: setting.default,
-			...(setting.title ? { title: setting.title } : {}),
-			...(setting.description ? { description: setting.description } : {}),
-		}),
+		([key, setting]): ExtensionSettingDescriptor => {
+			const metadata = {
+				key,
+				...(setting.title ? { title: setting.title } : {}),
+				...(setting.description ? { description: setting.description } : {}),
+			};
+			return setting.type === "cidr-list"
+				? { ...metadata, type: setting.type, default: [...setting.default] }
+				: { ...metadata, default: setting.default };
+		},
 	);
 	return {
 		name: extension.name,
@@ -78,7 +82,9 @@ async function describe(extension: ServerExtension): Promise<ExtensionDescriptio
 		tools: [...new Set(tools)],
 		hasParentExtensions:
 			extension.extensions.length > 0 || extension.sessionExtensions !== undefined,
-		hasChildExtensions: (extension.childExtensions?.length ?? 0) > 0,
+		hasChildExtensions:
+			(extension.childExtensions?.length ?? 0) > 0 ||
+			extension.childSessionExtensions !== undefined,
 		...(settings.length > 0 ? { settings } : {}),
 		...(extension.apiVersion === undefined ? {} : { apiVersion: extension.apiVersion }),
 	};

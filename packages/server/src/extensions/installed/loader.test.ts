@@ -158,11 +158,23 @@ module.exports = { name: "kinds", extensions: [() => "${version}"], probe: { hel
 		["queries", "queries: () => ({})"],
 		["apiVersion", "apiVersion: 1"],
 		["supersedesPackages", 'supersedesPackages: ["@thinkrail/pi-session-insights"]'],
+		["childSessionExtensions", "childSessionExtensions: () => []"],
 	])("refuses a descriptor that declares the built-in-only %s", async (key, field) => {
 		const root = tempDir();
 		const entry = writeEntry(root, `export default { name: "hooks", extensions: [], ${field} };\n`);
 		await expect(loadServerDescriptor(entry, join(root, "host"))).rejects.toThrow(
 			`"${key}" is not part of extension API 1.0`,
+		);
+	});
+
+	it("refuses built-in CIDR-list settings", async () => {
+		const root = tempDir();
+		const entry = writeEntry(
+			root,
+			'export default { name: "hooks", extensions: [], settings: { allowRanges: { type: "cidr-list", default: [] } } };\n',
+		);
+		await expect(loadServerDescriptor(entry, join(root, "host"))).rejects.toThrow(
+			'setting "allowRanges" must be { type: "boolean", default: true | false }',
 		);
 	});
 

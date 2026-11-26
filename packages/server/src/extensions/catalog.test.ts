@@ -50,6 +50,7 @@ describe("listExtensionCatalog", () => {
 				tools: ["web_search", "source_check", "fetch_content", "get_search_content", "web_enable"],
 				hasParentExtensions: true,
 				hasChildExtensions: true,
+				settings: [{ key: "allowRanges", type: "cidr-list", default: [] }],
 				kind: "builtin",
 			},
 			{

@@ -36,6 +36,7 @@ export {
 	respondToTool,
 	runHostUpdate,
 	supportsChangeMutations,
+	supportsExtensionCidrSettings,
 	supportsExtensionQuery,
 	supportsExtensionSettings,
 	supportsFonts,

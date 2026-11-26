@@ -58,6 +58,7 @@ describe("defineServerExtension", () => {
 			expectToolResponse: () => {},
 			awaitToolResponse: async () => ({ kind: "deferred" }),
 			setting: () => false,
+			cidrListSetting: () => [],
 			workspaceFiles: {
 				check: async () => {},
 				checkArtifacts: async (paths) => paths.map((path) => ({ path })),

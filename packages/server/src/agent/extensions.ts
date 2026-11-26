@@ -17,6 +17,7 @@ import {
 	type Skill,
 } from "@earendil-works/pi-coding-agent";
 import type {
+	ExtensionSettingValue,
 	ExtensionSettingValues,
 	SkillCatalogEntry,
 	SlashCommandInfo,
@@ -438,11 +439,13 @@ export function childBaseExtensionFactories(): InlineExtension[] {
 }
 
 export function childExtensionFactories(workspaceId: string): InlineExtension[] {
+	const settingsAtLoad = extensionSettings();
+	const settingAtLoad = (extension: string, key: string) => settingsAtLoad[extension]?.[key];
 	return [
 		headlessSearchPolicy,
 		...(specsEnabledFor(workspaceId) ? [specGraphExtension] : []),
 		skillCatalog,
-		...childRegistryFactories(false),
+		...childRegistryFactories(false, settingAtLoad),
 	];
 }
 
@@ -451,11 +454,17 @@ export function childInstalledExtensionFactories(): InlineExtension[] {
 	return childRegistryFactories(true);
 }
 
-function childRegistryFactories(installed: boolean): InlineExtension[] {
+function childRegistryFactories(
+	installed: boolean,
+	settingValue: (extension: string, key: string) => ExtensionSettingValue | undefined = () =>
+		undefined,
+): InlineExtension[] {
 	return registryInlineExtensions(
 		"childExtensions",
 		isExtensionDisabled,
 		serverExtensions().filter((entry) => (entry.installed !== undefined) === installed),
+		undefined,
+		settingValue,
 	);
 }
 
@@ -590,7 +599,7 @@ function createRegistryLoader(
 	let disabledAtReload = disabledExtensions();
 	const isDisabledAtReload = (name: string): boolean => disabledAtReload.has(name);
 	let settingsAtReload = extensionSettings();
-	const settingAtReload = (extension: string, key: string): boolean | undefined =>
+	const settingAtReload = (extension: string, key: string): ExtensionSettingValue | undefined =>
 		settingsAtReload[extension]?.[key];
 	const builtins = registry.filter((entry) => entry.installed === undefined);
 	const registryFactories = (installed: boolean): InlineExtension[] =>

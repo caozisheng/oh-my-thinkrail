@@ -28,6 +28,7 @@ import type {
 import {
 	CHANGE_MUTATIONS_PROTOCOL_VERSION,
 	EXTENSION_CATALOG_PROTOCOL_VERSION,
+	EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION,
 	EXTENSION_QUERY_PROTOCOL_VERSION,
 	EXTENSION_SETTINGS_PROTOCOL_VERSION,
 	FEEDBACK_SURVEY_PROTOCOL_VERSION,
@@ -71,6 +72,10 @@ export function supportsUserThemes(protocolVersion: number | null): boolean {
 
 export function supportsExtensionSettings(protocolVersion: number | null): boolean {
 	return protocolVersion !== null && protocolVersion >= EXTENSION_SETTINGS_PROTOCOL_VERSION;
+}
+
+export function supportsExtensionCidrSettings(protocolVersion: number | null): boolean {
+	return protocolVersion !== null && protocolVersion >= EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION;
 }
 
 export function supportsKeybindings(protocolVersion: number | null): boolean {

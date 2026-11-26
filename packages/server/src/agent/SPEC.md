@@ -1288,10 +1288,10 @@ recovery; they are not the default execution path when the direct capability is 
     Children opting into extensions
     (`extensions: true` in their definition) get the **curated child set**
     (`childExtensionFactories` in `extensions`, pi `InlineExtension`s): the headless-search policy +
-    `pi-spec-graph` + every built-in registry extension's `childExtensions` (named inline, from
-    [[submodule-server-extensions]]; today `web-access`'s `pi-web-access`; installed extensions' child halves
-    come from `childInstalledExtensionFactories()`, loaded after a resource's factories) — deliberately not the parent's
-    full set
+    `pi-spec-graph` + every built-in registry extension's `childExtensions` and `childSessionExtensions`
+    (named inline, from [[submodule-server-extensions]]; today `web-access`'s `pi-web-access`; installed
+    extensions' child halves come from `childInstalledExtensionFactories()`, loaded after a resource's
+    factories) — deliberately not the parent's full set.
     (rationale + the listed-children carve-out: core decision #25). **Every** child, opted in or not,
     also loads the core's base set (`childBaseExtensionFactories`, same decision): `oversizedImageGuard`,
     since a child's `read` returns raw images under the shared settings (see the `buildSessionSettings`

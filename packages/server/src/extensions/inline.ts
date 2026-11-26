@@ -5,19 +5,53 @@ import type {
 	InlineExtension,
 	LoadExtensionsResult,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionSessionServices, ServerExtension } from "@thinkrail/extension-api/server";
+import { isValidCidrRange } from "@thinkrail/contracts";
+import type {
+	ExtensionSessionServices,
+	ExtensionSettingReader,
+	ServerExtension,
+} from "@thinkrail/extension-api/server";
 import { EXTENSION_LOAD_TIMEOUT_MS } from "./installed";
 import { type ServerExtensionEntry, serverExtensions } from "./registry";
 
 export type RegistryExtensionKind = "extensions" | "childExtensions";
 export type ExtensionDisabled = (name: string) => boolean;
-export type HostSessionServices = Omit<ExtensionSessionServices, "setting">;
-export type ExtensionSettingValue = (extension: string, key: string) => boolean | undefined;
+export type HostSessionServices = Omit<ExtensionSessionServices, "setting" | "cidrListSetting">;
+export type ExtensionSettingValue = (
+	extension: string,
+	key: string,
+) => boolean | string[] | undefined;
 
 const never: ExtensionDisabled = () => false;
 const noValues: ExtensionSettingValue = () => undefined;
 const INSTALLED_INLINE_PREFIX = "ext:";
 const INLINE_PATH = new RegExp(`^<inline:(${INSTALLED_INLINE_PREFIX})?([^#>]+)(?:#\\d+)?>$`);
+
+function extensionSettingReader(
+	extension: ServerExtension,
+	settingValue: ExtensionSettingValue,
+): ExtensionSettingReader {
+	return {
+		setting: (key) => {
+			const declared = extension.settings?.[key];
+			if (!declared || declared.type === "cidr-list") {
+				throw new Error(`extension ${extension.name} has no boolean setting "${key}"`);
+			}
+			const value = settingValue(extension.name, key);
+			return typeof value === "boolean" ? value : declared.default;
+		},
+		cidrListSetting: (key) => {
+			const declared = extension.settings?.[key];
+			if (declared?.type !== "cidr-list") {
+				throw new Error(`extension ${extension.name} has no CIDR list setting "${key}"`);
+			}
+			const value = settingValue(extension.name, key);
+			return Array.isArray(value) && value.every(isValidCidrRange)
+				? [...value]
+				: [...declared.default];
+		},
+	};
+}
 
 export function extensionSessionServices(
 	extension: ServerExtension,
@@ -26,11 +60,7 @@ export function extensionSessionServices(
 ): ExtensionSessionServices {
 	return {
 		...host,
-		setting: (key) => {
-			const declared = extension.settings?.[key];
-			if (!declared) throw new Error(`extension ${extension.name} has no setting "${key}"`);
-			return settingValue(extension.name, key) ?? declared.default;
-		},
+		...extensionSettingReader(extension, settingValue),
 	};
 }
 
@@ -76,7 +106,27 @@ function factoriesOf(
 	settingValue: ExtensionSettingValue,
 ): ExtensionFactory[] {
 	const { extension } = entry;
-	if (kind === "childExtensions") return extension.childExtensions ?? [];
+	if (kind === "childExtensions") {
+		const factories = [...(extension.childExtensions ?? [])];
+		if (!extension.childSessionExtensions) return factories;
+		try {
+			const childFactories: unknown = extension.childSessionExtensions(
+				extensionSettingReader(extension, settingValue),
+			);
+			return isFactoryList(childFactories)
+				? [...factories, ...childFactories]
+				: [
+						...factories,
+						failing(
+							new Error(
+								`${extension.name}: childSessionExtensions must return a list of factories`,
+							),
+						),
+					];
+		} catch (error) {
+			return [...factories, failing(error)];
+		}
+	}
 	if (!session || !extension.sessionExtensions) return [...extension.extensions];
 	let perSession: unknown;
 	try {

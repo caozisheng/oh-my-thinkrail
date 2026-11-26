@@ -29,18 +29,26 @@ type Sdk = "@thinkrail/extension-sdk";
 
 type InstalledSettingCopy = "title" | "description";
 
-type BuiltInOnlyServerFields = "supersedesPackages" | "apiVersion" | "queries";
+type BuiltInOnlyServerFields =
+	| "supersedesPackages"
+	| "apiVersion"
+	| "queries"
+	| "childSessionExtensions";
 type InstalledWorkspaceFiles = Omit<AppServer.WorkspaceFiles, "checkArtifacts">;
-type InstalledSessionServices = Omit<AppServer.ExtensionSessionServices, "workspaceFiles"> & {
+type InstalledSessionServices = Omit<
+	AppServer.ExtensionSessionServices,
+	"workspaceFiles" | "cidrListSetting"
+> & {
 	workspaceFiles: InstalledWorkspaceFiles;
 };
 type InstalledArtifactTool = Omit<AppServer.ArtifactTool, "published">;
 type InstalledServerExtension = Omit<
 	AppServer.ServerExtension,
-	BuiltInOnlyServerFields | "sessionExtensions" | "artifactTools"
+	BuiltInOnlyServerFields | "sessionExtensions" | "artifactTools" | "settings"
 > & {
 	sessionExtensions?: (session: InstalledSessionServices) => ExtensionFactory[];
 	artifactTools?: Record<string, InstalledArtifactTool>;
+	settings?: Record<string, AppServer.ExtensionBooleanSetting>;
 };
 
 export type ConformingServer = [

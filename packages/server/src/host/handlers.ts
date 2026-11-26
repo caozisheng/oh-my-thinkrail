@@ -17,6 +17,7 @@ import type {
 import {
 	BRANCH_STATUS_PROTOCOL_VERSION,
 	GROUP_WORKSPACE_PROTOCOL_VERSION,
+	EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION,
 	ISSUES_ACTIONS_PROTOCOL_VERSION,
 	ISSUES_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_AUTH_PROTOCOL_VERSION,
@@ -1531,7 +1532,20 @@ const handlers: WsHandlers = {
 		);
 		return listSubagentCatalog(ws.worktreePath, admission.piResourceTrusted);
 	},
-	"extension.list": () => listExtensionCatalog(new Set(getConfig().disabledExtensions)),
+	"extension.list": (_params, ctx) =>
+		listExtensionCatalog(new Set(getConfig().disabledExtensions)).then((entries) =>
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION
+				? entries.map((entry) => ({
+						...entry,
+						...(entry.settings
+							? {
+									settings: entry.settings.filter((setting) => setting.type !== "cidr-list"),
+								}
+							: {}),
+					}))
+				: entries,
+		),
 	"issues.beginDesign": withIssuesSessionStartupProtocol((p) => issuesBeginDesign(p)),
 	"issues.beginImplementation": withIssuesSessionStartupProtocol((p) =>
 		issuesBeginImplementation(p),
@@ -1986,8 +2000,21 @@ const handlers: WsHandlers = {
 		ctx.runHostUpdate();
 		return { ok: true } as const;
 	},
-	"settings.update": (params) => {
+	"settings.update": (params, ctx) => {
 		const config = params.config;
+		if (
+			ctx.protocolVersion !== undefined &&
+			ctx.protocolVersion < EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION &&
+			config.extensionSettings &&
+			Object.values(config.extensionSettings).some(
+				(settings) =>
+					typeof settings === "object" &&
+					settings !== null &&
+					Object.values(settings).some(Array.isArray),
+			)
+		) {
+			throw new Error("CIDR extension settings require protocol v150");
+		}
 		return updateConfig(config);
 	},
 	"environment.get": () => hostEnvironmentStatus(),

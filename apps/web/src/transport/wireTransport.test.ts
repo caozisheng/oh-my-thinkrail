@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
 	CHANGE_MUTATIONS_PROTOCOL_VERSION,
+	EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION,
 	EXTENSION_QUERY_PROTOCOL_VERSION,
 	HOST_UPDATE_RUN_PROTOCOL_VERSION,
 	KEYBINDINGS_PROTOCOL_VERSION,
@@ -20,6 +21,7 @@ import {
 	applyWorkspaceListRefresh,
 	mergeSessionStateRecords,
 	supportsChangeMutations,
+	supportsExtensionCidrSettings,
 	supportsExtensionQuery,
 	supportsHostUpdateRun,
 	supportsKeybindings,
@@ -41,6 +43,13 @@ test("extension queries are sent only to a v130 host", () => {
 	expect(supportsExtensionQuery(EXTENSION_QUERY_PROTOCOL_VERSION)).toBe(true);
 	expect(supportsExtensionQuery(EXTENSION_QUERY_PROTOCOL_VERSION - 1)).toBe(false);
 	expect(supportsExtensionQuery(null)).toBe(false);
+});
+
+test("CIDR extension settings are offered only to a v150 host", () => {
+	expect(supportsExtensionCidrSettings(EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION)).toBe(true);
+	expect(supportsExtensionCidrSettings(EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION + 1)).toBe(true);
+	expect(supportsExtensionCidrSettings(EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION - 1)).toBe(false);
+	expect(supportsExtensionCidrSettings(null)).toBe(false);
 });
 
 test("user theme files are read only from a host at or beyond their capability version", () => {

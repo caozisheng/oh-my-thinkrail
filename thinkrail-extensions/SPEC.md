@@ -35,20 +35,21 @@ action, rail icon or rail chord (the shell's one `openableExtensionPanels` rule,
 
 The first extension (`visualize`, [[module-ext-visualize]]) ships both halves; the host composes them from
 the two registry files below ([[submodule-server-extensions]], [[submodule-web-extensions]]). **Per-extension
-settings** exist for booleans: a descriptor declares `settings`, Settings → Extensions & skills shows each as a nested
-switch under its extension (copy from locale keys; disabled while the extension is off; hidden for an older
-host), the value lives in `AppConfig.extensionSettings`, and a change reloads open chats when their current
-turn ends — ask-user-question's `richPreviews` was the first consumer. **Queries and panels**
+settings** include booleans and the built-in-only `cidr-list` type: a descriptor declares `settings`, Settings →
+Extensions & skills renders booleans as nested switches and CIDR lists as validated editors (copy from locale
+keys; disabled while the extension is off; capability-gated by protocol), and values live in
+`AppConfig.extensionSettings`. A change reloads open chats when their current turn ends — ask-user-question's
+`richPreviews` was the first consumer. **Queries and panels**
 exist too, with session insights ([[module-ext-session-insights]]) as their first consumer; they are
-built-in only (§ Installed extensions). Other setting types, a per-workspace on/off override and store
-contributions are explicit deferrals, not gaps. The on/off switch covers everything an
+built-in only (§ Installed extensions). Settings beyond the supported boolean and CIDR-list types, a
+per-workspace on/off override and store contributions are explicit deferrals, not gaps. The on/off switch covers everything an
 extension contributes — its factories, its tools in live sessions, the skills of its `skillPackages`,
 its queries (refused while off) and its panels (a placeholder while off) — the way removing a package in
 pi drops its extensions and skills together.
 
 ## Shape — two entrypoints, no root barrel
 
-- `./server` — default export `defineServerExtension({ name, title?, description?, extensions, sessionExtensions?, interactiveTools?, settings?, childExtensions?, skillPackages?, supersedesPackages?, apiVersion?, queries? })`
+- `./server` — default export `defineServerExtension({ name, title?, description?, extensions, sessionExtensions?, childSessionExtensions?, interactiveTools?, settings?, childExtensions?, skillPackages?, supersedesPackages?, apiVersion?, queries? })`
   (`title` / `description` are Settings display copy; `supersedesPackages` names vanilla pi packages the
   extension replaces, whose user-installed extensions the host leaves out of its sessions while the
   extension is on — a switch reloads the open chats that load such a package once their turn ends, and
@@ -56,6 +57,8 @@ pi drops its extensions and skills together.
   `extensions` / `childExtensions` are pi `ExtensionFactory`s the host composes into every parent session /
   the curated child set, registered as named `InlineExtension`s so pi diagnostics keep an identity.
   `sessionExtensions(session)` returns further parent factories built from one session's host services;
+  `childSessionExtensions(settings)` returns child-only factories built from the extension's declared
+  setting reader, so global settings such as Web access CIDRs apply to delegated children too;
   `interactiveTools` names the tools whose calls wait for the person and, optionally, how a late response
   reads to the model ([[module-extension-api]]).
   `skillPackages` are **package specifiers** whose `pi.skills` directories the host stages — explicit module

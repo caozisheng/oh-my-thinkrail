@@ -10,6 +10,7 @@ export {
 	isChatAttachmentResult,
 	withAttachedFiles,
 } from "./attachments";
+export { isValidCidrRange } from "./cidr";
 export type * from "./domain";
 export {
 	ACCEPTED_IMAGE_TYPES,

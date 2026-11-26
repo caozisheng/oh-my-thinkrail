@@ -16,10 +16,14 @@ export interface WorkspaceFiles {
 	artifactsDir: string;
 }
 
-export interface ExtensionSessionServices {
+export interface ExtensionSettingReader {
+	setting(key: string): boolean;
+	cidrListSetting(key: string): string[];
+}
+
+export interface ExtensionSessionServices extends ExtensionSettingReader {
 	expectToolResponse(toolCallId: string): void;
 	awaitToolResponse(toolCallId: string, signal: AbortSignal | undefined): Promise<ToolResponse>;
-	setting(key: string): boolean;
 	workspaceFiles: WorkspaceFiles;
 }
 
@@ -30,7 +34,14 @@ export interface ExtensionBooleanSetting {
 	description?: string;
 }
 
-export type ExtensionSetting = ExtensionBooleanSetting;
+export interface ExtensionCidrListSetting {
+	type: "cidr-list";
+	default: string[];
+	title?: string;
+	description?: string;
+}
+
+export type ExtensionSetting = ExtensionBooleanSetting | ExtensionCidrListSetting;
 
 export interface InteractiveTool {
 	describeResponse?: (args: unknown, response: unknown) => string | undefined;
@@ -164,6 +175,7 @@ export interface ServerExtension {
 	artifactTools?: Record<string, ArtifactTool>;
 	settings?: Record<string, ExtensionSetting>;
 	childExtensions?: ExtensionFactory[];
+	childSessionExtensions?: (settings: ExtensionSettingReader) => ExtensionFactory[];
 	skillPackages?: string[];
 	/**
 	 * npm names of vanilla pi packages this extension replaces in the host's sessions (e.g. a command its
