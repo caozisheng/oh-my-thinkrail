@@ -463,8 +463,11 @@ client, binding, credential or approval state. `IssueStartupContext` optionally 
 ids, display name, actual path and primary/associated/reference role. They are data, not executable configuration;
 the prompt requires per-repository instruction lookup, forbids combining project configuration, and
 states that membership is not a shell sandbox or proof that cross-repository builds work. In design,
-reference repositories are read through their advertised absolute paths using the read-only file tools;
-the prompt does not imply that the primary workspace's relative paths can address them or grant write access.
+all host-provided repositories are read-only context: use read-only file tools and their advertised absolute
+paths to inspect instructions, specs and source; do not write repository files or run repository-writing
+commands, and do not create or join implementation worktrees. Reference repositories remain identified as
+separate main checkouts; the prompt does not imply that the primary workspace's relative paths can address
+them. Implementation retains its existing user-confirmed join flow for references.
 `contexts(reference, stage)` verifies source Default directories for design and every recorded completed
 worktree for implementation without creating implementation directories. Host composition refreshes
 this projection at startup and on bound `issue_context` reads; the pure prompt factory performs no I/O.
