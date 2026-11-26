@@ -148,7 +148,7 @@ export function createIssueStartupPrompt(context: IssueStartupContext): string {
 						? [
 								stage === "implementation"
 									? `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit, commit, stage, format or run tooling that writes there. When the change turns out to need one of them, call ${ISSUE_JOIN_TOOL} with its projectId; the user confirms, the host creates its Issue worktree (branched from its freshly fetched default branch) and returns the new path, and only that path may then be edited.`
-									: `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit them. A design that needs one of them should name it so the user can link it to the Issue.`,
+									: `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit them. For design, read reference repositories through their advertised absolute paths with the read-only file tools; do not use the primary workspace's relative path to look for reference files. A design that needs one of them should name it so the user can link it to the Issue.`,
 							]
 						: []),
 				]
