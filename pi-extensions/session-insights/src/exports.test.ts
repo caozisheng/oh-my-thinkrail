@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { link, rename } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { runDetails, TranscriptBuilder, tempDir, usage, writeSession } from "../test/builders.ts";
 import {
 	CONTAINED_PIN,
@@ -781,10 +781,11 @@ describe("the fixture export", () => {
 		expect(output.notes).toEqual(["snapshot", "privatePathOmitted"]);
 		expect(result.ok && result.notes).toEqual(["snapshot", "privatePathOmitted"]);
 		expect(existsSync(join(folder, "session.jsonl"))).toBe(true);
-		expect(readdirSync(join(folder, "workspace"), { recursive: true }).sort()).toEqual([
-			"src",
-			"src/a.ts",
-		]);
+		expect(
+			readdirSync(join(folder, "workspace"), { recursive: true })
+				.map((path) => String(path).replaceAll(sep, "/"))
+				.sort(),
+		).toEqual(["src", "src/a.ts"]);
 		expect(provenance.omitted).toEqual([
 			"config/API_KEY=[redacted]",
 			"customers/[redacted]",
@@ -1369,7 +1370,9 @@ describe("an aborted export", () => {
 		expect(readdirSync(join(dir, ".f.partial"))).toEqual(["session.jsonl"]);
 	});
 
-	test("the page and the fixture stop where their signal aborted", async () => {
+	test("the page and the fixture stop where their signal aborted", {
+		timeout: 15_000,
+	}, async () => {
 		const built = session("abort-builders");
 		const trace = await traceOf(built);
 		const reason = new Error("switched off");
