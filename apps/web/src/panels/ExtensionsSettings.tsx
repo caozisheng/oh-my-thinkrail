@@ -265,6 +265,7 @@ export function ExtensionsCatalog({
 	onSetting,
 	cidrSettingsSupported = true,
 	onRetry,
+	retrying = false,
 }: {
 	entries: readonly ExtensionCatalogEntry[] | "loading" | "failed";
 	disabled: readonly string[];
@@ -273,6 +274,7 @@ export function ExtensionsCatalog({
 	onSetting?: ((name: string, key: string, value: ExtensionSettingValue) => void) | undefined;
 	cidrSettingsSupported?: boolean;
 	onRetry?: (() => void) | undefined;
+	retrying?: boolean;
 }) {
 	const t = useT();
 	if (entries === "loading") return <LoadingRegion rows={2} className="py-8" />;
@@ -289,6 +291,7 @@ export function ExtensionsCatalog({
 							size="s"
 							tabIndex={0}
 							data-testid="extensions-retry"
+							loading={retrying}
 							onClick={onRetry}
 						>
 							{t("common.retry")}
@@ -381,6 +384,7 @@ export function ExtensionsSettings() {
 	const webLoads = useWebExtensionLoads();
 	const browseSupported = selectSupportsExtensionBrowse({ protocolVersion });
 	const [packagesAttempt, setPackagesAttempt] = useState(0);
+	const [catalogRetrying, setCatalogRetrying] = useState(false);
 	const [installOpen, setInstallOpen] = useState(false);
 	const [installPreset, setInstallPreset] = useState<InstallPreset | null>(null);
 	const [installKey, setInstallKey] = useState(0);
@@ -467,7 +471,11 @@ export function ExtensionsSettings() {
 					settings={extensionSettings}
 					onSetting={settingsSupported ? changeSetting : undefined}
 					cidrSettingsSupported={cidrSettingsSupported}
-					onRetry={() => void refreshExtensionCatalog()}
+					onRetry={() => {
+						setCatalogRetrying(true);
+						void refreshExtensionCatalog().finally(() => setCatalogRetrying(false));
+					}}
+					retrying={catalogRetrying}
 				/>
 			</SettingsGroup>
 			{packagesSupported ? (
