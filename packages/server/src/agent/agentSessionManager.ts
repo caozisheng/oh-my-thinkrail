@@ -1781,6 +1781,8 @@ async function readSessionFileIdentity(path: string): Promise<SessionFileIdentit
 	}
 }
 
+const SESSION_SCAN_CONCURRENCY = 8;
+
 async function scanSessionFiles(
 	cwd: string,
 	excludedPaths: ReadonlySet<string> = new Set(),
@@ -1793,23 +1795,33 @@ async function scanSessionFiles(
 		if (hasErrorCode(error, "ENOENT")) return [];
 		throw new Error(`Session directory is unreadable: ${dir}`, { cause: error });
 	}
-	const scanned: ScannedSessionFile[] = [];
-	for (const name of names) {
-		if (!name.endsWith(".jsonl")) continue;
-		const path = join(dir, name);
-		if (excludedPaths.has(resolve(path))) continue;
-		try {
-			const identity = await readSessionFileIdentity(path);
-			if (identity) scanned.push({ path, ok: true, identity });
-		} catch (error) {
-			scanned.push({
-				path,
-				ok: false,
-				error: error instanceof Error ? error : new Error(String(error)),
-			});
+	const paths = names
+		.filter((name) => name.endsWith(".jsonl"))
+		.map((name) => join(dir, name))
+		.filter((path) => !excludedPaths.has(resolve(path)));
+	const scanned = new Array<ScannedSessionFile | null>(paths.length).fill(null);
+	let next = 0;
+	const scan = async () => {
+		while (true) {
+			const index = next++;
+			const path = paths[index];
+			if (path === undefined) return;
+			try {
+				const identity = await readSessionFileIdentity(path);
+				if (identity) scanned[index] = { path, ok: true, identity };
+			} catch (error) {
+				scanned[index] = {
+					path,
+					ok: false,
+					error: error instanceof Error ? error : new Error(String(error)),
+				};
+			}
 		}
-	}
-	return scanned;
+	};
+	await Promise.all(
+		Array.from({ length: Math.min(SESSION_SCAN_CONCURRENCY, paths.length) }, () => scan()),
+	);
+	return scanned.filter((file): file is ScannedSessionFile => file !== null);
 }
 
 async function listSessionInfosStrict(

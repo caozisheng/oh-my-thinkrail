@@ -513,8 +513,9 @@ recovery; they are not the default execution path when the direct capability is 
     `listSessions(workspaceId, cwd)` (live sessions
     **unioned with on-disk** ones pi persisted under `cwd`, live winning on id → `SessionSummary[]` tagged
     `live`; before treating the **detached** disk list as authoritative it strictly scans every transcript
-    header and verifies pi returned every file, so an unreadable/malformed/skipped transcript rejects the
-    read rather than masquerading as absent and being tombstoned by reconnect reconciliation. A `.jsonl`
+    header with at most eight concurrent reads per scan and verifies pi returned every file, so an
+    unreadable/malformed/skipped transcript rejects the read rather than masquerading as absent and
+    being tombstoned by reconnect reconciliation. A `.jsonl`
     whose first parsed entry is not a session header is not a transcript — pi's own listing skips those
     files, and extensions keep sidecar logs there (e.g. pi-automode's `<session>-pi-automode.jsonl`) — but a
     file with no parsed entry at all still rejects. A registered live

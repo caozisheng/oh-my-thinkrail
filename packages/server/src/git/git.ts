@@ -423,23 +423,52 @@ function lineCount(content: string): number {
 
 const UNTRACKED_COUNT_MAX_BYTES = 2 * 1024 * 1024;
 const UNTRACKED_COUNT_TOTAL_BYTES = 32 * 1024 * 1024;
+const UNTRACKED_COUNT_CONCURRENCY = 8;
+
+async function mapPathsConcurrent<R>(
+	paths: readonly string[],
+	concurrency: number,
+	map: (path: string) => Promise<R>,
+): Promise<R[]> {
+	const results = new Array<R>(paths.length);
+	let next = 0;
+	const worker = async () => {
+		while (true) {
+			const index = next++;
+			const path = paths[index];
+			if (path === undefined) return;
+			results[index] = await map(path);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(concurrency, paths.length) }, () => worker()));
+	return results;
+}
 
 async function untrackedLineCounts(
 	worktreePath: string,
 	paths: readonly string[],
 ): Promise<Map<string, number>> {
 	const counts = new Map<string, number>();
-	let budget = UNTRACKED_COUNT_TOTAL_BYTES;
-	for (const path of paths) {
+	const sizes = await mapPathsConcurrent(paths, UNTRACKED_COUNT_CONCURRENCY, async (path) => {
 		try {
-			const abs = resolve(worktreePath, path);
-			const { size } = await stat(abs);
-			if (size > UNTRACKED_COUNT_MAX_BYTES || size > budget) continue;
-			budget -= size;
-			const bytes = await readFile(abs);
+			return (await stat(resolve(worktreePath, path))).size;
+		} catch {
+			return null;
+		}
+	});
+	let budget = UNTRACKED_COUNT_TOTAL_BYTES;
+	const eligible = paths.filter((_, index) => {
+		const size = sizes[index];
+		if (size == null || size > UNTRACKED_COUNT_MAX_BYTES || size > budget) return false;
+		budget -= size;
+		return true;
+	});
+	await mapPathsConcurrent(eligible, UNTRACKED_COUNT_CONCURRENCY, async (path) => {
+		try {
+			const bytes = await readFile(resolve(worktreePath, path));
 			if (classifyBytes(bytes).text) counts.set(path, lineCount(decodeText(bytes)));
 		} catch {}
-	}
+	});
 	return counts;
 }
 

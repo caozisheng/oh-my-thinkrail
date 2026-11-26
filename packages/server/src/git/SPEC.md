@@ -203,8 +203,9 @@ ref off the workspace-create critical path.
   via `numstatPath` to match `--name-status`; binary rows dropped; untracked files count their whole
   content as added only when `fs.classifyBytes` agrees it is text, so invalid UTF-8, NUL-bearing, and
   magic-typed untracked files omit counts exactly as their `ResourceMeta` does) for the Changes tree's `+/−` badges.
-  Untracked files are read asynchronously, at most 2MB each and 32MB per call in path order; files past
-  either cap omit their count, so a worktree full of unignored output cannot stall the read;
+  Untracked files are statted and read asynchronously with at most eight concurrent operations per call. The
+  per-file 2MB and per-call 32MB limits are still selected in path order; files past either cap omit
+  their count, so a worktree full of unignored output cannot stall the read;
   `gitDiffFile(workspaceId, path, scope?)` → `{ original, modified, originalOid, meta: { original, modified } }` — `originalOid` is the range's resolved immutable start (or `null`) and both
   sides of one file's change for the center diff tab (`original` = the file at the range's start ref, raw,
   empty when absent there —
