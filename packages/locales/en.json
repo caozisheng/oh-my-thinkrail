@@ -699,7 +699,7 @@
 	"issues.groupAddressRequired": "Connect a GitLab group address in the group workbench.",
 	"issues.groupLabel": "Group",
 	"issues.groupUseHome": "Open Group Home to connect a GitLab group. This page connects one repository.",
-	"issues.groupsUnsupported": "GitLab group Issues need host protocol v138 or newer.",
+	"issues.groupsUnsupported": "GitLab group Issues need host protocol v148 or newer.",
 	"issues.history.close": "Close",
 	"issues.history.empty": "No archived implementation conversations.",
 	"issues.history.failed": "Could not read implementation history.",

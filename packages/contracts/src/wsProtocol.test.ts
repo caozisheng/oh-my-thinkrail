@@ -139,11 +139,11 @@ import {
 } from "./wsProtocol";
 
 test("GitLab group associations have an additive protocol floor after artifacts", () => {
-	expect(ISSUES_GROUPS_PROTOCOL_VERSION).toBe(138);
-	expect(GROUP_WORKSPACE_PROTOCOL_VERSION).toBe(138);
-	expect(ISSUES_PEOPLE_PROTOCOL_VERSION).toBe(138);
-	expect(ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION).toBe(139);
-	expect(ISSUES_GROUPS_PROTOCOL_VERSION).toBeGreaterThan(ARTIFACT_ROLES_PROTOCOL_VERSION);
+	expect(ISSUES_GROUPS_PROTOCOL_VERSION).toBe(148);
+	expect(GROUP_WORKSPACE_PROTOCOL_VERSION).toBe(148);
+	expect(ISSUES_PEOPLE_PROTOCOL_VERSION).toBe(148);
+	expect(ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION).toBe(149);
+	expect(ISSUES_GROUPS_PROTOCOL_VERSION).toBeGreaterThan(EXTENSION_BROWSE_PROTOCOL_VERSION);
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(ISSUES_GROUPS_PROTOCOL_VERSION);
 });
 
@@ -341,7 +341,7 @@ test("new upstream capabilities do not collide with existing fork feature floors
 	for (const version of additions)
 		expect(version).toBeGreaterThan(PROJECT_GROUP_HOME_PROTOCOL_VERSION);
 	expect(new Set(additions).size).toBe(additions.length);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 });
 
 test("the project group home is pinned to v127", () => {
@@ -445,7 +445,7 @@ test("on-demand Issue repository joins are pinned to v126", () => {
 
 test("Issue workspace recovery is additive at v134 and validates frozen identity snapshots", () => {
 	expect(ISSUES_WORKSPACE_RECOVERY_PROTOCOL_VERSION).toBe(134);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(WS_METHODS.issuesImplementationRecovery).toBe("issues.implementationRecovery");
 	expect(WS_METHODS.issuesRecoverImplementation).toBe("issues.recoverImplementation");
 	const reference = {
@@ -654,7 +654,7 @@ test("find in files is pinned to v122", () => {
 });
 
 test("the question panel height setting is pinned to v124", () => {
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(QUESTION_PANEL_PROTOCOL_VERSION).toBe(124);
 	expect(DEFAULT_CONFIG.questionPanelHeight).toBe(70);
 });
@@ -674,7 +674,7 @@ test("workspace path resolution is pinned to v132", () => {
 test("image references advance the merged fork protocol without reusing a floor", () => {
 	expect(IMAGE_REFS_PROTOCOL_VERSION).toBe(133);
 	expect(IMAGES_ROUTE).toBe("/images/");
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 });
 
 test("extension editor text is pinned to v128", () => {
@@ -1048,7 +1048,7 @@ test("issues read RPCs are registered at v103", () => {
 
 test("complete Issue detail is pinned to v114", () => {
 	expect(ISSUES_DETAIL_PROTOCOL_VERSION).toBe(114);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(WS_METHODS.issuesDetail).toBe("issues.detail");
 	const detail: WsMethodMap["issues.detail"]["result"] = {
 		reference: {
@@ -1101,7 +1101,7 @@ test("the repository-address hint is registered at the v105 Issues auth floor", 
 });
 
 test("six closed Issue actions are registered at v104", () => {
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
 	expect(WS_METHODS.issuesLaunchDesign).toBe("issues.launchDesign");
@@ -1114,7 +1114,7 @@ test("six closed Issue actions are registered at v104", () => {
 
 test("app-originated Issue approvals are registered at v106", () => {
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_PROTOCOL_VERSION).toBe(103);
@@ -1139,7 +1139,7 @@ test("app-originated Issue approvals are registered at v106", () => {
 
 test("the approved-design read is registered at v107", () => {
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
@@ -1164,7 +1164,7 @@ test("the approved-design read is registered at v107", () => {
 
 test("the implementation start is registered at v108", () => {
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(ISSUES_DESIGN_APPROVAL_PROTOCOL_VERSION).toBe(107);
 	expect(ISSUES_APPROVAL_PROTOCOL_VERSION).toBe(106);
 	expect(ISSUES_AUTH_PROTOCOL_VERSION).toBe(105);
@@ -1212,7 +1212,7 @@ test("GitHub Issues changes the wire contract at v110", () => {
 
 test("localized startup adds v109 methods without moving legacy floors", () => {
 	expect(ISSUES_SESSION_STARTUP_PROTOCOL_VERSION).toBe(109);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(ISSUES_ACTIONS_PROTOCOL_VERSION).toBe(104);
 	expect(ISSUES_IMPLEMENTATION_PROTOCOL_VERSION).toBe(108);
 	expect(WS_METHODS.issuesBeginDesign).toBe("issues.beginDesign");
@@ -1267,7 +1267,7 @@ test("keybinding overrides are pinned to v136 and default to none", () => {
 
 test("extension settings are pinned to v112", () => {
 	expect(EXTENSION_SETTINGS_PROTOCOL_VERSION).toBe(112);
-	expect(PROTOCOL_VERSION).toBe(147);
+	expect(PROTOCOL_VERSION).toBe(149);
 	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
 });
 

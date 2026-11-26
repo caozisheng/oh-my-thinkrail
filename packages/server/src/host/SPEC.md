@@ -15,7 +15,7 @@ persisted binding. The provider reads and verifies comment ownership under that 
 only a confirmed 204 response counts as success. Provider errors are uncertain writes and are not
 retried. This irreversible comment action is intentionally direct and does not create a confirmation card.
 
-At v138 `project.openGroup` materializes a group owner and its stable non-Git workspace. Group Home
+At v148 `project.openGroup` materializes a group owner and its stable non-Git workspace. Group Home
 opens it for sessions, terminals, files and specs. Group Issue connections require that owner and group
 scope; repository owners reject group scope. Group Issue reads preserve verified owning-project
 identities. Repository stage/worktree/delivery actions reject group owners before repository work.

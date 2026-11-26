@@ -528,7 +528,7 @@ Workspace handles admit the shared `chat` kind as input, but every ownership/def
 rejects it. Repository-owned Issue work requires a real project checkout; group owners use their
 explicit non-Git workspace. Projectless chats cannot be Issue targets.
 
-## Group-owned Issue workflows (v139)
+## Group-owned Issue workflows (v149)
 
 The existing workspace coordinator, launch journal, Issue session association and startup prompt also
 serve group owners. `ownerKind: "group"` marks their records explicitly: design and implementation
@@ -539,7 +539,9 @@ cleanup and recovery rules. Group roots never receive Git branches, commits or p
 Full Issue identity (instance, remote project, IID) keeps equal numbers in different repositories apart.
 Reopening reuses stage sessions and startup reservation exactly as repository launches do.
 
-A group has no primary Git commit: legacy primary-commit publication refuses it. Bound session
+A group has no primary Git commit: repository primary-HEAD naming does not apply to group owners.
+Group member checkout paths use the full Issue identity; repository-owned Issues retain the frozen
+primary-HEAD naming contract. Legacy primary-commit publication refuses group owners. Bound session
 confirmation uses the participating repositories and their verified commits. Recovery rebuilds missing
 associated checkouts while retaining the group workspace and its bound session.
 

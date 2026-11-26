@@ -132,6 +132,10 @@ async function fixture() {
 test("a non-Git group keeps Issue sessions while recovering only an associated checkout", async () => {
 	const f = await fixture();
 	f.options.ownerKind = "group";
+	f.options.headCommit = (path) => {
+		expect(path).not.toBe(f.root);
+		return "a".repeat(40);
+	};
 	await mkdir(join(f.root, "api"));
 	f.options.projectPath = (id) => (id === "api" ? join(f.root, "api") : f.root);
 	f.options.defaultWorkspace = (id) => ({

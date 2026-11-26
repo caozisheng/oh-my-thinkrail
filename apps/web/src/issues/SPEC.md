@@ -60,15 +60,15 @@ A group's authenticated Issue reads do not execute local folder resources and re
 trust grant. Group conversation resource trust remains independent. Repository Issue reads retain
 their existing trust requirement; closed group owners cannot read their saved remote association.
 
-At v138 the group workbench association form accepts GitLab `groups/<namespace>/-/issues` and group-home URLs,
+At v148 the group workbench association form accepts GitLab `groups/<namespace>/-/issues` and group-home URLs,
 including nested groups and an explicitly confirmed instance installation prefix. Group scope is derived
 from the address, never from a fixed host/group name. Earlier hosts cannot receive group submissions. Repository entry points reject group addresses; the group
-workbench requires them. Group lists share the repository controls from v139; v138 group hosts retain reads only.
+workbench requires them. Group lists share the repository controls from v149; v148 group hosts retain reads only.
 The existing form, HTTP consent and token clearing rules apply unchanged. Group cards show the owning
 project namespace alongside the per-project Issue number; previews and actions use the full reference.
 Connection/disclosure identity includes scope, so equal group and project ids cannot reuse panel state.
 
-At v138 the group workbench connected, trusted list has separate assignee and author text filters. Matching is
+At v148 the group workbench connected, trusted list has separate assignee and author text filters. Matching is
 case-insensitive substring matching against display name or username, accepting an optional leading
 `@`; multiple assignees match by any member, and the two filters combine with AND. Filtering precedes
 stage grouping/counts, preserves complete loaded data and preview/action identities, and sends no RPC.
@@ -350,7 +350,7 @@ cover this module.
 
 ## Shared Issue workflows and retained reads
 
-From v139 group and repository panels share title links, previews, repository links, Design/Implement
+From v149 group and repository panels share title links, previews, repository links, Design/Implement
 and history. Group actions use the original host launch methods and open the returned bound session;
 there is no separate Discuss action or pasted Issue-body draft. Group repository choices are trusted
 open members. Read permission and execution permission remain distinct.

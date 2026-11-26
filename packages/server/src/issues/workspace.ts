@@ -763,7 +763,13 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		key: string,
 		record: IssueWorkspaceRecord,
 	): Promise<IssueSessionLaunch> {
-		if (!record.naming && !record.implementation && !record.members && !record.layout) {
+		if (
+			owner.primaryRepositoryIds.length > 0 &&
+			!record.naming &&
+			!record.implementation &&
+			!record.members &&
+			!record.layout
+		) {
 			const primaryHead = await options.headCommit?.(await projectRoot());
 			if (!primaryHead || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(primaryHead)) stop();
 			record = { ...record, naming: { version: 1, primaryHead, prefixLengths: [] } };
@@ -1112,7 +1118,12 @@ export function createIssueWorkspaceCoordinator(options: IssueWorkspaceOptions) 
 		ownedImplementation(reference: IssueReference): Promise<WorkspaceHandle> {
 			return run(reference, async (_key, record) => {
 				const ownership = record.implementation;
-				if (owner.primaryRepositoryIds.length === 0 || ownership?.state !== "completed" || !ownership.workspaceId) stop();
+				if (
+					owner.primaryRepositoryIds.length === 0 ||
+					ownership?.state !== "completed" ||
+					!ownership.workspaceId
+				)
+					stop();
 				const path = await worktreePathFor(record, projectId);
 				if (path !== ownership.worktreePath) stop();
 				return verifyImplementation(ownership, path);

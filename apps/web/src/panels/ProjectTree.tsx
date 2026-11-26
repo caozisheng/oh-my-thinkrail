@@ -611,9 +611,7 @@ export function ProjectTree({
 												active={(workspaces[entry.id] ?? []).some(
 													(ws) => ws.kind === "group" && ws.id === activeWorkspaceId,
 												)}
-												needsAttention={(workspaces[entry.id] ?? []).some((ws) =>
-													selectWorkspaceNeedsAttention(stateProjection, ws.id),
-												)}
+												needsAttention={foregroundNeedsInput?.projectId === entry.id}
 												onOpen={() =>
 													void openGroupWorkspace(entry.id, "default").catch((error) =>
 														toast.error(errorText(error)),

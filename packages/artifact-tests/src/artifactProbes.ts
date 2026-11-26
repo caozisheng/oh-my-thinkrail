@@ -277,7 +277,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function connectRpc(baseUrl: string): Promise<WebSocket> {
-	const socket = new WebSocket(`${baseUrl.replace(/^http/, "ws")}/ws?protocol=139`);
+	const socket = new WebSocket(`${baseUrl.replace(/^http/, "ws")}/ws?protocol=149`);
 	await new Promise<void>((resolve, reject) => {
 		socket.addEventListener("open", () => resolve(), { once: true });
 		socket.addEventListener("error", () => reject(new Error("WebSocket connection failed")), {

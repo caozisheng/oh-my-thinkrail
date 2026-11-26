@@ -104,7 +104,7 @@ goals. Existing upstream GitHub pull-request features are separate from Issues i
 
 ## GitHub and GitLab Issues
 
-Each group has its own Default workspace in the project tree from host protocol v138. Click the group
+Each group has its own Default workspace in the project tree from host protocol v148. Click the group
 name or its Default row to enter the full workbench directly: start group conversations, open terminals
 at the group root, read group Specs and connect group Issues without choosing a primary repository.
 New conversations start with an empty input and belong to the group. Conversations and terminals work in the original folders. Member repositories retain their own isolated
@@ -115,7 +115,7 @@ In **Group Home → Group Issues**, paste a GitLab group URL such as
 installation prefix), and supply an access token that can read the group. Owned projects and nested subgroups
 are included; each Issue shows its project namespace so equal per-project numbers remain distinct.
 Filter by assignee or author using a display name or username; filters combine and apply to the complete
-loaded list. From host protocol v139, use the same Issue links, previews, repository association,
+loaded list. From host protocol v149, use the same Issue links, previews, repository association,
 **Design** and **Implement** controls as repository Issues. Bound sessions belong to the group;
 implementation prepares worktrees for linked member repositories. Returning to the panel reuses its
 loaded list; use Refresh Issues to fetch updates.
