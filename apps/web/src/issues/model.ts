@@ -4,6 +4,7 @@ import {
 	ISSUES_APPROVAL_PROTOCOL_VERSION,
 	ISSUES_AUTH_PROTOCOL_VERSION,
 	ISSUES_GITHUB_PROTOCOL_VERSION,
+	ISSUES_GROUPS_PROTOCOL_VERSION,
 	ISSUES_IMPLEMENTATION_PROTOCOL_VERSION,
 	ISSUES_PROTOCOL_VERSION,
 	ISSUES_REPOSITORIES_PROTOCOL_VERSION,
@@ -26,6 +27,7 @@ import {
 	type WsResult,
 } from "@thinkrail/contracts";
 import { canonicalLocale, type MessageKey, resolveLocale } from "@thinkrail/locales";
+import { useAppStore } from "../store";
 import { RequestTimeoutError, wsErrorCode } from "../transport";
 import { resolveIssueRepositoryAddress, suggestIssueRepositoryAddress } from "./repositoryAddress";
 
@@ -35,6 +37,10 @@ export function supportsIssues(version: number | null): boolean {
 
 export function supportsIssueAuth(version: number | null): boolean {
 	return version !== null && version >= ISSUES_AUTH_PROTOCOL_VERSION;
+}
+
+export function supportsIssueGroups(version: number | null): boolean {
+	return version !== null && version >= ISSUES_GROUPS_PROTOCOL_VERSION;
 }
 
 /** The host-side launch surface (design/implementation sessions), v104. */
@@ -170,11 +176,30 @@ export interface IssueActionAvailability {
  * whether the implementation confirmation gate exists (v108), and project trust.
  */
 export interface IssueActionCapabilities {
+	readOnly?: boolean;
 	actionsSupported: boolean;
 	startupSupported?: boolean;
 	implementationSupported: boolean;
 	/** The host refuses every stage action for an untrusted project. */
 	trusted: boolean;
+}
+
+export function filterIssues(
+	issues: readonly IssueSummary[],
+	filters: { assignee: string; author: string },
+): readonly IssueSummary[] {
+	const query = (value: string) => value.trim().replace(/^@/, "").toLocaleLowerCase();
+	const assignee = query(filters.assignee);
+	const author = query(filters.author);
+	if (!assignee && !author) return issues;
+	const matches = (person: { name: string; username: string }, value: string) =>
+		person.name.toLocaleLowerCase().includes(value) ||
+		person.username.toLocaleLowerCase().includes(value);
+	return issues.filter(
+		(issue) =>
+			(!assignee || issue.assignees?.some((person) => matches(person, assignee))) &&
+			(!author || (issue.author && matches(issue.author, author))),
+	);
 }
 
 /** One stable key per listed issue, so a failure can be shown on the row that raised it. */
@@ -210,7 +235,7 @@ export function issueActions(
 	issue: Pick<IssueSummary, "stage">,
 	capabilities: IssueActionCapabilities,
 ): IssueActionAvailability[] {
-	if (issue.stage === "closed") return [];
+	if (issue.stage === "closed" || capabilities.readOnly) return [];
 	// Implementation is offered for every open stage: the host moves a backlog issue into
 	// in-progress on approval and starts an already in-progress/in-review issue as it is.
 	const designed = issue.stage !== "backlog";
@@ -327,8 +352,8 @@ export function isSshRepositoryAddress(value: string): boolean {
 }
 
 export type IssueAddressChoice =
-	| { status: "valid"; instanceUrl: string; projectId: string }
-	| { status: "needs-instance"; instanceUrl: string; projectId: string }
+	| { status: "valid"; instanceUrl: string; projectId: string; scope?: "group" }
+	| { status: "needs-instance"; instanceUrl: string; projectId: string; scope?: "group" }
 	| { status: "invalid"; reason: "empty" | "ssh" | "unsupported" };
 
 export function resolveIssueConnectionAddress(
@@ -363,7 +388,7 @@ export function issueHttpConsent(
 }
 
 export function issueConnectionInput(
-	target: { instanceUrl: string; projectId: string },
+	target: { instanceUrl: string; projectId: string; scope?: "group" },
 	token: string,
 	acknowledgedInstance: string | null,
 ): IssueConnectionInput | null {
@@ -374,17 +399,18 @@ export function issueConnectionInput(
 	const input: IssueConnectionInput = {
 		instanceUrl,
 		projectId: target.projectId,
+		...(target.scope ? { scope: target.scope } : {}),
 		token,
 		...(consent ? { httpConsent: consent } : {}),
 	};
 	return isIssueConnectionInput(input) ? input : null;
 }
 
-export async function submitConnection<T>(
-	input: IssueConnectionInput,
+export async function submitConnection<Input, Result>(
+	input: Input,
 	clearToken: () => void,
-	connect: (input: IssueConnectionInput) => Promise<T>,
-): Promise<T> {
+	connect: (input: Input) => Promise<Result>,
+): Promise<Result> {
 	clearToken();
 	return connect(input);
 }
@@ -409,6 +435,7 @@ export interface AssociationFormFields {
 	authSupported: boolean;
 	/** False on a host that cannot address GitHub Issue references. */
 	githubSupported?: boolean;
+	groupsSupported?: boolean;
 }
 
 export interface AssociationFormState {
@@ -418,7 +445,7 @@ export interface AssociationFormState {
 	advancedToggle: boolean;
 	instanceValue: string;
 	choice: IssueAddressChoice;
-	target: { instanceUrl: string; projectId: string } | null;
+	target: { instanceUrl: string; projectId: string; scope?: "group" } | null;
 	projectPath: string;
 	canonicalInstance: string | null;
 	consentRequired: boolean;
@@ -443,13 +470,18 @@ export function associationFormState(fields: AssociationFormFields): Association
 				status: "valid" as const,
 				instanceUrl: fields.connection.instanceUrl,
 				projectId: fields.connection.remoteProjectId,
+				...(fields.connection.scope ? { scope: fields.connection.scope } : {}),
 			}
 		: showAdvanced && fields.address.trim()
 			? resolveIssueConnectionAddress(fields.address, instanceValue)
 			: base;
 	const target =
 		choice.status === "valid"
-			? { instanceUrl: choice.instanceUrl, projectId: choice.projectId }
+			? {
+					instanceUrl: choice.instanceUrl,
+					projectId: choice.projectId,
+					...(choice.scope ? { scope: choice.scope } : {}),
+				}
 			: null;
 	const projectPath =
 		choice.status === "valid"
@@ -459,11 +491,13 @@ export function associationFormState(fields: AssociationFormFields): Association
 				: "";
 	const canonicalInstance = target ? canonicalIssueInstanceUrl(target.instanceUrl) : null;
 	const providerNotice: MessageKey | null =
-		canonicalInstance !== null &&
-		issueProviderForInstanceUrl(canonicalInstance) === "github" &&
-		fields.githubSupported === false
-			? "issues.githubUnsupported"
-			: null;
+		target?.scope === "group" && fields.groupsSupported === false
+			? "issues.groupsUnsupported"
+			: canonicalInstance !== null &&
+					issueProviderForInstanceUrl(canonicalInstance) === "github" &&
+					fields.githubSupported === false
+				? "issues.githubUnsupported"
+				: null;
 	const consentRequired = canonicalInstance !== null && requiresIssueHttpConsent(canonicalInstance);
 	const consentAcknowledged =
 		canonicalInstance !== null && fields.acknowledged === canonicalInstance;
@@ -525,6 +559,7 @@ export function subscribeIssueAssociation(listener: IssueAssociationListener): (
 }
 
 export function notifyIssueAssociation(projectId: string): void {
+	useAppStore.getState().setIssueRead(projectId, null);
 	for (const listener of associationListeners) listener(projectId);
 }
 
@@ -603,6 +638,14 @@ export function issueSnapshotAfterLoad(
 	identity: string,
 	loaded: IssueSnapshot,
 ): IssueToolSnapshot {
+	if (
+		loaded.error === "list" &&
+		previous?.identity === identity &&
+		previous.connection?.instanceUrl === loaded.connection?.instanceUrl &&
+		previous.connection?.remoteProjectId === loaded.connection?.remoteProjectId &&
+		previous.connection?.scope === loaded.connection?.scope
+	)
+		return { ...previous, connection: loaded.connection, pending: false, error: loaded.error };
 	return loaded.error === "connect"
 		? issueSnapshotUpdate(previous, identity, { error: loaded.error })
 		: issueSnapshotUpdate(previous, identity, {

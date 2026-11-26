@@ -15,6 +15,13 @@ persisted binding. The provider reads and verifies comment ownership under that 
 only a confirmed 204 response counts as success. Provider errors are uncertain writes and are not
 retried. This irreversible comment action is intentionally direct and does not create a confirmation card.
 
+At v148 `project.openGroup` materializes a group owner and its stable non-Git workspace. Group Home
+opens it for sessions, terminals, files and specs. Group Issue connections require that owner and group
+scope; repository owners reject group scope. Group Issue reads preserve verified owning-project
+identities. Repository stage/worktree/delivery actions reject group owners before repository work.
+Group trust is independent, and old clients receive neither group contexts nor their resource pushes.
+The contexts persist separately so old hosts do not see group folders as repositories.
+
 `issueStageActions` and `issueDeliveryActions` compose the server Issue delivery capability for bound
 sessions. Agent-issued `runOperation` is a direct host capability: invocation in the bound session is its
 authority, not an agent-supplied boolean or transcript receipt. It runs normal frozen preflight and journal
@@ -1415,7 +1422,7 @@ no stage actions, generic credential framework, or agent/session injection.
 `issues.repositoryAddress({ projectId })` also sits at the v105 Issues auth floor with
 `issues.connect`, because it prefills the form that will carry a token. The call takes no path:
 the exact-key request guard accepts only `projectId`, and the host resolves the registered project
-through `getProjects`, requiring membership and `trusted === true` like connect/list. It then runs the
+through `getProjects`, requiring membership and the shared Issue trust predicate. It then runs the
 existing bounded local `git` read `originUrls(project.path)`: no fetch, no `ls-remote`, no credential
 helper, no network. The host answers the configured `origin` fetch URL only when the project has a
 single remote named `origin` and the value is already a credential-free canonical HTTP(S) address
@@ -1510,7 +1517,7 @@ reliable (local storage; network filesystem guarantees are not asserted). This s
 
 ### Durable Issue workspace launches
 
-`issueWorkspacePersistence.ts` exports `createIssueWorkspacePersistence(root)` for an existing private
+`issueWorkspacePersistence.ts` exports `createIssueWorkspacePersistence(root, ownerKind?)` for an existing private
 local directory. `withLaunch(localProjectId, reference, operation, beforeRelease?, failurePolicy?)` acquires and flushes an exclusive
 `wx` fence for `(localProjectId, IID)` before invoking the callback, which must wrap the entire
 process-local Issue workspace coordinator operation. Different remote bindings contend for the same
@@ -1900,3 +1907,28 @@ only the note ID; changed bodies or uncertain writes require reconciliation. Tru
 workspace path and remote identity are checked around asynchronous work. No automatic turn-end
 publication exists: the skill and startup prompt attempt best-effort summary publication without making
 it a work or session-completion gate. Uncertain writes remain fenced independently of session completion.
+
+## Group Issue workflow composition
+
+Group Issue launch uses the existing actions/coordinator/agent-session path, including complete
+body and comments, locale, workflow skill, durable binding, guarded startup and confirmed reports.
+The group owns its sessions; only open trusted member repositories can be associated or joined.
+A group grants no trust to members. Linked repository worktrees retain their own project ownership
+and exact clone checks for delivery. The group folder is not itself a source checkout.
+
+Group launch fences use the full local owner/provider/instance/remote project/IID identity, so
+parallel reads and starts for equal IIDs in different repositories cannot contend. Repository-owned
+fences keep their legacy per-owner/IID scope because the primary checkout path is shared across bindings.
+
+## Issue owner boundary
+
+`issueOwner.ts` owns local owner admission, trusted member eligibility and reference candidates.
+Actions recheck that policy around asynchronous work, then pass the owner kind and workspace
+resolver to the shared coordinator. The policy does not create sessions, select repositories,
+grant trust or change the existing approval/join behavior.
+
+## Shared Issue repository admission
+
+`issueOwner.ts` uses contracts' shared candidate predicate for selection, joining and agent reference
+scope. Issue session/context reads use the same trust predicate. The host rechecks these rules around
+asynchronous work; native pi resources, alias skills and MCP keep their independent admission rules.

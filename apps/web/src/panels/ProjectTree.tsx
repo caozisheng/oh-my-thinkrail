@@ -41,6 +41,7 @@ import {
 	RiCloseLine as X,
 } from "@remixicon/react";
 import type { EditorInfo, Project, Workspace, WorkspaceCreation } from "@thinkrail/contracts";
+import { GROUP_WORKSPACE_PROTOCOL_VERSION } from "@thinkrail/contracts";
 import { useT } from "@thinkrail/locales/react";
 import { IconButton } from "@thinkrail/ui/button";
 import {
@@ -102,6 +103,7 @@ import { AddProjectMenu } from "./AddProjectMenu";
 import { ChatsSection } from "./ChatsSection";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExistingWorktreeDialog } from "./ExistingWorktreeDialog";
+import { openGroupWorkspace } from "./groupWorkspace";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import { ProjectGroupStartDialog } from "./ProjectGroupStartDialog";
 import { groupMemberLabel, groupNodeKey, projectRailEntries } from "./projectGroups";
@@ -566,15 +568,36 @@ export function ProjectTree({
 									name={entry.name}
 									root={entry.root}
 									collapsed={collapsedRailNodes[groupNodeKey(entry.id)] === true}
-									isActive={activeGroupId === entry.id}
+									isActive={
+										activeGroupId === entry.id ||
+										(workspaces[entry.id] ?? []).some((ws) => ws.id === activeWorkspaceId)
+									}
 									needsAttention={
 										collapsedRailNodes[groupNodeKey(entry.id)] === true &&
 										anyNeedsAttention(entry.projects)
 									}
 									onToggle={() => useAppStore.getState().toggleRailNode(groupNodeKey(entry.id))}
-									onStart={() => setGroupStartId(entry.id)}
+									onStart={() => {
+										if (
+											(useAppStore.getState().protocolVersion ?? 0) >=
+											GROUP_WORKSPACE_PROTOCOL_VERSION
+										)
+											void openGroupWorkspace(entry.id, "chat").catch((error) =>
+												toast.error(errorText(error)),
+											);
+										else setGroupStartId(entry.id);
+									}}
 									{...(supportsGroupHome
-										? { onOpen: () => useAppStore.getState().selectProjectGroup(entry.id) }
+										? {
+												onOpen: () => {
+													if ((protocolVersion ?? 0) >= GROUP_WORKSPACE_PROTOCOL_VERSION)
+														void openGroupWorkspace(entry.id, "default").catch((error) =>
+															toast.error(errorText(error)),
+														);
+													else useAppStore.getState().selectProjectGroup(entry.id);
+												},
+												onOverview: () => useAppStore.getState().selectProjectGroup(entry.id),
+											}
 										: {})}
 								/>
 								{collapsedRailNodes[groupNodeKey(entry.id)] === true ? null : (
@@ -582,6 +605,20 @@ export function ProjectTree({
 										className="flex flex-col pl-16"
 										aria-label={t("panels.projectTree.group", { name: entry.name })}
 									>
+										{(protocolVersion ?? 0) >= GROUP_WORKSPACE_PROTOCOL_VERSION && (
+											<GroupDefaultRow
+												groupId={entry.id}
+												active={(workspaces[entry.id] ?? []).some(
+													(ws) => ws.kind === "group" && ws.id === activeWorkspaceId,
+												)}
+												needsAttention={foregroundNeedsInput?.projectId === entry.id}
+												onOpen={() =>
+													void openGroupWorkspace(entry.id, "default").catch((error) =>
+														toast.error(errorText(error)),
+													)
+												}
+											/>
+										)}
 										{entry.projects.map((member) =>
 											renderProject(member, { path: member.projectGroup?.path ?? "" }),
 										)}
@@ -1113,7 +1150,51 @@ function ProjectRow({
 	);
 }
 
+function GroupDefaultRow({
+	groupId,
+	active,
+	needsAttention,
+	onOpen,
+}: {
+	groupId: string;
+	active: boolean;
+	needsAttention: boolean;
+	onOpen: () => void;
+}) {
+	const t = useT();
+	const label = t("store.workspace.defaultName");
+	const item = useTreeItem(`group-default:${groupId}`, { level: 2, label, selected: active });
+	const Icon = active ? RiHome2Fill : House;
+	return (
+		<li
+			role="none"
+			data-testid="group-default-workspace"
+			data-group={groupId}
+			data-active={active || undefined}
+			className={cn(
+				"flex min-h-panel-row min-w-0 items-center gap-8 rounded-sm py-2 pr-4 pl-24",
+				active ? "bg-control-bg-selected" : "hover:bg-control-bg-hovered",
+			)}
+		>
+			<button
+				type="button"
+				{...item}
+				onClick={onOpen}
+				className={cn(
+					"flex min-w-0 flex-1 items-center gap-4 text-left tr-text-ui",
+					active ? "text-primary" : "text-text-muted",
+				)}
+			>
+				<Icon className="size-14 shrink-0" />
+				<span className="truncate">{label}</span>
+			</button>
+			{needsAttention && <AttentionDot />}
+		</li>
+	);
+}
+
 function GroupHeader({
+	onOverview,
 	name,
 	root,
 	collapsed,
@@ -1130,6 +1211,7 @@ function GroupHeader({
 	needsAttention: boolean;
 	onToggle: () => void;
 	onOpen?: () => void;
+	onOverview?: () => void;
 	/** The row's "+": the project start choices scoped to this group. */
 	onStart: () => void;
 }) {
@@ -1184,6 +1266,16 @@ function GroupHeader({
 				<span className="flex min-w-0 flex-1 items-center gap-4" title={root}>
 					{label}
 				</span>
+			)}
+			{onOverview && (
+				<IconButton
+					icon={MoreVertical}
+					label={t("panels.groupHome.overview")}
+					variant="ghost"
+					size="s"
+					data-testid="project-group-overview"
+					onClick={onOverview}
+				/>
 			)}
 			{needsAttention ? <AttentionDot /> : null}
 			<IconButton

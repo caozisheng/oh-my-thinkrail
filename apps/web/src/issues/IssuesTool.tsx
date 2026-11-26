@@ -9,6 +9,9 @@ import type {
 import {
 	ISSUES_CONTENT_PROTOCOL_VERSION,
 	ISSUES_DETAIL_PROTOCOL_VERSION,
+	ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION,
+	ISSUES_GROUPS_PROTOCOL_VERSION,
+	ISSUES_PEOPLE_PROTOCOL_VERSION,
 	isIssueWebUrl,
 } from "@thinkrail/contracts";
 import { localeOf, useT } from "@thinkrail/locales/react";
@@ -16,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { QuietScrollArea } from "../components/QuietScrollArea";
 import { availableLocales } from "../i18n";
-import { selectIssueRepositoryProjects, useAppStore } from "../store";
+import { selectIssueReadPermission, selectIssueRepositoryProjects, useAppStore } from "../store";
 import { getTransport, transportEndpointIdentity, wsErrorCode } from "../transport";
 import {
 	expandedIssueDisclosure,
@@ -132,9 +135,17 @@ export function IssuesTool({
 	const supported = supportsIssues(version);
 	const authSupported = supportsIssueAuth(version);
 	const githubSupported = supportsIssueGithub(version);
-	const trusted = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.trusted === true);
-	const projects = useAppStore(useShallow(selectIssueRepositoryProjects));
-	const repositoriesSupported = supportsIssueRepositories(version);
+	const trusted = useAppStore((s) => selectIssueReadPermission(s, projectId));
+	const projects = useAppStore(
+		useShallow((state) => selectIssueRepositoryProjects(state, projectId)),
+	);
+	const groupContext = useAppStore(
+		(s) => s.projects.find((p) => p.id === projectId)?.kind === "group",
+	);
+	const groupActions =
+		groupContext && version !== null && version >= ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION;
+	const repositoriesSupported =
+		(!groupContext || groupActions) && supportsIssueRepositories(version);
 	const joinSupported = supportsIssueRepositoryJoin(version);
 	const capabilities = useMemo<IssueActionCapabilities>(
 		() => ({
@@ -142,8 +153,9 @@ export function IssuesTool({
 			startupSupported: supportsIssueSessionStartup(version),
 			implementationSupported: supportsIssueImplementation(version),
 			trusted,
+			readOnly: groupContext && !groupActions,
 		}),
-		[version, trusted],
+		[version, trusted, groupContext, groupActions],
 	);
 	const [actionState, setActionState] = useState<{
 		identity: string;
@@ -154,13 +166,17 @@ export function IssuesTool({
 	const actionSequence = useRef(0);
 	const actionLock = useRef(false);
 	const identity = `${projectId}:${generation}:${status}:${supported}:${authSupported}:${trusted}`;
-	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(null);
+	const [snapshot, setSnapshot] = useState<IssueToolSnapshot | null>(() => {
+		const cached = useAppStore.getState().issueReadsByProject[projectId];
+		return cached?.identity === identity ? { ...cached, pending: false, error: null } : null;
+	});
 	const disclosureIdentity = snapshot?.connection
 		? issueDisclosureKey({
 				endpoint: transportEndpointIdentity(),
 				instanceUrl: snapshot.connection.instanceUrl,
 				projectId,
 				remoteProjectId: snapshot.connection.remoteProjectId,
+				...(snapshot.connection.scope ? { scope: snapshot.connection.scope } : {}),
 			})
 		: null;
 	const [disclosureState, setDisclosureState] = useState<{
@@ -267,6 +283,7 @@ export function IssuesTool({
 	const refresh = useCallback(
 		async (input?: IssueConnectionInput): Promise<ConnectResult> => {
 			if (!supported || status !== "connected") return { ok: false, error: "connect" };
+			if (input) useAppStore.getState().setIssueRead(projectId, null);
 			clearPreview();
 			actionSequence.current++;
 			actionLock.current = false;
@@ -276,8 +293,7 @@ export function IssuesTool({
 				sequence === requestSequence.current &&
 				useAppStore.getState().connectionGeneration === generation &&
 				useAppStore.getState().status === "connected" &&
-				(useAppStore.getState().projects.find((p) => p.id === projectId)?.trusted === true) ===
-					trusted;
+				selectIssueReadPermission(useAppStore.getState(), projectId) === trusted;
 			setSnapshot((previous) => update(previous, { pending: true, error: null }));
 			const transport = getTransport();
 			const result = await loadIssueSnapshot(
@@ -293,6 +309,12 @@ export function IssuesTool({
 			);
 			if (!result || !current()) return { ok: false, error: "connect" };
 			setSnapshot((previous) => issueSnapshotAfterLoad(previous, identity, result));
+			if (!result.error)
+				useAppStore.getState().setIssueRead(projectId, {
+					identity,
+					connection: result.connection,
+					issues: result.issues,
+				});
 			if (!result.error) void loadRepositories(result.issues, current);
 			return result.error === "connect" ? { ok: false, error: "connect" } : { ok: true };
 		},
@@ -321,6 +343,7 @@ export function IssuesTool({
 		);
 		try {
 			await getTransport().request("issues.disconnect", { projectId });
+			useAppStore.getState().setIssueRead(projectId, null);
 		} catch (error) {
 			if (sequence === requestSequence.current)
 				setSnapshot((previous) =>
@@ -333,14 +356,19 @@ export function IssuesTool({
 	}, [projectId, refresh, status, supported, update, clearPreview]);
 
 	useEffect(() => {
-		void refresh();
+		const cached = useAppStore.getState().issueReadsByProject[projectId];
+		if (cached?.identity === identity) {
+			setSnapshot({ ...cached, pending: false, error: null });
+			const sequence = requestSequence.current;
+			void loadRepositories(cached.issues, () => sequence === requestSequence.current);
+		} else void refresh();
 		return () => {
 			requestSequence.current++;
 			previewSequence.current++;
 			actionSequence.current++;
 			actionLock.current = false;
 		};
-	}, [refresh]);
+	}, [refresh, identity, projectId, loadRepositories]);
 
 	const runAction = useCallback(
 		async (issue: IssueSummary, action: IssueActionId): Promise<IssueActionResult> => {
@@ -390,7 +418,7 @@ export function IssuesTool({
 				sequence === actionSequence.current &&
 				useAppStore.getState().connectionGeneration === generation &&
 				useAppStore.getState().status === "connected" &&
-				useAppStore.getState().projects.find((p) => p.id === projectId)?.trusted === true;
+				selectIssueReadPermission(useAppStore.getState(), projectId);
 			const progress: IssueActionProgress = { issue: issueKey(issue), action, phase: "starting" };
 			const { reference } = issue;
 			const transport = getTransport();
@@ -563,7 +591,7 @@ export function IssuesTool({
 							useAppStore.getState().connectionGeneration === generation &&
 							useAppStore.getState().status === "connected" &&
 							useAppStore.getState().protocolVersion === version &&
-							useAppStore.getState().projects.find((row) => row.id === projectId)?.trusted === true;
+							selectIssueReadPermission(useAppStore.getState(), projectId);
 						void getTransport()
 							.request(
 								"issues.recoverImplementation",
@@ -627,6 +655,11 @@ export function IssuesTool({
 				pending={active?.pending ?? true}
 				authSupported={authSupported}
 				githubSupported={githubSupported}
+				groupsSupported={version !== null && version >= ISSUES_GROUPS_PROTOCOL_VERSION}
+				groupContext={groupContext}
+				peopleSupported={
+					groupContext && version !== null && version >= ISSUES_PEOPLE_PROTOCOL_VERSION
+				}
 				capabilities={capabilities}
 				error={active?.error ?? undefined}
 				onRefresh={() => {
@@ -634,7 +667,9 @@ export function IssuesTool({
 				}}
 				onConnect={refresh}
 				onDisconnect={disconnect}
-				historySupported={supportsIssueWorkspaceRecovery(version)}
+				historySupported={
+					(!groupContext || groupActions) && supportsIssueWorkspaceRecovery(version)
+				}
 				onOpenHistory={(issue) => setHistoryIssue({ identity, issue })}
 				onOpenIssue={onOpenIssue}
 				onRunAction={runAction}

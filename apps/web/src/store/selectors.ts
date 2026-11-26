@@ -14,7 +14,10 @@ import {
 	firstPromptOfTexts,
 	type GitDiffScope,
 	INSTALLED_EXTENSIONS_PROTOCOL_VERSION,
+	isIssueRepositoryCandidate,
 	isLiveResource,
+	isRepositoryProject,
+	isRepositoryWorkspace,
 	isSessionWorking,
 	MCP_PROTOCOL_VERSION,
 	type McpServerResourceSummary,
@@ -572,7 +575,7 @@ export function selectWorkspaceSettledReason(
 	if (
 		!state.workspaceSettlingSupported ||
 		isDefaultWorkspace(workspace) ||
-		isChatWorkspace(workspace)
+		!isRepositoryWorkspace(workspace)
 	)
 		return null;
 	if (
@@ -1084,14 +1087,28 @@ export function isChatsContainer(project: Pick<Project, "kind">): boolean {
 
 /** Every repository project — the Chats container is never one of them. */
 export function selectRepoProjects(state: Pick<ProjectContextState, "projects">): Project[] {
-	return state.projects.filter((project) => !isChatsContainer(project));
+	return state.projects.filter(isRepositoryProject);
 }
 
 /** Repositories eligible to associate with an Issue; trust must be granted in the owning project. */
 export function selectIssueRepositoryProjects(
 	state: Pick<ProjectContextState, "projects">,
+	ownerId?: string,
 ): Project[] {
-	return selectRepoProjects(state).filter((project) => project.trusted === true && !project.closed);
+	const owner = state.projects.find((project) => project.id === ownerId);
+	return state.projects.filter((project) => isIssueRepositoryCandidate(project, owner));
+}
+
+export function selectIssueReadPermission(
+	state: Pick<ProjectContextState, "projects">,
+	projectId: string,
+): boolean {
+	const owner = state.projects.find((project) => project.id === projectId);
+	return (
+		owner !== undefined &&
+		!owner.closed &&
+		(owner.kind === "group" || isIssueRepositoryCandidate(owner))
+	);
 }
 
 export function selectChatsContainer(state: Pick<ProjectContextState, "projects">): Project | null {
@@ -1142,7 +1159,7 @@ export function selectActiveWorkspaceProjectId(state: ActiveWorkspaceState): str
 /** The active workspace when it has a repository: a chat without a project has none to scope to. */
 export function selectActiveRepoWorkspaceId(state: ActiveWorkspaceState): string | undefined {
 	const active = selectActiveWorkspace(state);
-	return active && !isChatWorkspace(active) ? active.id : undefined;
+	return active && isRepositoryWorkspace(active) ? active.id : undefined;
 }
 
 export function selectActiveSubagentProjectTrust(state: ProjectContextState) {
@@ -1165,9 +1182,9 @@ export function selectHasTextSearchScope(state: ProjectContextState): boolean {
 /** The repository new work is created in: the context project unless it is the Chats container, else the first repository. */
 export function selectContextRepoProject(state: ProjectContextState): Project | null {
 	const context = selectContextProject(state);
-	if (context && !isChatsContainer(context)) return context;
+	if (context && context.kind === undefined) return context;
 	const selected = state.projects.find(
-		(project) => project.id === state.selectedProjectId && !isChatsContainer(project),
+		(project) => project.id === state.selectedProjectId && project.kind === undefined,
 	);
 	return selected ?? selectRepoProjects(state)[0] ?? null;
 }

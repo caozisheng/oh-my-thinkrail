@@ -106,6 +106,7 @@ export type * from "./issues";
 export {
 	canonicalIssueInstanceUrl,
 	hasIssueHttpConsent,
+	hasIssueProjectTrust,
 	isIssueApprovalResult,
 	isIssueConnectionInput,
 	isIssueDesignApproval,
@@ -117,6 +118,7 @@ export {
 	isIssueReference,
 	isIssueRepositories,
 	isIssueRepositoriesInput,
+	isIssueRepositoryCandidate,
 	isIssueRepositoryJoinInput,
 	isIssueSessionLaunch,
 	isIssueSessionStartupTarget,
@@ -179,4 +181,9 @@ export {
 	SPEECH_SAMPLE_RATE,
 	SPEECH_SOCKET_ROUTE,
 } from "./speech";
+export {
+	isRepositoryProject,
+	isRepositoryWorkspace,
+	workspaceCapabilities,
+} from "./workspaceCapabilities";
 export * from "./wsProtocol";

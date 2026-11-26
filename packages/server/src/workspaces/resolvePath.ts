@@ -67,7 +67,7 @@ function candidates(): Candidate[] {
 			(workspace) => workspace.projectId === project.id && workspace.deletionPending !== true,
 		);
 		const unensured =
-			project.kind !== "chats" && !own.some((workspace) => workspace.kind === "default");
+			project.kind === undefined && !own.some((workspace) => workspace.kind === "default");
 		return [
 			...own.map((workspace) => ({ project, workspace, root: workspace.worktreePath })),
 			...(unensured ? [{ project, workspace: null, root: project.path }] : []),

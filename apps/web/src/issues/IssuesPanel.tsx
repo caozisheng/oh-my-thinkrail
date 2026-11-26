@@ -33,6 +33,7 @@ import { issueLabelColors } from "./labelColors";
 import {
 	associationPanelState,
 	type ConnectResult,
+	filterIssues,
 	ISSUE_ACTION_KEY,
 	ISSUE_ACTION_REASON_KEY,
 	ISSUE_ERROR_KEY,
@@ -61,6 +62,9 @@ export interface IssuesPanelProps {
 	pending: boolean;
 	authSupported: boolean;
 	githubSupported: boolean;
+	groupsSupported?: boolean | undefined;
+	groupContext?: boolean | undefined;
+	peopleSupported?: boolean | undefined;
 	capabilities: IssueActionCapabilities;
 	error?: IssuePanelError | undefined;
 	onConnect: (input: IssueConnectionInput) => Promise<ConnectResult>;
@@ -170,6 +174,9 @@ export function IssuesPanel({
 	pending,
 	authSupported,
 	githubSupported,
+	groupsSupported,
+	groupContext,
+	peopleSupported,
 	capabilities,
 	error,
 	onConnect,
@@ -213,6 +220,17 @@ export function IssuesPanel({
 			closed: true,
 		},
 	);
+	const filterIdentity = `${primaryProjectId}:${connection?.instanceUrl}:${connection?.remoteProjectId}:${connection?.scope}`;
+	const [filterState, setFilterState] = useState({
+		identity: filterIdentity,
+		assignee: "",
+		author: "",
+	});
+	const filters =
+		filterState.identity === filterIdentity ? filterState : { assignee: "", author: "" };
+	const visibleIssues = peopleSupported ? filterIssues(issues, filters) : issues;
+	const updateFilter = (key: "assignee" | "author", value: string) =>
+		setFilterState({ identity: filterIdentity, ...filters, [key]: value });
 	const showForm = !connection?.connected || reconnecting;
 	const provider = connection ? issueProviderOf(connection.instanceUrl) : null;
 	const failure = actionError ?? state.actionError ?? snapshotError;
@@ -302,7 +320,9 @@ export function IssuesPanel({
 						</p>
 					)}
 					<p className="break-words text-text-muted">
-						{connection.instanceUrl} · {connection.remoteProjectId}
+						{connection.instanceUrl} ·{" "}
+						{connection.scope === "group" ? `${t("issues.groupLabel")} · ` : ""}
+						{connection.remoteProjectId}
 					</p>
 				</div>
 			)}
@@ -317,6 +337,8 @@ export function IssuesPanel({
 					pending={pending}
 					authSupported={authSupported}
 					githubSupported={githubSupported}
+					groupsSupported={groupsSupported}
+					associationScope={groupContext ? "group" : "project"}
 					onConnect={connect}
 					onError={(connectError) =>
 						dispatch(
@@ -357,10 +379,47 @@ export function IssuesPanel({
 				!failure &&
 				connection?.connected &&
 				issues.length === 0 && <p className="text-text-muted">{t("issues.empty")}</p>}
+			{capabilities.trusted && connection?.connected && peopleSupported && (
+				<div className="flex flex-col gap-8" data-testid="issues-people-filters">
+					<div className="flex flex-wrap gap-8">
+						{(["assignee", "author"] as const).map((key) => (
+							<label key={key} className="flex min-w-0 flex-1 flex-col gap-4">
+								{t(key === "assignee" ? "issues.filterAssignee" : "issues.filterAuthor")}
+								<input
+									type="search"
+									data-testid={`issues-filter-${key}`}
+									value={filters[key]}
+									onChange={(event) => updateFilter(key, event.target.value)}
+									className="min-w-0 w-full rounded-sm border border-control-border-default bg-control-bg px-8 py-4 text-text-default tr-text-ui focus:border-control-border-active"
+								/>
+							</label>
+						))}
+					</div>
+					<div className="flex items-center gap-8">
+						<span className="text-text-muted">
+							{t("issues.filterCount", { visible: visibleIssues.length, total: issues.length })}
+						</span>
+						{(filters.assignee || filters.author) && (
+							<Button
+								size="s"
+								variant="ghost"
+								onClick={() =>
+									setFilterState({ identity: filterIdentity, assignee: "", author: "" })
+								}
+							>
+								{t("issues.filterClear")}
+							</Button>
+						)}
+					</div>
+					{!pending && issues.length > 0 && visibleIssues.length === 0 && (
+						<p className="text-text-muted">{t("issues.filterEmpty")}</p>
+					)}
+				</div>
+			)}
 			{capabilities.trusted &&
 				stages.map((stage) => {
 					const sectionId = `${previewId}-${stage}`;
-					const stageIssues = issues.filter((issue) => issue.stage === stage);
+					const stageIssues = visibleIssues.filter((issue) => issue.stage === stage);
 					return (
 						<section key={stage} className="flex flex-col gap-8" aria-label={t(STAGE_KEY[stage])}>
 							<h3 className="text-text-muted tr-text-ui">
@@ -389,12 +448,13 @@ export function IssuesPanel({
 									return (
 										<article
 											key={issueKey(issue)}
+											data-testid="issue-card"
 											className="flex flex-col gap-4 rounded-sm border border-border-muted p-8"
 										>
-											<div className="flex items-start gap-6">
+											<div className="flex flex-wrap items-start gap-6">
 												<div
 													data-testid="issue-title-leading"
-													className="min-w-0 flex-1 break-words"
+													className="min-w-0 flex-1 basis-240 overflow-wrap-anywhere"
 												>
 													<span>
 														<a
@@ -403,7 +463,8 @@ export function IssuesPanel({
 															rel="noopener noreferrer"
 															className="text-primary"
 														>
-															#{issue.reference.number} {issue.title}
+															{issue.projectPath ? `${issue.projectPath}#` : "#"}
+															{issue.reference.number} {issue.title}
 														</a>
 														{typeof repositoryView === "object" && repositoryView.blocked && (
 															<TooltipProvider>
@@ -554,6 +615,22 @@ export function IssuesPanel({
 													})}
 												</div>
 											)}
+											{groupContext && (issue.assignees?.length || issue.author) ? (
+												<p className="text-text-muted tr-text-metadata">
+													{issue.assignees?.length
+														? t("issues.peopleAssignees", {
+																names: issue.assignees
+																	.map((person) => `${person.name} (@${person.username})`)
+																	.join(", "),
+															})
+														: ""}
+													{issue.author
+														? t("issues.peopleAuthor", {
+																name: `${issue.author.name} (@${issue.author.username})`,
+															})
+														: ""}
+												</p>
+											) : null}
 											{onOpenIssue && (
 												<Button
 													size="s"

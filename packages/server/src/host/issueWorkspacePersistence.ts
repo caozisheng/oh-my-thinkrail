@@ -83,6 +83,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 				"implementation",
 				"implementationHistory",
 				"sessionPending",
+				"ownerKind",
 				"repositoryProjectIds",
 				"members",
 				"layout",
@@ -93,6 +94,7 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 		keyFor(value.projectId, reference(value.reference)) !== expected
 	)
 		stop();
+	if (Object.hasOwn(value, "ownerKind") && value.ownerKind !== "group") stop();
 	if (
 		Object.hasOwn(value, "repositoryProjectIds") &&
 		!isIssueRepositoriesInput({
@@ -230,8 +232,10 @@ function record(value: unknown, expected: string): IssueWorkspaceRecord {
 			resolve(i.worktreePath) !== i.worktreePath ||
 			typeof i.branch !== "string" ||
 			i.branch.length > 255 ||
-			!/^issue-[1-9][0-9]*-[A-Za-z0-9-]+$/.test(i.branch) ||
-			!i.branch.startsWith(`issue-${reference(value.reference).number}-`)
+			(value.ownerKind === "group"
+				? i.branch !== "" || i.state !== "completed"
+				: !/^issue-[1-9][0-9]*-[A-Za-z0-9-]+$/.test(i.branch) ||
+					!i.branch.startsWith(`issue-${reference(value.reference).number}-`))
 		)
 			stop();
 		if (
@@ -359,7 +363,7 @@ export interface IssueWorkspacePersistencePorts {
 }
 
 /** The callback wraps the entire coordinator operation, including its first load and every side effect. */
-export function createIssueWorkspacePersistence(root: string) {
+export function createIssueWorkspacePersistence(root: string, ownerKind?: "group") {
 	const dir = resolve(root);
 	function directory() {
 		const stat = lstatSync(dir);
@@ -382,7 +386,8 @@ export function createIssueWorkspacePersistence(root: string) {
 				const ref = reference(input);
 				const expected = keyFor(projectId, ref);
 				directory();
-				const lock = join(dir, `${hash(JSON.stringify([projectId, ref.number]))}.lock`);
+				const lockKey = ownerKind === "group" ? expected : JSON.stringify([projectId, ref.number]);
+				const lock = join(dir, `${hash(lockKey)}.lock`);
 				let fd: number;
 				try {
 					fd = openSync(lock, "wx", 0o600);

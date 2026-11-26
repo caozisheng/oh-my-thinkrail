@@ -182,10 +182,14 @@ roster's catalog reads ([[submodule-web-panels]]).
   project workspace writes invalidate that project's list identity. A read cannot undo a later push.
   No second creation cache or receipt-derived running state exists. The slice also owns **`activeCreationId`** — mutually exclusive with
   `activeWorkspaceId`: `selectCreation` clears the workspace, and every workspace activation, `selectProject`,
-  `selectMain` and project reconciliation clears the creation. **`activeProjectGroupId`** (set by `selectProjectGroup`, which clears project, workspace and
+  `selectMain` and project reconciliation clears the creation. **`activateGroupWorkspace(project, workspace)`** installs the group owner, workspace and active selection
+  atomically, including a previously unloaded workspace list. **`activeProjectGroupId`** (set by `selectProjectGroup`, which clears project, workspace and
   creation selection; cleared by `selectProject`, `selectMain` and `selectCreation`) names the project
   group whose home Project Home shows, read only through `selectActiveProjectGroupId` so any narrower
-  selection wins. **`collapsedRailNodes`** holds the collapsed group headers of the
+  selection wins. `selectIssueReadPermission` centralizes independent group-read permission and repository trust.
+  Group owner records stay in domain projections for session/workspace ownership,
+  but `selectRepoProjects` and repository-selection derivations exclude them. Group workspaces are never
+  settled as repository branches. **`collapsedRailNodes`** holds the collapsed group headers of the
   rail (`toggleRailNode`, `hydrateCollapsedRailNodes`; persisted by `panels/projectExpansion`). **`applyWorkspaceCreationRemoved` is the whole
   removal reaction**: if that creation was selected it activates the new workspace (or lands on its project
   after a dismiss) and queues `creationChatToOpen` (`sessionId`, `kickoffError`, and the prompt this window
@@ -1029,3 +1033,7 @@ has no cache), deleting a chat (`withoutChat`) drops its pane and the pane's val
   (`ConnectionStatus`, **type-only**); `@thinkrail/locales` (default chat/terminal names, settled-reason
   copy and toasts, resolved when created); `zustand`.
 - **Forbidden:** `server`/`shared`/`pi`; importing `panels`, shell runtime (the web-local layout state edge is type-only), or transport runtime.
+
+Issue read snapshots are credential-free host projections, keyed by local owner and connection
+generation. The store owns their install/invalidate operations. Panel remounts reuse valid snapshots;
+explicit refresh and association changes replace them. No disk persistence or token storage exists.

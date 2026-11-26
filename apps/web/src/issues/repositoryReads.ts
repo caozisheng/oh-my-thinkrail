@@ -7,8 +7,11 @@ export async function loadIssueRepositories(
 	isCurrent: () => boolean,
 	publish: (issue: IssueSummary, value: IssueRepositories | "error" | "blocked") => void,
 ): Promise<void> {
-	await Promise.all(
-		issues.map(async (issue) => {
+	let next = 0;
+	const worker = async () => {
+		while (isCurrent() && next < issues.length) {
+			const issue = issues[next++];
+			if (!issue) return;
 			let value: IssueRepositories | "error" | "blocked";
 			try {
 				value = await read(issue);
@@ -16,6 +19,7 @@ export async function loadIssueRepositories(
 				value = wsErrorCode(error) === "ISSUE_LAUNCH_BLOCKED" ? "blocked" : "error";
 			}
 			if (isCurrent()) publish(issue, value);
-		}),
-	);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(8, issues.length) }, worker));
 }

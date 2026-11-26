@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import {
 	compareProjectRank,
+	isRepositoryProject,
 	type McpProjectOverride,
 	type McpToolGrant,
 	type Project,
@@ -14,24 +15,18 @@ import {
 } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { canonicalPath, git, gitAsync, INDEX_WRITE_TIMEOUT_MS, throwOnTimeout } from "../git";
-import {
-	isChatsContainer,
-	landsInChatsRoot,
-	loadProjects,
-	loadWorkspaces,
-	saveProjects,
-} from "../persistence";
+import { landsInChatsRoot, loadProjects, loadWorkspaces, saveProjects } from "../persistence";
 
 type ProjectPublisher = (project: Project) => void;
 
-let publishProject: ProjectPublisher | null = null;
+let projectPublisher: ProjectPublisher | null = null;
 
 export function setProjectPublisher(fn: ProjectPublisher | null): void {
-	publishProject = fn;
+	projectPublisher = fn;
 }
 
-function emit(project: Project): void {
-	publishProject?.(project);
+export function publishProject(project: Project): void {
+	projectPublisher?.(project);
 }
 
 let guardProjectPath: ((path: string) => void) | null = null;
@@ -163,13 +158,13 @@ function openResolvedProject(path: string, displayName?: string, ownBootstrap?: 
 	refuseWhileBootstrapping(root, ownBootstrap);
 
 	const projects = getProjects();
-	const existing = projects.find((p) => p.path === root);
+	const existing = projects.find((p) => p.path === root && p.kind === undefined);
 	if (existing) {
 		existing.rank = existing.closed === true ? rankOnTop(projects) : projectRank(existing);
 		delete existing.closed;
 		existing.lastOpened = Date.now();
 		saveProjects(projects);
-		emit(existing);
+		publishProject(existing);
 		return existing;
 	}
 
@@ -193,7 +188,7 @@ function openResolvedProject(path: string, displayName?: string, ownBootstrap?: 
 	};
 	projects.push(project);
 	saveProjects(projects);
-	emit(project);
+	publishProject(project);
 	return project;
 }
 
@@ -209,7 +204,7 @@ export function listProjects(): Project[] {
 
 function openRepositories(projects: Project[]): Project[] {
 	return projects
-		.filter((project) => project.closed !== true && !isChatsContainer(project))
+		.filter((project) => project.closed !== true && isRepositoryProject(project))
 		.sort(compareProjectRank);
 }
 
@@ -243,7 +238,7 @@ export function moveProject(id: string, targetId: string, placement: "before" | 
 	const changed = ranks.filter(([candidate, value]) => candidate.rank !== value);
 	for (const [candidate, value] of changed) candidate.rank = value;
 	saveProjects(projects);
-	for (const [candidate] of changed) emit(candidate);
+	for (const [candidate] of changed) publishProject(candidate);
 	return project;
 }
 
@@ -284,7 +279,10 @@ export async function refreshRecentProjectFolders(budgetMs: number): Promise<voi
 
 export function listRecentProjects(): Project[] {
 	return newestFirst(
-		getProjects().filter((project) => project.closed !== true || !goneFolders.has(project.path)),
+		getProjects().filter(
+			(project) =>
+				project.kind !== "group" && (project.closed !== true || !goneFolders.has(project.path)),
+		),
 	);
 }
 
@@ -294,7 +292,7 @@ export function closeProject(id: string): Project {
 	if (!project) throw new Error(`Unknown project: ${id}`);
 	project.closed = true;
 	saveProjects(projects);
-	emit(project);
+	publishProject(project);
 	return project;
 }
 
@@ -310,7 +308,7 @@ export function renameProject(id: string, requestedName: string): Project {
 	if (project.name === name) return project;
 	project.name = name;
 	saveProjects(projects);
-	emit(project);
+	publishProject(project);
 	return project;
 }
 
@@ -324,7 +322,7 @@ export function setProjectGroupMembership(
 	if (membership) project.projectGroup = { ...membership };
 	else delete project.projectGroup;
 	saveProjects(projects);
-	emit(project);
+	publishProject(project);
 	return project;
 }
 
@@ -342,7 +340,7 @@ export function setProjectTrust(
 	else if (options.resources === true) project.piResourceTrust = "granted";
 	if (acknowledgedSkills !== undefined) project.acknowledgedSkills = acknowledgedSkills;
 	saveProjects(projects);
-	emit(project);
+	publishProject(project);
 	return project;
 }
 

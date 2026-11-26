@@ -1,4 +1,5 @@
-import { isLocalePreference } from "./domain";
+import { isLocalePreference, type Project } from "./domain";
+import { isRepositoryProject } from "./workspaceCapabilities";
 
 export type IssueProvider = "gitlab" | "github";
 export interface IssueReference {
@@ -10,6 +11,7 @@ export interface IssueReference {
 export interface IssueConnectionInput {
 	instanceUrl: string;
 	projectId: string;
+	scope?: "group";
 	token: string;
 	httpConsent?: { instanceUrl: string };
 }
@@ -17,6 +19,7 @@ export interface IssueConnection {
 	projectId: string;
 	instanceUrl: string;
 	remoteProjectId: string;
+	scope?: "group";
 	connected: boolean;
 }
 export type IssueStage = "backlog" | "in-progress" | "in-review" | "closed";
@@ -26,12 +29,20 @@ export interface IssueLabelColor {
 	color: string;
 	textColor?: string;
 }
+export interface IssuePerson {
+	id: number;
+	name: string;
+	username: string;
+}
 export interface IssueSummary {
 	reference: IssueReference;
+	projectPath?: string;
 	title: string;
 	url: string;
 	labels: string[];
 	labelColors?: IssueLabelColor[];
+	assignees?: IssuePerson[];
+	author?: IssuePerson | null;
 	stage: IssueStage;
 	updatedAt: string;
 }
@@ -307,15 +318,22 @@ function projectIdentifier(value: unknown): value is string {
 		value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
 	);
 }
+function connectionTarget(value: Record<string, unknown>): boolean {
+	return (
+		canonicalIssueInstanceUrl(value.instanceUrl) !== null &&
+		projectIdentifier(value.projectId) &&
+		(!Object.hasOwn(value, "scope") ||
+			(value.scope === "group" && issueProviderForInstanceUrl(value.instanceUrl) === "gitlab")) &&
+		(!Object.hasOwn(value, "httpConsent") || httpConsent(value.httpConsent))
+	);
+}
 export function isIssueConnectionInput(value: unknown): value is IssueConnectionInput {
 	return (
 		record(value) &&
-		canonicalIssueInstanceUrl(value.instanceUrl) !== null &&
-		projectIdentifier(value.projectId) &&
+		connectionTarget(value) &&
 		typeof value.token === "string" &&
 		value.token.trim().length > 0 &&
-		!/[\r\n]/.test(value.token) &&
-		(!Object.hasOwn(value, "httpConsent") || httpConsent(value.httpConsent))
+		!/[\r\n]/.test(value.token)
 	);
 }
 /** Shared by launchDesign, validateDesign and validateImplementation. Not an RPC registration. */
@@ -496,5 +514,23 @@ export function isIssueApprovalResult(value: unknown): value is IssueApprovalRes
 		(exact(value, ["approved", "reason"]) &&
 			value.approved === false &&
 			value.reason === "unproven")
+	);
+}
+
+export function hasIssueProjectTrust(
+	project: Pick<Project, "trusted" | "piResourceTrust">,
+): boolean {
+	return project.trusted === true || project.piResourceTrust === "granted";
+}
+
+export function isIssueRepositoryCandidate(
+	project: Pick<Project, "kind" | "closed" | "trusted" | "piResourceTrust" | "projectGroup">,
+	owner?: Pick<Project, "kind" | "id">,
+): boolean {
+	return (
+		isRepositoryProject(project) &&
+		!project.closed &&
+		hasIssueProjectTrust(project) &&
+		(owner?.kind !== "group" || project.projectGroup?.id === owner.id)
 	);
 }

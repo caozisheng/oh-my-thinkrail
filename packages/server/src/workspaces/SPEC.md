@@ -10,6 +10,12 @@ tags: [public-surface-checked]
 
 ## Responsibility
 
+`ensureGroupWorkspace(project)` gives a `kind: "group"` owner one stable `kind: "group"` workspace
+at the group folder, with empty branch/baseBranch. It neither initializes Git nor borrows a member's
+workspace. Sessions and terminals use that directory; specs read the group folder. Listing skips Git
+adoption and diff collection. Repository-only mutation guards reject group workspaces, and automatic
+Git review/turn tracking never runs for them. Their files and sessions survive removing a group.
+
 A workspace is a `git worktree` on its own branch (under the data dir by default) — the anchor for files/git/terminals/
 chats. Its **display `name` is decoupled from its git `branch`**: `name` is a human-readable label
 (Title Case, spaces) and `branch` is a kebab slug derived from it — they were once held equal, and still
@@ -477,7 +483,7 @@ user-attached worktrees as external; this recovery seam is not a general adoptio
   `listWorkspaces`, `listWorkspaceRecords`, `defaultWorkspaceOf`, `listAllWorkspaceRecords`, `resolveWorkspacePath`, `forgetWorkspace`,
   `reclaimWorktree`, `removeWorkspace`, `nestedWorkspaces`, `ExplicitPlacement`,
   `workspaceDiffStats`, `workspaceDiffKey`, `getWorkspace`, `renameWorkspace`, `syncWorkspaceBranch`, `branchMoveOwed`,
-  `completeInitialTerminalReservation`, `ensureWorkspaceScratchDir`, `setWorkspacePublisher`,
+  `completeInitialTerminalReservation`, `ensureWorkspaceScratchDir`, `ensureGroupWorkspace`, `setWorkspacePublisher`,
   `WorkspaceLifecycleEvent`, `setWorkspaceDiffBase`, `setWorkspaceSkillOverride`,
   `setWorkspaceSubagentsOverride`, `setWorkspaceSubagentMaxConcurrent`, `recordWorkspaceActivity`, `backfillWorkspaceActivity`,
   `republishWorkspace`, `recordWorkspaceHead`, `seedWorkspaceHead`, `settleWorkspace`, `unsettleWorkspace`, `setWorkspaceReview`,
@@ -489,3 +495,10 @@ user-attached worktrees as external; this recovery seam is not a general adoptio
 - **Allowed deps:** `projects` (repo lookup), `git` (the runner), `persistence`, `log`; `contracts`;
   `@thinkrail/shared/artifactsDir` (the scratch-dir seeding), `@thinkrail/shared/codedError`; Node.
 - **Forbidden:** `host`; reaching into another feature's internals (use its barrel).
+
+## Group creation adapter
+
+`group.ts` owns stable non-Git group workspace materialization. The shared workspace facade
+delegates that one creation path and supplies its existing lifecycle publisher; there is no
+second publisher, registry or session runtime. Repository guards elsewhere consume the contracts'
+repository-capability predicate. Explicit group checks remain only at creation/selection boundaries.

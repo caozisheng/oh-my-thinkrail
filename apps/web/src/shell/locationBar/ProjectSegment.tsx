@@ -107,7 +107,11 @@ export function ProjectSegment({ project, atHome }: { project: Project; atHome: 
 						<DropdownMenuItem
 							data-testid="scope-project-home"
 							disabled={atHome}
-							onSelect={() => goToProjectHome(project.id)}
+							onSelect={() =>
+								project.kind === "group"
+									? useAppStore.getState().selectProjectGroup(project.id)
+									: goToProjectHome(project.id)
+							}
 						>
 							<House />
 							{t("shell.location.project.home")}

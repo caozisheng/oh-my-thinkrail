@@ -48,7 +48,7 @@ export function projectRailEntries(projects: readonly Project[]): ProjectRailEnt
 	for (const project of projects) {
 		const group = project.projectGroup;
 		const list = group ? (members.get(group.id) ?? []) : [];
-		if (!group || list.length < 2) {
+		if (!group || list.length === 0) {
 			entries.push({ kind: "project", project });
 			continue;
 		}

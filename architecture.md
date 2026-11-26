@@ -79,6 +79,16 @@ CLI build metadata, server test fixtures, and shared teardown; root tools and br
 No product package imports the test workspace, and it has no application build step or Electrobun SDK
 dependency. This keeps test process drivers outside both launchers and the server library.
 
+## Group working contexts
+
+A repository and a project group are independent working contexts in the existing project/workspace
+model. A `kind: "group"` project uses the membership group id and owns one `kind: "group"` workspace
+at its root; neither record is a repository member. This lets pi sessions, terminals, files and specs
+reuse the same host lifetime, persistence and workbench without anchoring a group chat to a member.
+Group context records partition into a versioned store invisible to older hosts. Git, worktree and
+review automation is gated out for groups; trust is per owner, never inherited by members. Remote
+GitLab group bindings belong to the group context and keep each Issue's real project identity.
+
 ## Decisions
 
 1. **Client/host split.** Engine host owns `pi` and state; the UI is a portable client; the wire is the
@@ -579,3 +589,15 @@ dependency. This keeps test process drivers outside both launchers and the serve
   an existing terminal's stdio (the `update`/`uninstall` CLI subcommands, the build script), shell
   probes that are no-ops on win32 (`shellEnv`), and the file-manager reveal (`explorer.exe` honors the
   hide flag by opening its folder window invisibly).
+
+### Group extension boundaries
+
+Group identity is an additive domain kind, not a repository and not a second engine. Shared host/web
+consumers query contracts' workspace capabilities instead of maintaining their own lists of non-Git
+kinds. Group document storage, group workspace creation and group welcome rendering have private
+adapters in their owning modules. Issue owners supply placement policy to the existing coordinator;
+session startup, journaling, associated worktrees and approval behavior remain shared.
+
+Upstream synchronization still touches the domain kind/protocol declarations, facade composition and
+navigation entry points. Keep these hooks small; do not duplicate upstream chat, terminal or workspace
+algorithms to avoid textual conflicts. Pure helpers in contracts grant no trust or authorization.
