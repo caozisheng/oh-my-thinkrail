@@ -52,6 +52,7 @@ function compose(
 			if (key !== "richPreviews") throw new Error(`unexpected setting ${key}`);
 			return richPreviews();
 		},
+		cidrListSetting: () => [],
 		workspaceFiles: {
 			check,
 			checkArtifacts: async (paths) => paths.map((path) => ({ path })),

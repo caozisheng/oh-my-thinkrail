@@ -12,7 +12,7 @@ references: [submodule-server-extensions, submodule-server-agent, submodule-web-
 
 The ThinkRail wrapping of the third-party pi package **`pi-web-access`** (`web_search`, `source_check`,
 `fetch_content`, `get_search_content` and its `web_enable` loader) plus the **`librarian` skill**. The
-package is composed unchanged and everything it declares loads, as `pi install` would. Upstream dropped
+package retains its declared behavior except for the tracked scoped-CIDR patch below. Upstream dropped
 `librarian` in 0.14.0, so the extension ships its own copy: adapted from `pi-web-access` 0.13.0 (MIT,
 Nico Bailon; the license sits beside it) to the current package — clones are read at the path
 `fetch_content` returns rather than a fixed `/tmp/pi-github-repos/<owner>/<repo>`, and recovery advice
@@ -22,7 +22,7 @@ switch it off as a unit: tools for parents and subagent children, and the skill.
 ## Boundary
 
 One entrypoint, `@thinkrail/ext-web-access/server`, default-exporting
-`defineServerExtension({ name: "web-access", title, description, extensions: [piWebAccess], childExtensions: [piWebAccess], skillPackages: ["@thinkrail/ext-web-access"] })`.
+`defineServerExtension({ name: "web-access", title, description, settings, sessionExtensions, childSessionExtensions, skillPackages: ["@thinkrail/ext-web-access"] })`.
 It may import `extension-api/server`, `pi-web-access` and pi types; never host internals. There is no
 `./web` yet: the cards for `web_search`, `fetch_content` and `get_search_content` stay app-local
 ([[submodule-web-chat-tools-web]]) and join by tool name, so moving them later changes nothing on the
@@ -43,6 +43,13 @@ wire; `source_check` and `web_enable` use the host's default renderer.
 - `skillPackages` names this package itself; its manifest exports `./package.json` and declares
   `pi.skills`, so the host's owner-scoped resolver finds `skills/` like any other skill package.
 - The pinned version is this package's dependency; the host no longer depends on `pi-web-access`.
+- `allowRanges` is a built-in-only CIDR-list setting, default `[]`, synchronized through ThinkRail
+  `extensionSettings`. Parent and child factories bind their own lists when loaded. `piWebAccess` wraps
+  each bundled tool's `execute` in the patched `runWithThinkrailSsrfAllowRanges` AsyncLocalStorage scope,
+  which merges those ranges with upstream `ssrf.allowRanges` for that call. The user-owned config file is
+  never written, and a user-installed package call is outside the scope.
+- The shared contracts CIDR guard accepts IPv4 and IPv6 networks, rejects malformed prefixes and both
+  `/0` catch-alls. Every redirect hop and DNS answer still passes through upstream validation.
 - **Tool activation.** Upstream's `toolActivation: "auto"` leaves a fresh chat on a model that takes
   mid-conversation tool changes with only `web_enable`, and replays the transcript's recorded web tools
   on every `session_start`, reloads included. The host's registry-tool reconcile

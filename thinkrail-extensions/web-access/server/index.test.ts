@@ -1,15 +1,16 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { ExtensionSessionServices } from "@thinkrail/extension-api/server";
 import extension from "./index";
 import piWebAccess from "./piWebAccess.js";
 
 const agentDir = mkdtempSync(join(tmpdir(), "web-access-agent-"));
 writeFileSync(
 	join(agentDir, "web-search.json"),
-	JSON.stringify({ ssrf: { allowRanges: ["127.0.0.1/32"] } }),
+	JSON.stringify({ ssrf: { allowRanges: ["198.18.0.0/15"], trustEnvProxy: true } }),
 );
 process.env.PI_CODING_AGENT_DIR = agentDir;
 afterAll(() => rmSync(agentDir, { recursive: true, force: true }));
@@ -27,7 +28,7 @@ type Tool = {
 };
 type Handler = (event: { type: string }, ctx: unknown) => unknown;
 
-async function startSession() {
+async function startSession(allowRanges: readonly string[] = [], factory?: ExtensionFactory) {
 	const tools = new Map<string, Tool>();
 	const handlers = new Map<string, Handler[]>();
 	const branch: unknown[] = [];
@@ -59,11 +60,10 @@ async function startSession() {
 		},
 		sendMessage: (message: { content: string }) => delivered.resolve(message.content),
 	};
-	await piWebAccess(
-		new Proxy(api, {
-			get: (target, key) => Reflect.get(target, key) ?? (() => {}),
-		}) as unknown as ExtensionAPI,
-	);
+	const extensionApi = new Proxy(api, {
+		get: (target, key) => Reflect.get(target, key) ?? (() => {}),
+	}) as unknown as ExtensionAPI;
+	await (factory ?? ((pi) => piWebAccess(pi, allowRanges)))(extensionApi);
 	const ctx = {
 		hasUI: false,
 		cwd: agentDir,
@@ -87,6 +87,19 @@ async function startSession() {
 
 const text = (result: ToolResult) => result.content.map((block) => block.text ?? "").join("\n");
 const responseId = (result: ToolResult) => /responseId "([^"]+)"/.exec(text(result))?.[1] ?? "";
+const settingsServices = (ranges: string[]): ExtensionSessionServices => ({
+	expectToolResponse: () => {},
+	awaitToolResponse: async () => ({ kind: "deferred" }),
+	setting: () => false,
+	cidrListSetting: () => [...ranges],
+	workspaceFiles: {
+		check: async () => {},
+		checkArtifacts: async (paths) => paths.map((path) => ({ path })),
+		ensureArtifactsDir: async () => {},
+		scratchDir: "",
+		artifactsDir: "",
+	},
+});
 const article = (marker: string) =>
 	`<!doctype html><html><head><title>${marker}</title></head><body><article><h1>${marker}</h1>${`<p>${marker} is the body of a long enough article for readable extraction to keep it whole, sentence after sentence.</p>`.repeat(8)}</article></body></html>`;
 
@@ -126,8 +139,11 @@ try {
 		expect(extension.name).toBe("web-access");
 		expect(extension.title).toBe("Web access");
 		expect(extension.description).toBeTruthy();
-		expect(extension.extensions).toEqual([piWebAccess]);
-		expect(extension.childExtensions).toEqual([piWebAccess]);
+		expect(extension.extensions).toEqual([]);
+		expect(extension.sessionExtensions).toBeFunction();
+		expect(extension.childExtensions).toEqual([]);
+		expect(extension.childSessionExtensions).toBeFunction();
+		expect(extension.settings?.allowRanges).toEqual({ type: "cidr-list", default: [] });
 		expect(extension.skillPackages).toEqual(["@thinkrail/ext-web-access"]);
 	});
 
@@ -166,8 +182,8 @@ try {
 		const searxng = process.env.SEARXNG_BASE_URL;
 		process.env.SEARXNG_BASE_URL = server.url.origin;
 		try {
-			const a = await startSession();
-			const b = await startSession();
+			const a = await startSession(["127.0.0.1/32"]);
+			const b = await startSession(["127.0.0.1/32"]);
 			const kept = responseId(await a.call("fetch_content", { url: `${server.url.origin}/kept` }));
 			const other = responseId(
 				await b.call("fetch_content", { url: `${server.url.origin}/other` }),
@@ -183,7 +199,7 @@ try {
 			await slowRequested.promise;
 
 			await b.shutdown();
-			const reloaded = await startSession();
+			const reloaded = await startSession(["127.0.0.1/32"]);
 			slowReleased.resolve();
 			const delivered = await a.firstDelivery;
 			const fetchId = /\[([^\]]+)\]/.exec(delivered)?.[1] ?? "";
@@ -201,6 +217,57 @@ try {
 			if (searxng === undefined) delete process.env.SEARXNG_BASE_URL;
 			else process.env.SEARXNG_BASE_URL = searxng;
 			slowReleased.resolve();
+			await server.stop(true);
+		}
+	});
+
+	test("CIDR exceptions are per bundled instance and do not rewrite user configuration", async () => {
+		const server = Bun.serve({
+			hostname: "127.0.0.1",
+			port: 0,
+			fetch: (request) =>
+				new URL(request.url).pathname === "/redirect"
+					? new Response(null, { status: 302, headers: { location: "http://10.0.0.1/" } })
+					: new Response(article("local page"), {
+							headers: { "content-type": "text/html; charset=utf-8" },
+						}),
+		});
+		try {
+			const userConfigBefore = readFileSync(join(agentDir, "web-search.json"), "utf8");
+			const denied = await startSession();
+			const deniedResult = await denied.call("fetch_content", {
+				url: `${server.url.origin}/denied`,
+				mode: "raw",
+			});
+			expect(deniedResult.isError).toBe(true);
+			await denied.shutdown();
+
+			const ranges = ["127.0.0.1/32"];
+			const [parentFactory] = extension.sessionExtensions?.(settingsServices(ranges)) ?? [];
+			const [childFactory] =
+				extension.childSessionExtensions?.({
+					setting: () => false,
+					cidrListSetting: () => ranges,
+				}) ?? [];
+			if (!parentFactory || !childFactory) throw new Error("web-access factories are missing");
+			for (const factory of [parentFactory, childFactory]) {
+				const allowed = await startSession([], factory);
+				const allowedResult = await allowed.call("fetch_content", {
+					url: `${server.url.origin}/allowed`,
+					mode: "raw",
+				});
+				expect(allowedResult.isError).toBeFalsy();
+				expect(responseId(allowedResult)).not.toBe("");
+				const redirectResult = await allowed.call("fetch_content", {
+					url: `${server.url.origin}/redirect`,
+					mode: "raw",
+				});
+				expect(redirectResult.isError).toBe(true);
+				expect(text(redirectResult)).toContain("Blocked internal address");
+				await allowed.shutdown();
+			}
+			expect(readFileSync(join(agentDir, "web-search.json"), "utf8")).toBe(userConfigBefore);
+		} finally {
 			await server.stop(true);
 		}
 	});

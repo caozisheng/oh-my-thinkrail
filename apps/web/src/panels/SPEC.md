@@ -1668,7 +1668,9 @@ a project picker, the prompt hero, and the reused
   `MessageKey` map — a setting without copy is not shown), valued from **`store.extensionSettings`** else the
   declared default, disabled while the extension is off, and written one key at a time through
   `settings.update { extensionSettings: { name: { key: value } } }` (the host merges); they appear only
-  while `supportsExtensionSettings(protocolVersion)` holds. **Skills** (only at
+  while `supportsExtensionSettings(protocolVersion)` holds. A `cidr-list` descriptor renders a localized
+  multiline editor with shared CIDR validation and an explicit save action; it is shown only when
+  `supportsExtensionCidrSettings(protocolVersion)` holds (v150). **Skills** (only at
   `protocolVersion >= OTHER_AGENT_SKILLS_PROTOCOL_VERSION`) is **Skills from other agents**,
   `other-agent-skills-toggle`, over `store.otherAgentSkills`, writing `settings.update { otherAgentSkills }`,
   with no Reset (see the rules above); per-project choices made in the Skills dialog still win over it.

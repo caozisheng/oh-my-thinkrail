@@ -1777,14 +1777,28 @@ export interface AppConfig extends ThemePreference {
 	keybindings: KeybindingOverrides;
 }
 
-export type ExtensionSettingValues = Record<string, Record<string, boolean>>;
+export type ExtensionSettingValue = boolean | string[];
+export type ExtensionSettingValues = Record<string, Record<string, ExtensionSettingValue>>;
 
-export interface ExtensionSettingDescriptor {
+export interface ExtensionBooleanSettingDescriptor {
 	key: string;
 	default: boolean;
+	type?: "boolean";
 	title?: string;
 	description?: string;
 }
+
+export interface ExtensionCidrListSettingDescriptor {
+	key: string;
+	default: string[];
+	type: "cidr-list";
+	title?: string;
+	description?: string;
+}
+
+export type ExtensionSettingDescriptor =
+	| ExtensionBooleanSettingDescriptor
+	| ExtensionCidrListSettingDescriptor;
 
 /** Absent from a host below `INSTALLED_EXTENSIONS_PROTOCOL_VERSION`, where every entry is built in. */
 export type ExtensionKind = "builtin" | "installed";

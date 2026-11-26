@@ -64,9 +64,10 @@ interval (`1–3600`, default 30), because those values govern host process cade
   means, so a stale entry for a removed extension never breaks boot or a later update. A malformed stored
   list keeps its valid names. Settings owns only the list; `host` turns it into the agent's resolver and the
   live tool refresh ([[module-server]] § host-mediated policy).
-- `extensionSettings` maps extension `name` → setting key → boolean; absent means `{}` (every declared
-  default applies). A wire update must be an object of non-blank names to objects of non-blank keys with
-  boolean values, or the whole mutation is rejected; it is **merged per key** into the stored map, so a
+- `extensionSettings` maps extension `name` → setting key → boolean or a validated CIDR list; absent means
+  `{}` (every declared default applies). A wire update must be an object of non-blank names to objects of
+  non-blank keys with boolean values or valid CIDR lists, or the whole mutation is rejected; lists reject
+  malformed addresses, invalid prefixes and `/0`, and are deduplicated. The map is **merged per key** into the stored map, so a
   Settings switch never resets an extension's other settings. Like `disabledExtensions`, undeclared names
   and keys are kept and inert — the registry's descriptors decide what a key means.
 - `keybindings` maps a command id to the user's chords (`[]` = unbound; absent = the command's defaults);

@@ -16,6 +16,7 @@ import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai/prov
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type {
 	AppConfig,
+	ExtensionCatalogEntry,
 	Project,
 	ProjectGroupRemove,
 	ProjectGroupStatus,
@@ -851,7 +852,47 @@ test("settings.update merges extension settings per key and rejects a malformed 
 			{ config: { extensionSettings: { "ask-user-question": { richPreviews: "no" } } } } as never,
 			CTX,
 		),
-	).rejects.toThrow("extensionSettings must map extension names to boolean settings");
+	).rejects.toThrow("extensionSettings must map extension names to booleans or valid CIDR lists");
+});
+
+test("CIDR extension settings require v150 and their catalog descriptor is hidden from older clients", async () => {
+	await expect(
+		handleRequest(
+			"settings.update",
+			{ config: { extensionSettings: { "web-access": { allowRanges: ["10.0.0.0/8"] } } } },
+			{ ...CTX, protocolVersion: 149 },
+		),
+	).rejects.toThrow("CIDR extension settings require protocol v150");
+
+	const oldCatalog = (await handleRequest(
+		"extension.list",
+		{},
+		{
+			...CTX,
+			protocolVersion: 149,
+		},
+	)) as ExtensionCatalogEntry[];
+	const oldWebAccess = oldCatalog.find((entry) => entry.name === "web-access");
+	expect(oldWebAccess?.settings).toEqual([]);
+
+	const newCatalog = (await handleRequest(
+		"extension.list",
+		{},
+		{
+			...CTX,
+			protocolVersion: 150,
+		},
+	)) as ExtensionCatalogEntry[];
+	const newWebAccess = newCatalog.find((entry) => entry.name === "web-access");
+	expect(newWebAccess?.settings).toEqual([{ key: "allowRanges", type: "cidr-list", default: [] }]);
+	const update = await handleRequest(
+		"settings.update",
+		{ config: { extensionSettings: { "web-access": { allowRanges: ["10.0.0.0/8"] } } } },
+		{ ...CTX, protocolVersion: 150 },
+	);
+	expect((update as AppConfig).extensionSettings["web-access"]?.allowRanges).toEqual([
+		"10.0.0.0/8",
+	]);
 });
 
 test("extension.list reflects disabledExtensions written through settings.update", async () => {
@@ -885,6 +926,7 @@ test("extension.list reflects disabledExtensions written through settings.update
 			tools: ["web_search", "source_check", "fetch_content", "get_search_content", "web_enable"],
 			hasParentExtensions: true,
 			hasChildExtensions: true,
+			settings: [{ key: "allowRanges", type: "cidr-list", default: [] }],
 			kind: "builtin",
 		},
 		{

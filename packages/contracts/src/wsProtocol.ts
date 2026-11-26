@@ -178,7 +178,7 @@ export type TemplateReadLocation =
 	| { projectId: string; workspaceId?: never }
 	| { workspaceId?: never; projectId?: never };
 
-export const PROTOCOL_VERSION = 149;
+export const PROTOCOL_VERSION = 150;
 export const MATRIX_PROTOCOL_VERSION = 143;
 export const MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION = 144;
 export const ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION = 149;
@@ -197,6 +197,7 @@ export const ISSUES_DETAIL_PROTOCOL_VERSION = 114;
 export const ISSUES_REPOSITORIES_PROTOCOL_VERSION = 115;
 export const WORKSPACE_CREATION_PROTOCOL_VERSION = 111;
 export const EXTENSION_SETTINGS_PROTOCOL_VERSION = 112;
+export const EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION = 150;
 export const ASK_DISCUSS_PROTOCOL_VERSION = 112;
 export const ISSUES_GITHUB_PROTOCOL_VERSION = 110;
 export const ISSUES_SESSION_STARTUP_PROTOCOL_VERSION = 109;

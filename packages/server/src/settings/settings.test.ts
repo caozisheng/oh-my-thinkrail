@@ -595,21 +595,27 @@ test("stored keybindings drop malformed chords and entries but keep unknown ids 
 	}
 });
 
-test("extension settings merge per extension and key, persist, and drop non-boolean stored values", () => {
+test("extension settings merge booleans and CIDR lists, persist, and drop malformed stored values", () => {
 	expect(DEFAULT_CONFIG.extensionSettings).toEqual({});
 	const published: AppConfigUpdate[] = [];
 	setSettingsPublisher((_config, applied) => published.push(applied));
 	expect(getConfig().extensionSettings).toEqual({});
 	updateConfig({ extensionSettings: { "ask-user-question": { richPreviews: false } } });
 	const next = updateConfig({
-		extensionSettings: { "ask-user-question": { other: true }, retired: { flag: true } },
+		extensionSettings: {
+			"ask-user-question": { other: true },
+			"web-access": { allowRanges: ["10.0.0.0/8", "fd00::/8"] },
+			retired: { flag: true },
+		},
 	});
 	expect(next.extensionSettings).toEqual({
 		"ask-user-question": { richPreviews: false, other: true },
+		"web-access": { allowRanges: ["10.0.0.0/8", "fd00::/8"] },
 		retired: { flag: true },
 	});
 	expect(published.at(-1)?.extensionSettings).toEqual({
 		"ask-user-question": { other: true },
+		"web-access": { allowRanges: ["10.0.0.0/8", "fd00::/8"] },
 		retired: { flag: true },
 	});
 	resetConfigCache();
@@ -617,20 +623,39 @@ test("extension settings merge per extension and key, persist, and drop non-bool
 		richPreviews: false,
 		other: true,
 	});
+	expect(getConfig().extensionSettings["web-access"]).toEqual({
+		allowRanges: ["10.0.0.0/8", "fd00::/8"],
+	});
 
-	for (const value of [null, [], { x: true }, { x: { flag: "yes" } }, { "": { flag: true } }]) {
+	for (const value of [
+		null,
+		[],
+		{ x: true },
+		{ x: { flag: "yes" } },
+		{ "": { flag: true } },
+		{ "web-access": { allowRanges: ["10.0.0.0/0"] } },
+		{ "web-access": { allowRanges: ["not-a-cidr"] } },
+	]) {
 		const invalid = { extensionSettings: value } as unknown as AppConfigUpdate;
-		expect(() => updateConfig(invalid)).toThrow(
-			"extensionSettings must map extension names to boolean settings",
-		);
+		expect(() => updateConfig(invalid)).toThrow("extensionSettings");
 	}
 
 	writeFileSync(
 		join(dataDir, "config.json"),
-		JSON.stringify({ extensionSettings: { a: { on: true, bad: "x" }, b: "nope", c: { bad: 1 } } }),
+		JSON.stringify({
+			extensionSettings: {
+				a: { on: true, bad: "x" },
+				b: "nope",
+				c: { bad: 1 },
+				"web-access": { allowRanges: ["10.0.0.0/8", "not-a-cidr"] },
+			},
+		}),
 	);
 	resetConfigCache();
-	expect(getConfig().extensionSettings).toEqual({ a: { on: true } });
+	expect(getConfig().extensionSettings).toEqual({
+		a: { on: true },
+		"web-access": { allowRanges: ["10.0.0.0/8"] },
+	});
 });
 
 test("disabled packages default empty, round-trip deduped, and reject a malformed list", () => {

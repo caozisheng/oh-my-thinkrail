@@ -28,6 +28,7 @@ import {
 	isSettleIdleDays,
 	isSubagentMaxConcurrent,
 	isTerminalWindowsShell,
+	isValidCidrRange,
 	type KeybindingOverrides,
 	normalizeFontSettings,
 	normalizeThemePreference,
@@ -662,10 +663,14 @@ function storedExtensionSettings(value: unknown): ExtensionSettingValues {
 	const result: ExtensionSettingValues = {};
 	for (const [name, settings] of Object.entries(value)) {
 		if (!settings || typeof settings !== "object" || Array.isArray(settings)) continue;
-		const flags = Object.entries(settings).filter(
-			(entry): entry is [string, boolean] => typeof entry[1] === "boolean",
-		);
-		if (flags.length > 0) result[name] = Object.fromEntries(flags);
+		const parsed: Record<string, boolean | string[]> = {};
+		for (const [key, setting] of Object.entries(settings)) {
+			if (typeof setting === "boolean") parsed[key] = setting;
+			else if (Array.isArray(setting)) {
+				parsed[key] = [...new Set(setting.filter(isValidCidrRange))];
+			}
+		}
+		if (Object.keys(parsed).length > 0) result[name] = parsed;
 	}
 	return result;
 }

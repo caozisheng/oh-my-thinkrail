@@ -50,6 +50,7 @@ test("the server half saves diagrams into the workspace's artifacts folder", asy
 		expectToolResponse: () => {},
 		awaitToolResponse: async () => ({ kind: "deferred" }),
 		setting: () => false,
+		cidrListSetting: () => [],
 		workspaceFiles: {
 			check: async () => {},
 			checkArtifacts: async (paths) => paths.map((path) => ({ path })),

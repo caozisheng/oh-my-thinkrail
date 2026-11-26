@@ -1237,7 +1237,14 @@ describe("registry extensions", () => {
 		setDisabledExtensionsResolver(() => disabled);
 		try {
 			const settingsManager = SettingsManager.create(project, agentDir, { projectTrusted: true });
-			const loader = await buildResourceLoader(project, settingsManager, () => ctx(true));
+			const loader = await buildResourceLoader(
+				project,
+				settingsManager,
+				() => ctx(true),
+				[],
+				[],
+				hostServices,
+			);
 			const paths = () => loader.getExtensions().extensions.map((extension) => extension.path);
 			const tools = () =>
 				loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()]);

@@ -22,6 +22,7 @@ const session: ExtensionSessionServices = {
 	expectToolResponse: () => {},
 	awaitToolResponse: async () => ({ kind: "deferred" }),
 	setting: () => false,
+	cidrListSetting: () => [],
 	workspaceFiles: {
 		check: async (path, cwd) => {
 			checked.push({ path, cwd });

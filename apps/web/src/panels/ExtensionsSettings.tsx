@@ -1,7 +1,9 @@
 import {
 	type ExtensionCatalogEntry,
 	type ExtensionSettingDescriptor,
+	type ExtensionSettingValue,
 	type ExtensionSettingValues,
+	isValidCidrRange,
 	OTHER_AGENT_SKILLS_PROTOCOL_VERSION,
 } from "@thinkrail/contracts";
 import type { MessageKey } from "@thinkrail/locales";
@@ -9,6 +11,7 @@ import { type Translator, useT } from "@thinkrail/locales/react";
 import { Button } from "@thinkrail/ui/button";
 import { LoadingRegion } from "@thinkrail/ui/skeleton";
 import { Switch } from "@thinkrail/ui/switch";
+import { Textarea } from "@thinkrail/ui/textarea";
 import { Fragment, useEffect, useState } from "react";
 import { useWebExtensionLoads, webExtensionTitle, webOnlyExtensions } from "@/extensions";
 import {
@@ -31,6 +34,7 @@ import {
 import {
 	getTransport,
 	refreshExtensionCatalog,
+	supportsExtensionCidrSettings,
 	supportsExtensionSettings,
 	supportsPiPackages,
 } from "@/transport";
@@ -99,7 +103,89 @@ const SETTING_COPY: Readonly<Record<string, Readonly<Record<string, SettingCopy>
 			settingId: SETTING.richPreviews.id,
 		},
 	},
+	"web-access": {
+		allowRanges: {
+			title: "settings.extensions.web-access.allowRanges.title",
+			description: "settings.extensions.web-access.allowRanges.description",
+		},
+	},
 };
+
+function ExtensionCidrListSettingRow({
+	entry,
+	setting,
+	value,
+	onChange,
+}: {
+	entry: ExtensionCatalogEntry;
+	setting: Extract<ExtensionSettingDescriptor, { type: "cidr-list" }>;
+	value: string[];
+	onChange: (value: string[]) => void;
+}) {
+	const t = useT();
+	const savedText = value.join("\n");
+	const [draft, setDraft] = useState(savedText);
+	useEffect(() => setDraft(savedText), [savedText]);
+	const ranges = draft
+		.split(/\r?\n/)
+		.map((range) => range.trim())
+		.filter(Boolean);
+	const valid = ranges.every(isValidCidrRange);
+	const unchanged =
+		ranges.length === value.length && ranges.every((range, index) => range === value[index]);
+	const changed =
+		value.length !== setting.default.length ||
+		value.some((range, index) => range !== setting.default[index]);
+	const copy = SETTING_COPY[entry.name]?.[setting.key];
+	if (!copy) return null;
+	return (
+		<SettingsRow
+			nested
+			rowId={`extension-setting-${entry.name}-${setting.key}`}
+			testId={`extension-setting-${entry.name}-${setting.key}`}
+			label={t(copy.title)}
+			description={
+				<span className="flex flex-col gap-4">
+					<span>{t(copy.description)}</span>
+					{!valid ? (
+						<span className="text-feedback-error" role="alert">
+							{t("settings.extensions.web-access.allowRanges.invalid")}
+						</span>
+					) : null}
+				</span>
+			}
+			control={
+				<div className="flex w-full max-w-320 flex-col gap-4">
+					<Textarea
+						aria-label={t(copy.title)}
+						aria-invalid={!valid}
+						data-testid={`extension-setting-cidr-list-${entry.name}-${setting.key}`}
+						disabled={!entry.enabled}
+						rows={3}
+						spellCheck={false}
+						value={draft}
+						onChange={(event) => setDraft(event.target.value)}
+					/>
+					<Button
+						variant="outline"
+						size="s"
+						tabIndex={0}
+						disabled={!entry.enabled || !valid || unchanged}
+						data-testid={`extension-setting-save-${entry.name}-${setting.key}`}
+						onClick={() => onChange([...new Set(ranges)])}
+					>
+						{t("settings.extensions.web-access.allowRanges.save")}
+					</Button>
+				</div>
+			}
+			reset={{
+				changed,
+				disabled: !entry.enabled,
+				onReset: () => onChange(setting.default),
+			}}
+		/>
+	);
+}
 
 function ExtensionSettingRow({
 	entry,
@@ -109,12 +195,23 @@ function ExtensionSettingRow({
 }: {
 	entry: ExtensionCatalogEntry;
 	setting: ExtensionSettingDescriptor;
-	value: boolean;
-	onChange: (value: boolean) => void;
+	value: ExtensionSettingValue;
+	onChange: (value: ExtensionSettingValue) => void;
 }) {
 	const t = useT();
 	const copy = SETTING_COPY[entry.name]?.[setting.key];
 	if (!copy) return null;
+	if (setting.type === "cidr-list") {
+		return (
+			<ExtensionCidrListSettingRow
+				entry={entry}
+				setting={setting}
+				value={Array.isArray(value) ? value : setting.default}
+				onChange={onChange}
+			/>
+		);
+	}
+	const checked = typeof value === "boolean" ? value : setting.default;
 	return (
 		<SettingsRow
 			nested
@@ -125,7 +222,7 @@ function ExtensionSettingRow({
 			description={t(copy.description)}
 			control={
 				<Switch
-					checked={value}
+					checked={checked}
 					disabled={!entry.enabled}
 					label={t(copy.title)}
 					testId={`extension-setting-toggle-${entry.name}-${setting.key}`}
@@ -134,7 +231,7 @@ function ExtensionSettingRow({
 				/>
 			}
 			reset={{
-				changed: value !== setting.default,
+				changed: checked !== setting.default,
 				disabled: !entry.enabled,
 				onReset: () => onChange(setting.default),
 			}}
@@ -166,13 +263,15 @@ export function ExtensionsCatalog({
 	onToggle,
 	settings = {},
 	onSetting,
+	cidrSettingsSupported = true,
 	onRetry,
 }: {
 	entries: readonly ExtensionCatalogEntry[] | "loading" | "failed";
 	disabled: readonly string[];
 	onToggle: (name: string, enabled: boolean) => void;
 	settings?: ExtensionSettingValues;
-	onSetting?: ((name: string, key: string, value: boolean) => void) | undefined;
+	onSetting?: ((name: string, key: string, value: ExtensionSettingValue) => void) | undefined;
+	cidrSettingsSupported?: boolean;
 	onRetry?: (() => void) | undefined;
 }) {
 	const t = useT();
@@ -243,15 +342,17 @@ export function ExtensionsCatalog({
 							reset={reset}
 						/>
 						{onSetting
-							? (entry.settings ?? []).map((setting) => (
-									<ExtensionSettingRow
-										key={setting.key}
-										entry={{ ...entry, enabled }}
-										setting={setting}
-										value={settings[entry.name]?.[setting.key] ?? setting.default}
-										onChange={(value) => onSetting(entry.name, setting.key, value)}
-									/>
-								))
+							? (entry.settings ?? [])
+									.filter((setting) => setting.type !== "cidr-list" || cidrSettingsSupported)
+									.map((setting) => (
+										<ExtensionSettingRow
+											key={setting.key}
+											entry={{ ...entry, enabled }}
+											setting={setting}
+											value={settings[entry.name]?.[setting.key] ?? setting.default}
+											onChange={(value) => onSetting(entry.name, setting.key, value)}
+										/>
+									))
 							: null}
 					</Fragment>
 				);
@@ -271,6 +372,7 @@ export function ExtensionsSettings() {
 	const workspaceId = useAppStore(selectActiveRepoWorkspaceId);
 	const packagesSupported = supportsPiPackages(protocolVersion);
 	const settingsSupported = supportsExtensionSettings(protocolVersion);
+	const cidrSettingsSupported = supportsExtensionCidrSettings(protocolVersion);
 	const catalogRead = useAppStore((state) => state.extensionCatalog);
 	const welcomeGeneration = useAppStore((state) => state.welcomeGeneration);
 	const entries = selectBuiltinExtensions(catalogRead);
@@ -313,7 +415,8 @@ export function ExtensionsSettings() {
 			.catch(() => toast.error(t("settings.extensions.changeFailed")));
 	};
 
-	const changeSetting = (name: string, key: string, value: boolean) => {
+	const changeSetting = (name: string, key: string, value: ExtensionSettingValue) => {
+		if (Array.isArray(value) && !cidrSettingsSupported) return;
 		getTransport()
 			.request("settings.update", { config: { extensionSettings: { [name]: { [key]: value } } } })
 			.catch(() => toast.error(t("settings.extensions.changeFailed")));
@@ -363,6 +466,7 @@ export function ExtensionsSettings() {
 					onToggle={toggle}
 					settings={extensionSettings}
 					onSetting={settingsSupported ? changeSetting : undefined}
+					cidrSettingsSupported={cidrSettingsSupported}
 					onRetry={() => void refreshExtensionCatalog()}
 				/>
 			</SettingsGroup>

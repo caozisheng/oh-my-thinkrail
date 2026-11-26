@@ -199,15 +199,16 @@ The host retains registration, lifecycle and ordering; `define*` helpers preserv
 - `./server` exposes `ServerExtension` and `defineServerExtension`, with pi `ExtensionFactory` types
   only. Descriptors carry `name` (the identity — the Settings on/off switch and `disabledExtensions` key
   on it), optional display copy `title` / `description` for the Settings catalog, `extensions`, optional
-  `sessionExtensions`, optional `interactiveTools`, optional `artifactTools`, optional `settings` (declared per-extension settings —
-  today only `{ type: "boolean", default, title?, description? }`; the values live in the host's config
+  `sessionExtensions`, optional `childSessionExtensions`, optional `interactiveTools`, optional `artifactTools`, optional `settings` (declared per-extension settings —
+  `{ type: "boolean", default, title?, description? }` and built-in-only `{ type: "cidr-list", default, title?, description? }`; values live in the host's config
   keyed by extension name; a built-in's Settings copy is the app's locale keys, an installed extension's
   is its own untranslated `title` / `description`, carried through the catalog), optional `childExtensions`, optional
   `skillPackages` specifiers and optional `supersedesPackages` (npm names of vanilla pi packages whose
   extensions the host leaves out of its sessions while this extension is on — a user's vanilla install of
   the same capability), plus optional `apiVersion` and `queries`. `queries` (with its `apiVersion`) and
-  `supersedesPackages` are built-in only: they are not in extension API 1.0, and the installed loader
-  refuses a server half that declares `queries` (with its `apiVersion`) or `supersedesPackages`. Its identity
+  `childSessionExtensions`, `queries`, `supersedesPackages`, and CIDR-list settings are built-in only:
+  they are not in extension API 1.0, and the installed loader refuses a server half that declares an
+  unsupported host-only field. Its identity
   helper preserves factories, order and optional-field absence; loading and skill resolution remain host
   responsibilities.
 - `queries(host: ExtensionHostServices)` returns `ExtensionQuery` methods by name — queries (reads, and
@@ -244,8 +245,13 @@ The host retains registration, lifecycle and ordering; `define*` helpers preserv
   A service is added with the consumer that needs it.
 - `sessionExtensions(session: ExtensionSessionServices) => ExtensionFactory[]` is how an extension uses
   per-session state the host owns: the host calls it once per parent session with that session's
-  services: `setting(key)` (the extension's own declared setting, read inside a factory body so a pi
-  reload sees a changed value), `workspaceFiles` (`check(path, cwd)` — the host's rule for which workspace
+  services: `setting(key)` for booleans, `cidrListSetting(key)` for a declared CIDR list,
+  `workspaceFiles`, and the interactive-tool mailbox. Values are read inside a factory body so a pi
+  reload sees a changed value. `childSessionExtensions(settings: ExtensionSettingReader) =>
+  ExtensionFactory[]` supplies child-specific factories using only the extension's declared setting
+  reader; the host snapshots the values when it builds the curated child set. Installed extensions
+  cannot declare it.
+  `workspaceFiles` (`check(path, cwd)` — the host's rule for which workspace
   files the UI may show — `checkArtifacts(paths, cwd)` — the artifact index's own rule for which files the
   Artifacts tool lists, answering each path in order with the worktree-relative name it lists the file
   under or why not (`ArtifactCheck`), one batch so the host walks the folder once — `scratchDir`, the gitignored directory for mockups, and `artifactsDir`, the

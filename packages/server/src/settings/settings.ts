@@ -19,6 +19,7 @@ import {
 	isSystemThemePair,
 	isTerminalWindowsShell,
 	isThemeMode,
+	isValidCidrRange,
 	type KeybindingOverrides,
 	LINE_WIDTH_COLUMNS,
 	QUESTION_PANEL_HEIGHT_PERCENT,
@@ -117,18 +118,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function validateExtensionSettings(value: unknown): ExtensionSettingValues {
-	const invalid = () => new Error("extensionSettings must map extension names to boolean settings");
+	const invalid = () =>
+		new Error("extensionSettings must map extension names to booleans or valid CIDR lists");
 	if (!isPlainObject(value)) throw invalid();
 	const result: ExtensionSettingValues = {};
 	for (const [name, settings] of Object.entries(value)) {
 		if (name.trim().length === 0 || !isPlainObject(settings)) throw invalid();
-		const entries = Object.entries(settings);
-		const flags = entries.filter(
-			(entry): entry is [string, boolean] =>
-				entry[0].trim().length > 0 && typeof entry[1] === "boolean",
-		);
-		if (flags.length !== entries.length) throw invalid();
-		result[name] = Object.fromEntries(flags);
+		const parsed: Record<string, boolean | string[]> = {};
+		for (const [key, setting] of Object.entries(settings)) {
+			if (key.trim().length === 0) throw invalid();
+			if (typeof setting === "boolean") parsed[key] = setting;
+			else if (Array.isArray(setting) && setting.every(isValidCidrRange)) {
+				parsed[key] = [...new Set(setting)];
+			} else throw invalid();
+		}
+		result[name] = parsed;
 	}
 	return result;
 }

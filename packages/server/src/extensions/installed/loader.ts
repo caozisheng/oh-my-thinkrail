@@ -95,6 +95,7 @@ const BUILT_IN_ONLY_FIELDS = [
 	"queries",
 	"apiVersion",
 	"supersedesPackages",
+	"childSessionExtensions",
 ] as const satisfies readonly (keyof ServerExtension)[];
 
 function shapeError(value: unknown): string | undefined {

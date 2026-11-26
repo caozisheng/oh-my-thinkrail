@@ -132,10 +132,12 @@ A folder source is never copied: it loads from where it is, and nothing under it
   host's own (`===`; a jiti namespace is a Proxy, so members are compared, never namespaces), else the load
   fails — the loader proves on every load that the extension resolution yields the host's single pi. The
   descriptor's shape is then validated field by field. **Host-only hooks are refused:** a descriptor that
-  declares `queries`, `apiVersion` or `supersedesPackages` is a `failed` row saying the field is not part of
+  declares `queries`, `apiVersion`, `supersedesPackages`, or `childSessionExtensions` is a `failed` row saying the field is not part of
   extension API 1.0. A query table receives `ExtensionHostServices` and answers `extension.query` with no
   timeout, and superseding a package would silently drop a user's pi package from every session — both
   stay with the built-ins until an API version takes them on.
+  Installed settings remain boolean-only; the built-in CIDR-list setting type is refused by the same
+  descriptor validator.
 - **Kind detection at install** ([[submodule-server-agent-packages]] § Kind detection runs it): pi installs
   an npm/git source first and `isExtensionAt(root)` reads the package pi installed — a `thinkrail` key makes
   it an extension — so a plain pi package is fetched once, by pi, as before extensions existed. Only an

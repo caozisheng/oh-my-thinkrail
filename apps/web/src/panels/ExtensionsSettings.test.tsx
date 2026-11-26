@@ -189,6 +189,47 @@ test("an older host without extension settings shows no nested switch", () => {
 	expect(renderSettings({}, [], false)).not.toContain("extension-setting-");
 });
 
+test("CIDR-list settings show the saved ranges and remain hidden when the host lacks the setting", () => {
+	const webAccess: ExtensionCatalogEntry = {
+		name: "web-access",
+		title: "Web access",
+		enabled: true,
+		tools: [],
+		hasChildExtensions: true,
+		settings: [{ key: "allowRanges", type: "cidr-list", default: [] }],
+	};
+	const markup = renderToStaticMarkup(
+		<ExtensionsCatalog
+			entries={[webAccess]}
+			disabled={[]}
+			onToggle={() => {}}
+			settings={{ "web-access": { allowRanges: ["10.0.0.0/8", "fd00::/8"] } }}
+			onSetting={() => {}}
+		/>,
+	);
+	expect(markup).toContain('data-testid="extension-setting-web-access-allowRanges"');
+	expect(markup).toContain('data-testid="extension-setting-cidr-list-web-access-allowRanges"');
+	expect(markup).toContain('data-testid="extension-setting-save-web-access-allowRanges"');
+	expect(markup).toContain("10.0.0.0/8");
+	expect(markup).toContain("fd00::/8");
+	expect(markup).toContain("fetch_content can reach addresses in these ranges");
+	const oldHost = renderToStaticMarkup(
+		<ExtensionsCatalog
+			entries={[webAccess]}
+			disabled={[]}
+			onToggle={() => {}}
+			onSetting={() => {}}
+			cidrSettingsSupported={false}
+		/>,
+	);
+	expect(oldHost).not.toContain("extension-setting-web-access-allowRanges");
+	expect(
+		renderToStaticMarkup(
+			<ExtensionsCatalog entries={[webAccess]} disabled={[]} onToggle={() => {}} />,
+		),
+	).not.toContain("extension-setting-web-access-allowRanges");
+});
+
 test("switching a package on clears every key that covers it; off adds only its own", () => {
 	const tools = {
 		identity: "local:/repo/tools",

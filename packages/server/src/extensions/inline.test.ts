@@ -176,7 +176,7 @@ describe("registryInlineExtensions with per-session factories", () => {
 		const [throws] = inline;
 		if (!throws || typeof throws === "function") throw new Error("missing throws");
 		await expect(Promise.resolve(throws.factory({} as ExtensionAPI))).rejects.toThrow(
-			'extension throws has no setting "typo"',
+			'extension throws has no boolean setting "typo"',
 		);
 	});
 
@@ -242,6 +242,37 @@ describe("registryInlineExtensions with per-session factories", () => {
 		expect(await registered(asker)).toEqual([]);
 		disabled.clear();
 		expect(await registered(asker)).toEqual(["asker-session-a"]);
+	});
+});
+
+describe("registryInlineExtensions with child setting factories", () => {
+	it("passes the current CIDR list to the child extension factory", async () => {
+		const entries: ServerExtensionEntry[] = [
+			{
+				specifier: "@thinkrail/ext-web-access/server",
+				extension: {
+					name: "web-access",
+					extensions: [],
+					settings: { allowRanges: { type: "cidr-list", default: [] } },
+					childSessionExtensions: (settings) => [
+						(pi: ExtensionAPI) => {
+							pi.registerTool({
+								name: `fetch-${settings.cidrListSetting("allowRanges").join(",")}`,
+							} as Parameters<ExtensionAPI["registerTool"]>[0]);
+						},
+					],
+				},
+			},
+		];
+		const child = registryInlineExtensions(
+			"childExtensions",
+			undefined,
+			entries,
+			undefined,
+			(_extension, key) => (key === "allowRanges" ? ["10.0.0.0/8"] : undefined),
+		);
+		expect(child.map(nameOf)).toEqual(["web-access"]);
+		expect(await Promise.all(child.map(registered))).toEqual([["fetch-10.0.0.0/8"]]);
 	});
 });
 
@@ -523,9 +554,27 @@ describe("extensionSessionServices", () => {
 		expect(services.workspaceFiles).toBe(host.workspaceFiles);
 	});
 
+	it("reads only declared CIDR list settings and falls back to their defaults", () => {
+		const extension: ServerExtensionEntry["extension"] = {
+			name: "web-access",
+			extensions: [],
+			settings: { allowRanges: { type: "cidr-list", default: ["127.0.0.1/32"] } },
+		};
+		const services = extensionSessionServices(extension, host, (_name, key) =>
+			key === "allowRanges" ? ["10.0.0.0/8"] : undefined,
+		);
+		expect(services.cidrListSetting("allowRanges")).toEqual(["10.0.0.0/8"]);
+		expect(() => services.setting("allowRanges")).toThrow(
+			'extension web-access has no boolean setting "allowRanges"',
+		);
+		expect(() => services.cidrListSetting("missing")).toThrow(
+			'extension web-access has no CIDR list setting "missing"',
+		);
+	});
+
 	it("refuses a setting the extension did not declare", () => {
 		expect(() => extensionSessionServices(extension, host).setting("missing")).toThrow(
-			'extension demo has no setting "missing"',
+			'extension demo has no boolean setting "missing"',
 		);
 	});
 });

@@ -272,7 +272,11 @@ export function InstalledExtensionRow({
 			) : null}
 			{runs && settingsSupported
 				? (entry.settings ?? []).map((setting) => {
+						if (setting.type === "cidr-list") return null;
+						if (typeof setting.default !== "boolean") return null;
 						const title = setting.title ?? setting.key;
+						const storedValue = settings?.[setting.key];
+						const checked = typeof storedValue === "boolean" ? storedValue : setting.default;
 						return (
 							<div
 								key={setting.key}
@@ -296,7 +300,7 @@ export function InstalledExtensionRow({
 									) : null}
 								</span>
 								<Switch
-									checked={settings?.[setting.key] ?? setting.default}
+									checked={checked}
 									disabled={!enabled}
 									label={title}
 									testId={`extension-setting-toggle-${entry.name}-${setting.key}`}
