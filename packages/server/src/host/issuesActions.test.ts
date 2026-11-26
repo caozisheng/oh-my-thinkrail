@@ -341,6 +341,43 @@ test("host prepares selected source repositories before starting one Issue sessi
 	);
 });
 
+test("design startup and refreshed Issue context include selected repositories as read-only paths", async () => {
+	const f = fixture();
+	const auxiliary = mkdtempSync(join(tmpdir(), "issue-design-reference-"));
+	dirs.push(auxiliary);
+	git(auxiliary, "init", "-b", "main");
+	git(
+		auxiliary,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"initial",
+	);
+	saveProjects([
+		{ id: "one", name: "one", slug: "one", path: f.dir, lastOpened: 1, trusted: true },
+		{ id: "api", name: "api", slug: "api", path: auxiliary, lastOpened: 1, trusted: true },
+	]);
+	await f.host.connect({ projectId: "one", input: f.input });
+	await f.host.setRepositories({ ...f.target, projectIds: ["api"] });
+	const launch = await f.host.beginDesign({ ...f.target, locale: "en" });
+	const associatedPath = listWorkspaceRecords("api")[0]?.worktreePath;
+	if (!associatedPath) throw new Error("missing associated repository Default path");
+	expect(f.prompts[0]?.prompt).toContain(associatedPath.replaceAll("\\", "\\\\"));
+	expect(f.prompts[0]?.prompt).toContain(
+		"Design is read-only across every host-provided repository",
+	);
+	expect(existsSync(join(auxiliary, ".worktrees"))).toBe(false);
+	const refreshed = await f.host.agentSessions.context(launch.sessionId);
+	expect(refreshed).toContain('"projectId":"api"');
+	expect(refreshed).toContain('"role":"associated"');
+	expect(refreshed).toContain(associatedPath.replaceAll("\\", "\\\\"));
+	expect(refreshed).toContain("Do not create or join implementation worktrees");
+});
+
 function fixture(provider: "gitlab" | "github" = "gitlab", group = false) {
 	const dir = mkdtempSync(join(tmpdir(), "issue-actions-"));
 	dirs.push(dir);

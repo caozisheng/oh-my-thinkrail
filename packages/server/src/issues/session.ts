@@ -144,11 +144,16 @@ export function createIssueStartupPrompt(context: IssueStartupContext): string {
 		...(context.repositories
 			? [
 					"The host-provided repositories describe the explicit work scope, not a shell sandbox. Use their workspace ids and actual paths to distinguish repositories. Read each repository's instructions and specs as needed. Do not merge or execute repository configuration or load untrusted project resources. Worktree preparation does not imply cross-repository builds work; adapt necessary build references as normal reviewed Issue changes.",
+					...(stage === "design"
+						? [
+								"Design is read-only across every host-provided repository. Use read-only file tools with each repository's advertised absolute path to inspect instructions, specs and source. Do not edit, create, delete or format repository files, or run commands or tooling that can write to a repository. Do not create or join implementation worktrees.",
+							]
+						: []),
 					...(context.repositories.some((repository) => repository.role === "reference")
 						? [
 								stage === "implementation"
 									? `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit, commit, stage, format or run tooling that writes there. When the change turns out to need one of them, call ${ISSUE_JOIN_TOOL} with its projectId; the user confirms, the host creates its Issue worktree (branched from its freshly fetched default branch) and returns the new path, and only that path may then be edited.`
-									: `Repositories with role "reference" are other repositories' main checkouts, readable for context only: never edit them. For design, read reference repositories through their advertised absolute paths with the read-only file tools; do not use the primary workspace's relative path to look for reference files. A design that needs one of them should name it so the user can link it to the Issue.`,
+									: `Repositories with role "reference" are other repositories' main checkouts, readable for context only. Read them through their advertised absolute paths; do not use the primary workspace's relative path to look for reference files. A design that needs one of them should name it so the user can link it to the Issue.`,
 							]
 						: []),
 				]
