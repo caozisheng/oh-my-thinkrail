@@ -492,6 +492,18 @@ export function selectSessionState(
 	return state.sessionStateByWorkspace[workspaceId]?.[sessionId]?.state ?? null;
 }
 
+function sessionNeedsAttention(state: SessionState | null): boolean {
+	return state !== null && (state.needsInput !== null || state.completionUnread);
+}
+
+export function selectSessionNeedsAttention(
+	state: SessionStateProjection,
+	workspaceId: string,
+	sessionId: string,
+): boolean {
+	return sessionNeedsAttention(selectSessionState(state, workspaceId, sessionId));
+}
+
 export type WorkspaceOrder = "created" | "recent";
 
 export function supportsWorkspaceSettling(protocolVersion: number | null): boolean {
@@ -638,8 +650,8 @@ export function selectWorkspaceNeedsAttention(
 	state: SessionStateProjection,
 	workspaceId: string,
 ): boolean {
-	return Object.values(state.sessionStateByWorkspace[workspaceId] ?? {}).some(
-		(record) => record.state.needsInput !== null || record.state.completionUnread,
+	return Object.values(state.sessionStateByWorkspace[workspaceId] ?? {}).some((record) =>
+		sessionNeedsAttention(record.state),
 	);
 }
 
@@ -749,9 +761,7 @@ export function selectProjectNeedsAttention(
 ): boolean {
 	return Object.values(state.sessionStateByWorkspace).some((records) =>
 		Object.values(records).some(
-			(record) =>
-				record.projectId === projectId &&
-				(record.state.needsInput !== null || record.state.completionUnread),
+			(record) => record.projectId === projectId && sessionNeedsAttention(record.state),
 		),
 	);
 }
