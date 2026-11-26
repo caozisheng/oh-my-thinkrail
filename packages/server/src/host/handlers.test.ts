@@ -860,7 +860,7 @@ test("CIDR extension settings require v150 and their catalog descriptor is hidde
 		handleRequest(
 			"settings.update",
 			{ config: { extensionSettings: { "web-access": { allowRanges: ["10.0.0.0/8"] } } } },
-			{ ...CTX, protocolVersion: 147 },
+			{ ...CTX, protocolVersion: 149 },
 		),
 	).rejects.toThrow("CIDR extension settings require protocol v150");
 
@@ -869,7 +869,7 @@ test("CIDR extension settings require v150 and their catalog descriptor is hidde
 		{},
 		{
 			...CTX,
-			protocolVersion: 147,
+			protocolVersion: 149,
 		},
 	)) as ExtensionCatalogEntry[];
 	const oldWebAccess = oldCatalog.find((entry) => entry.name === "web-access");
