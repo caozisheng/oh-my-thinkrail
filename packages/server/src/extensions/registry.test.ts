@@ -53,7 +53,7 @@ describe("server extension registry", () => {
 			registryInlineExtensions("extensions", undefined, builtinServerExtensions, session).map(
 				(inline) => (typeof inline === "function" ? "fn" : inline.name),
 			);
-		expect(names()).toEqual(["web-access", "next-steps"]);
+		expect(names()).toEqual(["next-steps"]);
 		expect(
 			names({
 				expectToolResponse: () => {},
