@@ -1217,6 +1217,9 @@ recovery; they are not the default execution path when the direct capability is 
     executable call and one submitted `Looks right` response, including the restart custom-response
     path. Skip, custom/multi/discuss, nonempty notes and superseding user replies are refused. Pending
     acknowledgements are not answers. Host composition owns durable one-time consumption and effects.
+    Stage reports accept a host-constrained `workflowTarget` and `normalizeWorkflowLabel` flag. The flag
+    replaces only missing, stale or duplicate workflow labels; it does not suppress other stage warnings.
+    `workflow::done` requires a completed host-observed merge receipt for the bound Issue.
 
     Summary publication is best-effort: its description and sanitized recovery-required error separate
     publication status from work/session completion. They instruct the agent to stop sending, hand back

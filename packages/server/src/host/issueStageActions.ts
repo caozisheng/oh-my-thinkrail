@@ -16,6 +16,8 @@ export interface StagePayload {
 	sessionId: string;
 	reference: IssueReference;
 	stage: "design" | "implementation";
+	workflowTarget: "workflow::in-progress" | "workflow::in-review" | "workflow::done";
+	normalizeWorkflowLabel: boolean;
 	operationId: string;
 	report: string;
 	issueRevision: string;
@@ -49,23 +51,11 @@ function revision(issue: IssueRecord): string {
 		labels: issue.labels,
 	});
 }
-function workflowLabel(
-	labels: string[],
-	stage: "design" | "implementation",
-	override = false,
-): string[] {
-	const workflow = labels.filter((label) => label.startsWith("workflow::"));
-	const current = workflow[0];
-	if (workflow.length > 1 && !override) stop();
-	if (
-		stage === "design"
-			? current !== undefined && current !== "workflow::backlog"
-			: current !== "workflow::in-progress"
-	) {
-		if (!override) stop();
-	}
-	const next = stage === "design" ? "workflow::in-progress" : "workflow::in-review";
-	return [...labels.filter((label) => !label.startsWith("workflow::")), next];
+function workflowLabel(labels: string[], target: StagePayload["workflowTarget"]): string[] {
+	return [...labels.filter((label) => !label.startsWith("workflow::")), target];
+}
+function stageTarget(stage: StagePayload["stage"]): StagePayload["workflowTarget"] {
+	return stage === "design" ? "workflow::in-progress" : "workflow::in-review";
 }
 export function stageQuestions(payload: StagePayload) {
 	const design = payload.stage === "design";
@@ -80,7 +70,7 @@ export function stageQuestions(payload: StagePayload) {
 				header: design
 					? (EN["issue.confirm.design.header"] ?? "")
 					: (EN["issue.confirm.implementation.header"] ?? ""),
-				preview: `${payload.report}\n\nIssue: ${payload.reference.instanceUrl} / ${payload.reference.projectId} #${payload.reference.number}\nStage: ${payload.stage}\nDesign operation: ${payload.designOperationId ?? payload.operationId}\n${payload.commits.map((commit) => `${commit.projectId}: ${commit.branch} @ ${commit.sha}`).join("\n")}${payload.warnings?.length ? `\n\nWarnings requiring explicit approval:\n${payload.warnings.map((warning) => `- ${warning}`).join("\n")}` : ""}\n\nConfirmation publishes this exact report and updates the workflow label. It does not authorize delivery.\nVersion: ${digest(payload)}`,
+				preview: `${payload.report}\n\nIssue: ${payload.reference.instanceUrl} / ${payload.reference.projectId} #${payload.reference.number}\nStage: ${payload.stage}\nWorkflow target: ${payload.workflowTarget}\nDesign operation: ${payload.designOperationId ?? payload.operationId}\n${payload.commits.map((commit) => `${commit.projectId}: ${commit.branch} @ ${commit.sha}`).join("\n")}${payload.warnings?.length ? `\n\nWarnings requiring explicit approval:\n${payload.warnings.map((warning) => `- ${warning}`).join("\n")}` : ""}\n\nConfirmation publishes this exact report and updates the workflow label. It does not authorize delivery.\nVersion: ${digest(payload)}`,
 				options: [
 					{
 						label: "Looks right",
@@ -111,21 +101,72 @@ export interface IssueStageActionOptions {
 	journal: IssueConfirmationStore;
 }
 export function createIssueStageActions(options: IssueStageActionOptions) {
+	async function hasMergedReceipt(reference: IssueReference): Promise<boolean> {
+		return (await options.journal.listCompleted()).some((record) => {
+			if (
+				!record.payload ||
+				typeof record.payload !== "object" ||
+				!record.result ||
+				typeof record.result !== "object"
+			)
+				return false;
+			const value = record.payload as { stage?: string; reference?: IssueReference };
+			const result = record.result as {
+				stage?: string;
+				mergeCommitSha?: string;
+				targetSha?: string;
+			};
+			return (
+				value.stage === "merge-mr" &&
+				isDeepStrictEqual(value.reference, reference) &&
+				result.stage === "merge-mr" &&
+				typeof result.mergeCommitSha === "string" &&
+				/^[a-fA-F0-9]{40}$/.test(result.mergeCommitSha) &&
+				typeof result.targetSha === "string" &&
+				/^[a-fA-F0-9]{40}$/.test(result.targetSha)
+			);
+		});
+	}
 	async function prepare(
 		sessionId: string,
-		input: { operationId: string; report: string; continueDespiteChecks?: boolean },
+		input: {
+			operationId: string;
+			report: string;
+			workflowTarget?: StagePayload["workflowTarget"];
+			normalizeWorkflowLabel?: boolean;
+			continueDespiteChecks?: boolean;
+		},
 	) {
 		if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.operationId) || !input.report.trim())
 			stop();
+		if (
+			(input.normalizeWorkflowLabel !== undefined &&
+				typeof input.normalizeWorkflowLabel !== "boolean") ||
+			(input.workflowTarget !== undefined &&
+				!["workflow::in-progress", "workflow::in-review", "workflow::done"].includes(
+					input.workflowTarget,
+				))
+		)
+			stop("workflow-target-invalid");
 		const binding = await options.binding(sessionId);
 		const { remote, guard } = await options.access(binding);
 		const issue = await remote.issue(binding.reference.number);
 		guard();
 		if (issue.iid !== binding.reference.number) stop("issue-identity-mismatch");
+		const workflowTarget = input.workflowTarget ?? stageTarget(binding.stage);
+		if (
+			(binding.stage === "design" && workflowTarget !== "workflow::in-progress") ||
+			(binding.stage === "implementation" && workflowTarget === "workflow::in-progress")
+		)
+			stop("workflow-target-invalid-for-stage");
+		if (workflowTarget === "workflow::done") {
+			if (!(await hasMergedReceipt(binding.reference))) stop("verified-merge-required-for-done");
+		}
 		const warnings: string[] = [];
-		if (issue.state !== "opened") warnings.push("Issue is closed; it will remain closed.");
+		if (workflowTarget !== "workflow::done" && issue.state !== "opened")
+			warnings.push("Issue is closed; it will remain closed.");
 		let designOperationId: string | null = null;
-		if (binding.stage === "implementation") {
+		if (binding.stage === "implementation" && workflowTarget !== "workflow::done") {
 			const records = await options.journal.listCompleted();
 			const design = records
 				.filter((record) => {
@@ -142,21 +183,28 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 			else designOperationId = design.operationId;
 		}
 		const workflow = issue.labels.filter((label) => label.startsWith("workflow::"));
-		if (workflow.length > 1) warnings.push("Issue has multiple workflow labels.");
+		if (workflow.length > 1 && !input.normalizeWorkflowLabel)
+			warnings.push("Issue has multiple workflow labels.");
 		if (
 			workflow.length > 1 ||
 			(binding.stage === "design"
 				? workflow[0] !== undefined && workflow[0] !== "workflow::backlog"
-				: workflow[0] !== "workflow::in-progress")
-		)
-			warnings.push("Workflow label does not match the expected source stage.");
+				: workflowTarget === "workflow::done"
+					? workflow[0] !== "workflow::in-review"
+					: workflow[0] !== "workflow::in-progress")
+		) {
+			if (!input.normalizeWorkflowLabel)
+				warnings.push("Workflow label does not match the expected source stage.");
+		}
 		if (warnings.length && !input.continueDespiteChecks)
 			throw new CodedError(
 				"ISSUE_CONFIRMATION_BLOCKED",
 				`${warnings[0]} Retry with continueDespiteChecks:true to prepare a warned confirmation.`,
 			);
 		const repositories =
-			binding.stage === "implementation" ? await options.repositories(binding) : [];
+			binding.stage === "implementation" && workflowTarget !== "workflow::done"
+				? await options.repositories(binding)
+				: [];
 		guard();
 		const commits = await Promise.all(
 			repositories.map(async (repository) => {
@@ -192,6 +240,8 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 			sessionId,
 			reference: binding.reference,
 			stage: binding.stage,
+			workflowTarget,
+			normalizeWorkflowLabel: input.normalizeWorkflowLabel === true,
 			operationId: input.operationId,
 			report: input.report,
 			issueRevision: revision(issue),
@@ -220,7 +270,13 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 			if (current.iid !== payload.reference.number) stop("issue-identity-mismatch");
 			if (revision(current) !== payload.issueRevision) stop("issue-snapshot-changed");
 			if (
+				payload.workflowTarget === "workflow::done" &&
+				!(await hasMergedReceipt(payload.reference))
+			)
+				stop("verified-merge-required-for-done");
+			if (
 				current.state !== "opened" &&
+				payload.workflowTarget !== "workflow::done" &&
 				!warnings.includes("Issue is closed; it will remain closed.")
 			)
 				stop();
@@ -242,9 +298,7 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 			}
 			const labels = workflowLabel(
 				current.labels,
-				payload.stage,
-				warnings.includes("Workflow label does not match the expected source stage.") ||
-					warnings.includes("Issue has multiple workflow labels."),
+				payload.workflowTarget ?? stageTarget(payload.stage),
 			);
 			return { remote, guard, current, labels };
 		}
@@ -288,7 +342,12 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 					updated.description !== current.description
 				)
 					stop();
-				return { stage: payload.stage, noteId: note.id, digest: stored.digest };
+				return {
+					stage: payload.stage,
+					workflowTarget: payload.workflowTarget ?? stageTarget(payload.stage),
+					noteId: note.id,
+					digest: stored.digest,
+				};
 			},
 			async () => {
 				checked = await preflight();
@@ -304,7 +363,9 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 		const issue = await remote.issue(payload.reference.number);
 		guard();
 		const workflow = issue.labels.filter((label) => label.startsWith("workflow::"));
-		const expected = payload.stage === "design" ? "workflow::in-progress" : "workflow::in-review";
+		const expected = payload.workflowTarget ?? stageTarget(payload.stage);
+		if (expected === "workflow::done" && !(await hasMergedReceipt(payload.reference)))
+			stop("verified-merge-required-for-done");
 		if (workflow.length !== 1 || workflow[0] !== expected) stop("recovery-labels-not-observed");
 		const notes = await remote.notes(payload.reference.number);
 		guard();
@@ -319,7 +380,12 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 				report: payload.report,
 				issueRevision: revision(issue),
 			},
-			result: { stage: payload.stage, noteId: matching[0].id, digest: digest(payload) },
+			result: {
+				stage: payload.stage,
+				workflowTarget: expected,
+				noteId: matching[0].id,
+				digest: digest(payload),
+			},
 		};
 	}
 	return { prepare, execute, observe };

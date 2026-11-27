@@ -45,6 +45,13 @@ inspection reports missing/prepared/uncertain/completed status. Deterministic pr
 intent reservation; after reservation, uncertain mutation stays fenced unless readback proves and adopts
 its original successful result.
 
+Stage reports carry a host-constrained workflow target. Design reports target `workflow::in-progress`,
+implementation reports target `workflow::in-review`, and a later implementation report may target
+`workflow::done` only when the same Issue has a completed host-observed merge receipt. The explicit
+`normalizeWorkflowLabel` flag replaces missing, stale or duplicate `workflow::` labels while preserving
+all unrelated labels; it suppresses only source-label warnings, not closed-Issue, missing-design or
+dirty-checkout checks. The frozen report and target are revalidated together before note and label writes.
+
 Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live
 provider identity. Auxiliary-repository delivery ports remain scoped to the bound Issue IID rather than a
 placeholder IID. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP

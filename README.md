@@ -92,8 +92,11 @@ repository address — only `github.com` is GitHub, every other host is GitLab. 
   Configuration is executable project code: review it before trusting/running it, and keep local-only
   configuration gitignored. Passing preflight never authorizes a push or merge.
 
-Starting implementation does not require design approval and does not change Issue labels. Approval
-and Issue closure remain in the tracker. Automated push/MR/CI/merge delivery is not implemented.
+Starting implementation does not require design approval. Completing design and implementation stage
+reports advances the workflow label to `workflow::in-progress` and `workflow::in-review`; a host-verified
+PR/MR merge advances it to `workflow::done`. These transitions replace stale or duplicate workflow labels
+and preserve unrelated labels. Label updates do not create, ready or merge requests, or close the Issue;
+those remain separate provider operations.
 
 - **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. You can also attach existing git worktrees or explicitly work in the project folder.
 
@@ -123,9 +126,10 @@ Group connections belong to the group; repository Issues forms connect individua
 
 Repository connections on both providers support listing Issues, reading their descriptions and comments, starting **Design**
 and **Implement** sessions, reopening those sessions, and publishing session summaries as comments.
-After each stage, a separate question card confirms the complete report before it is published. Design
-moves an Issue with no workflow label or `workflow::backlog` to `workflow::in-progress`; implementation
-moves `workflow::in-progress` to `workflow::in-review`, preserving unrelated labels. Delivery is another
+After each stage, the complete report is published and the workflow label advances. Design sets
+`workflow::in-progress`; implementation sets `workflow::in-review`; a host-verified PR/MR merge sets
+`workflow::done`. Missing, stale or duplicate workflow labels are normalized, preserving unrelated labels.
+Delivery is another
 separate confirmation per repository and creates only Draft PRs/MRs after an ordinary non-force push. Existing opened same-repository requests
 may instead receive an explicitly confirmed exact `force-with-lease` update; autonomous policy and
 unconditional force never authorize history replacement. Delivery

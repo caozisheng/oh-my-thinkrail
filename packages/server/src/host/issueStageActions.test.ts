@@ -125,6 +125,28 @@ function fixture() {
 		setLabels: (labels: string[]) => {
 			issue = { ...issue, labels };
 		},
+		recordMergeReceipt: () => {
+			prepared.set("merge", {
+				digest: "merge-digest",
+				payload: { stage: "merge-mr", reference: binding.reference },
+			});
+			completed.set("merge", {
+				stage: "merge-mr",
+				mergeCommitSha: "c".repeat(40),
+				targetSha: "d".repeat(40),
+			});
+		},
+		recordDesignReceipt: () => {
+			prepared.set("design", {
+				digest: "design-digest",
+				payload: {
+					stage: "design",
+					reference: binding.reference,
+					report: "Design handoff",
+				},
+			});
+			completed.set("design", { stage: "design", noteId: 1, digest: "design-digest" });
+		},
 	};
 }
 
@@ -137,6 +159,8 @@ test("stage recovery observes a unique report and labels without writing again",
 		sessionId: "session",
 		reference: f.binding.reference,
 		stage: "design" as const,
+		workflowTarget: "workflow::in-progress" as const,
+		normalizeWorkflowLabel: false,
 		operationId: "design",
 		report: "Full design",
 		issueRevision: "ignored-for-observation",
@@ -211,6 +235,80 @@ test("stage transition rejects an invalid source workflow label before publishin
 		f.actions.prepare("session", { operationId: "design", report: "Full design" }),
 	).rejects.toThrow();
 	expect(f.writes).toEqual([]);
+});
+
+test("label normalization ignores only an incorrect or missing source workflow label", async () => {
+	const f = fixture();
+	f.setLabels(["team", "workflow::done", "workflow::backlog"]);
+	const prepared = await f.actions.prepare("session", {
+		operationId: "design-normalize",
+		report: "Design handoff",
+		normalizeWorkflowLabel: true,
+	});
+	expect(prepared.questions.questions[0]?.preview).not.toContain("Workflow label");
+	f.approve();
+	await f.actions.execute("session", "design-normalize", "answer");
+	expect(f.issue.labels).toEqual(["team", "workflow::in-progress"]);
+
+	f.binding.stage = "implementation";
+	const implementation = await f.actions.prepare("session", {
+		operationId: "implementation-normalize",
+		report: "Implementation complete",
+		normalizeWorkflowLabel: true,
+	});
+	expect(implementation.questions.questions[0]?.preview).not.toContain("Workflow label");
+});
+
+test("label normalization does not bypass unrelated stage checks", async () => {
+	const f = fixture();
+	f.binding.stage = "implementation";
+	f.recordDesignReceipt();
+	f.setLabels(["team", "workflow::in-progress"]);
+	f.setDirty(true);
+	await expect(
+		f.actions.prepare("session", {
+			operationId: "dirty-normalize",
+			report: "Implementation",
+			normalizeWorkflowLabel: true,
+		}),
+	).rejects.toThrow("Checkout is dirty");
+	const g = fixture();
+	g.binding.stage = "implementation";
+	await expect(
+		g.actions.prepare("session", {
+			operationId: "missing-design",
+			report: "Implementation",
+			normalizeWorkflowLabel: true,
+		}),
+	).rejects.toThrow("No completed design receipt");
+});
+
+test("done transition needs merge evidence but no open issue or clean checkout", async () => {
+	const f = fixture();
+	f.binding.stage = "implementation";
+	f.setLabels(["team"]);
+	await expect(
+		f.actions.prepare("session", {
+			operationId: "done-without-merge",
+			report: "Merged",
+			workflowTarget: "workflow::done",
+			normalizeWorkflowLabel: true,
+		}),
+	).rejects.toThrow("verified-merge-required-for-done");
+	f.recordMergeReceipt();
+	f.close();
+	f.setDirty(true);
+	const prepared = await f.actions.prepare("session", {
+		operationId: "done",
+		report: "Merged",
+		workflowTarget: "workflow::done",
+		normalizeWorkflowLabel: true,
+	});
+	expect(prepared.questions.questions[0]?.preview).toContain("Workflow target: workflow::done");
+	f.approve();
+	await f.actions.execute("session", "done", "done-answer");
+	expect(f.issue.labels).toEqual(["team", "workflow::done"]);
+	expect(f.issue.state).toBe("closed");
 });
 
 test("implementation cannot silently invent an approved design", async () => {
