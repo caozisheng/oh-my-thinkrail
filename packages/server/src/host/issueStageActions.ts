@@ -51,10 +51,7 @@ function revision(issue: IssueRecord): string {
 		labels: issue.labels,
 	});
 }
-function workflowLabel(
-	labels: string[],
-	target: StagePayload["workflowTarget"],
-): string[] {
+function workflowLabel(labels: string[], target: StagePayload["workflowTarget"]): string[] {
 	return [...labels.filter((label) => !label.startsWith("workflow::")), target];
 }
 function stageTarget(stage: StagePayload["stage"]): StagePayload["workflowTarget"] {
@@ -163,8 +160,7 @@ export function createIssueStageActions(options: IssueStageActionOptions) {
 		)
 			stop("workflow-target-invalid-for-stage");
 		if (workflowTarget === "workflow::done") {
-			if (!(await hasMergedReceipt(binding.reference)))
-				stop("verified-merge-required-for-done");
+			if (!(await hasMergedReceipt(binding.reference))) stop("verified-merge-required-for-done");
 		}
 		const warnings: string[] = [];
 		if (workflowTarget !== "workflow::done" && issue.state !== "opened")
