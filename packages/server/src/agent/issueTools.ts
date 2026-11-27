@@ -62,6 +62,8 @@ export interface IssueToolHost {
 			operationId: string;
 			inspect?: boolean;
 			continueDespiteChecks?: boolean;
+			normalizeWorkflowLabel?: boolean;
+			workflowTarget?: "workflow::in-progress" | "workflow::in-review" | "workflow::done";
 			recovery?: "reconcile";
 			report?: string;
 			projectId?: string;
@@ -342,6 +344,14 @@ const PrepareConfirmationSchema = Type.Object(
 		acceptance: Type.Optional(Type.String({ minLength: 1, maxLength: 8000 })),
 		inspect: Type.Optional(Type.Boolean()),
 		continueDespiteChecks: Type.Optional(Type.Boolean()),
+		normalizeWorkflowLabel: Type.Optional(Type.Boolean()),
+		workflowTarget: Type.Optional(
+			Type.Union([
+				Type.Literal("workflow::in-progress"),
+				Type.Literal("workflow::in-review"),
+				Type.Literal("workflow::done"),
+			]),
+		),
 		recovery: Type.Optional(Type.Literal("reconcile")),
 		report: Type.Optional(Type.String({ minLength: 1, maxLength: 32000 })),
 		projectId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
@@ -429,7 +439,7 @@ export function createIssueRunOperationTool(): ToolDefinition<
 		label: "Run Issue Operation",
 		parameters: PrepareConfirmationSchema,
 		description:
-			"Run an explicitly requested Issue mutation in this bound session without an extra confirmation card. Omit action for stage publication; projectId/title/body for Draft delivery; use update-body, ready-mr, merge-mr or close-issue only when explicitly requested. Exact-lease push uses the observed remote head and exact new SHA. The host validates current identity/state and journals every write. Reusing the same operationId returns a completed result or refuses a changed/uncertain operation without resending. Set recovery:'reconcile' with the original operationId to adopt a freshly observed successful result; this never sends a write and never unlocks when success cannot be proven. Inspection and cross-repository state operations use issue_prepare_confirmation.",
+			"Run an explicitly requested Issue mutation in this bound session without an extra confirmation card. Omit action for stage publication; set workflowTarget and normalizeWorkflowLabel to advance the workflow label, with workflow::done requiring a host-observed merge receipt. Use projectId/title/body for Draft delivery; update-body, ready-mr, merge-mr or close-issue only when explicitly requested. Exact-lease push uses the observed remote head and exact new SHA. The host validates current identity/state and journals every write. Reusing the same operationId returns a completed result or refuses a changed/uncertain operation without resending. Set recovery:'reconcile' with the original operationId to adopt a freshly observed successful result; this never sends a write and never unlocks when success cannot be proven. Inspection and cross-repository state operations use issue_prepare_confirmation.",
 		async execute(_id, params, _signal, _update, ctx) {
 			if (!host.runOperation) throw unavailable();
 			const result = await host.runOperation(ctx.sessionManager.getSessionId(), params);

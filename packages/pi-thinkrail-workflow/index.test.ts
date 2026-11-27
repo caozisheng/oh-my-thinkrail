@@ -163,6 +163,13 @@ describe("pi-thinkrail-workflow extension", () => {
 			expect(document).not.toContain("Require independent confirmation");
 			expect(document).not.toContain("requires its own submitted confirmation");
 		}
+		const design = readFileSync(
+			new URL("./skills/tomato-issue-workflow/design-and-implementation.md", import.meta.url),
+			"utf8",
+		);
+		expect(design).toContain("workflowTarget:\"workflow::in-progress\", normalizeWorkflowLabel:true");
+		expect(design).toContain("workflowTarget:\"workflow::in-review\"");
+		expect(design).toContain("workflowTarget:\"workflow::done\"");
 	});
 
 	test("keeps Issue summary publication best-effort without weakening write safety", () => {

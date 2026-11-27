@@ -22,6 +22,8 @@ export interface IssueAgentSessionHostOptions {
 			operationId: string;
 			inspect?: boolean;
 			continueDespiteChecks?: boolean;
+			normalizeWorkflowLabel?: boolean;
+			workflowTarget?: "workflow::in-progress" | "workflow::in-review" | "workflow::done";
 			recovery?: "reconcile";
 			report?: string;
 			projectId?: string;

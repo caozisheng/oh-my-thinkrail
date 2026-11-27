@@ -11,7 +11,7 @@ Use only when the requested scope includes marking ready or merging. Draft deliv
 1. Read fresh request identity, repository, source/target, head SHA, CI/checks and required approvals.
 2. Confirm host/provider supports each requested mutation and read-back before promising completion.
 3. Run each explicitly requested ready/merge operation through advertised `issue_run_operation` without another questionnaire. Recheck all frozen facts immediately before each mutation; ready and merge are distinct operations.
-4. After merge, read the request's merged state and the actual target branch SHA; verify target identity and record available merge SHA.
+4. After merge, read the request's merged state and the actual target branch SHA; verify target identity and record available merge SHA. Then automatically submit the implementation completion report with `issue_run_operation({operationId, report, workflowTarget:"workflow::done", normalizeWorkflowLabel:true})`. The host requires its completed merge receipt and replaces stale, missing or duplicate workflow labels with `workflow::done`.
 
 ## Host capabilities
 

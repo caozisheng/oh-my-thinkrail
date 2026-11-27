@@ -1093,7 +1093,13 @@ export function createIssuesHost(
 					: {}),
 			};
 			if (input.recovery === "reconcile") {
-				if (input.continueDespiteChecks || input.action) invalid();
+				if (
+					input.continueDespiteChecks ||
+					input.action ||
+					input.workflowTarget !== undefined ||
+					input.normalizeWorkflowLabel !== undefined
+				)
+					invalid();
 				if (
 					input.inspect ||
 					input.report ||
@@ -1101,7 +1107,9 @@ export function createIssuesHost(
 					input.title ||
 					input.body !== undefined ||
 					input.targetBranch ||
-					input.continueDespiteChecks
+					input.continueDespiteChecks ||
+					input.workflowTarget !== undefined ||
+					input.normalizeWorkflowLabel !== undefined
 				)
 					invalid();
 				await confirmationBinding(sessionId);
@@ -1217,7 +1225,9 @@ export function createIssuesHost(
 					input.title ||
 					input.deliveryState !== undefined ||
 					input.expectedRevision !== undefined ||
-					input.continueDespiteChecks
+					input.continueDespiteChecks ||
+					input.workflowTarget !== undefined ||
+					input.normalizeWorkflowLabel !== undefined
 				)
 					invalid();
 				return mergeRequests(undefined, undefined, store).prepare(sessionId, input.action, {
@@ -1237,7 +1247,9 @@ export function createIssuesHost(
 					input.title ||
 					input.report ||
 					input.targetBranch ||
-					input.continueDespiteChecks
+					input.continueDespiteChecks ||
+					input.workflowTarget !== undefined ||
+					input.normalizeWorkflowLabel !== undefined
 				)
 					invalid(
 						"Issue close does not accept body, projectId, title, report, targetBranch, or continueDespiteChecks.",
@@ -1255,7 +1267,9 @@ export function createIssuesHost(
 					input.title ||
 					input.report ||
 					input.targetBranch ||
-					input.continueDespiteChecks
+					input.continueDespiteChecks ||
+					input.workflowTarget !== undefined ||
+					input.normalizeWorkflowLabel !== undefined
 				)
 					invalid();
 				return bodies(undefined, store).prepare(sessionId, {
@@ -1264,7 +1278,14 @@ export function createIssuesHost(
 				});
 			}
 			if (input.projectId) {
-				if (!input.title || input.body === undefined || input.report) invalid();
+				if (
+					!input.title ||
+					input.body === undefined ||
+					input.report ||
+					input.workflowTarget !== undefined ||
+					input.normalizeWorkflowLabel !== undefined
+				)
+					invalid();
 				try {
 					return await deliveries(undefined, undefined, store).prepare(sessionId, {
 						operationId: input.operationId,
@@ -1288,11 +1309,21 @@ export function createIssuesHost(
 					throw error;
 				}
 			}
-			if (!input.report || input.title || input.body || input.targetBranch) invalid();
+			if (
+				!input.report ||
+				input.title ||
+				input.body ||
+				input.targetBranch ||
+				(input.normalizeWorkflowLabel !== undefined &&
+					typeof input.normalizeWorkflowLabel !== "boolean")
+			)
+				invalid();
 			try {
 				return await stages(undefined, store).prepare(sessionId, {
 					operationId: input.operationId,
 					report: input.report,
+					...(input.workflowTarget ? { workflowTarget: input.workflowTarget } : {}),
+					...(input.normalizeWorkflowLabel ? { normalizeWorkflowLabel: true } : {}),
 					...(input.continueDespiteChecks ? { continueDespiteChecks: true } : {}),
 				});
 			} catch (error) {

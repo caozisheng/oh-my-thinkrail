@@ -36,6 +36,12 @@ framework.
 
 ## Shared invariants
 
+- Keep the provider's single `workflow::` label aligned to the lifecycle: completed design →
+  `workflow::in-progress`; completed implementation → `workflow::in-review`; verified PR/MR merge →
+  `workflow::done`. At each completion point, automatically submit a stage report with the matching
+  `workflowTarget` and `normalizeWorkflowLabel:true`. This replaces missing, stale or duplicate
+  `workflow::` labels while preserving unrelated labels. The host rejects `workflow::done` unless it
+  has a completed, host-observed merge receipt for this Issue.
 - Design sessions explore and hand off only; implementation sessions use existing plans/TODOs,
   verification and review. Implementation startup itself is sufficient permission to begin; do not
   demand a design receipt as an implementation gate. Clarify only conflicts or a change to agreed
