@@ -179,11 +179,11 @@ export interface TerminalTabsPush {
 }
 
 export type TemplateReadLocation =
-	| { workspaceId: string; projectId?: never }
-	| { projectId: string; workspaceId?: never }
-	| { workspaceId?: never; projectId?: never };
+	| { workspaceId: string; projectId?: never; baseRef?: never }
+	| { projectId: string; workspaceId?: never; baseRef?: string }
+	| { workspaceId?: never; projectId?: never; baseRef?: never };
 
-export const PROTOCOL_VERSION = 151;
+export const PROTOCOL_VERSION = 152;
 export const MATRIX_PROTOCOL_VERSION = 143;
 export const MATRIX_PRIVATE_NETWORK_PROTOCOL_VERSION = 144;
 export const ISSUES_GROUP_WORKFLOW_PROTOCOL_VERSION = 149;
@@ -232,6 +232,8 @@ export const INSTALLED_EXTENSIONS_PROTOCOL_VERSION = 146;
 export const EXTENSION_BROWSE_PROTOCOL_VERSION = 147;
 export const EXTENSION_QUERY_PROTOCOL_VERSION = 145;
 export const PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151;
+export const REF_RESOURCE_PREVIEW_PROTOCOL_VERSION = 152;
+export const FS_REVEAL_PROTOCOL_VERSION = 152;
 export const BROWSER_VIEW_PROTOCOL_VERSION = 122;
 export const WORKSPACE_VIEW_ROUTE = "/view/";
 export const IMAGES_ROUTE = "/images/";
@@ -577,6 +579,7 @@ export const WS_METHODS = {
 	fsDelete: "fs.delete",
 	fsRename: "fs.rename",
 	fsMove: "fs.move",
+	fsReveal: "fs.reveal",
 	artifactsList: "artifacts.list",
 	artifactsRestore: "artifacts.restore",
 	artifactsDiscard: "artifacts.discard",
@@ -1365,6 +1368,7 @@ export interface WsMethodMap {
 		};
 		result: { path: string };
 	};
+	"fs.reveal": { params: { workspaceId: string; path: string }; result: Ack };
 	"artifacts.list": { params: { workspaceId: string }; result: WorkspaceArtifactsSnapshot };
 	"artifacts.restore": { params: { workspaceId: string; path: string }; result: Ack };
 	"artifacts.discard": { params: { workspaceId: string; path: string }; result: Ack };
@@ -1457,7 +1461,7 @@ export interface WsMethodMap {
 		result: { closed: boolean; busy: boolean };
 	};
 	"dialog.selectDirectory": { params: Record<string, never>; result: { path: string | null } };
-	"skill.list": { params: { projectId: string }; result: SlashCommandInfo[] };
+	"skill.list": { params: { projectId: string; baseRef?: string }; result: SlashCommandInfo[] };
 	"skills.state": { params: { workspaceId: string }; result: SkillCatalogEntry[] };
 	"extension.list": { params: Record<string, never>; result: ExtensionCatalogEntry[] };
 	"extension.query": { params: ExtensionQueryParams; result: unknown };

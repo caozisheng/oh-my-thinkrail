@@ -67,7 +67,17 @@ user-attached worktrees as external; this recovery seam is not a general adoptio
   Paths retain Git's actual canonical registered spelling, resolved for the host platform, never inferred
   from branch names or managed placement. Includes the default checkout, already represented worktrees,
   detached checkouts and prunable registrations; no filtering, persistence or lifecycle mutation),
-  `listExistingWorktrees(projectId)` (**async** — parses `git worktree list --porcelain -z` read
+- **Owns:** `previewRefPaths(project, ref, roots)` materializes the roots a worktree cut from `ref` would
+  contain without creating one, for the New Workspace skill/template preview. It resolves refs as
+  creation does (remote branches through `refs/remotes/`, unsafe refs refused), extracts only roots
+  present at the commit using a throwaway `GIT_INDEX_FILE`, and atomically stores the result in
+  `<dataDir>/cache/ref-previews/<projectId>/<sha>`. The commit-keyed preview is immutable; concurrent
+  requests share extraction. A per-project cache retains the four most recent previews and prunes older
+  previews or abandoned staging folders only after a ten-minute idle grace. Failures return `null`, so
+  callers fall back to the current checkout. Callers provide skill and template roots; this module has
+  no knowledge of those concepts.
+- **Owns:** `listExistingWorktrees(projectId)` (**async** — parses `git worktree list --porcelain -z` read
+
   through `gitAsync`, the same request-path-read rule `git/SPEC.md` states for `gitStatus`/`listCommits`:
   this is the Existing-Worktree dialog's populate call, so a slow/large registry must not freeze the host's
   event loop; each listed path is resolved, since git prints `C:/…` on Windows and the row's path becomes the
@@ -480,7 +490,7 @@ user-attached worktrees as external; this recovery seam is not a general adoptio
   `setWorkspaceCreationHandoff`, `CreationHandoff`,
   `setWorkspaceCreationPublisher`, `WorkspaceCreationEvent`, `creationOwnsPath`, `listExistingWorktrees`,
   `openExistingWorktree`, `registerExistingWorktreeAtPath`,
-  `listWorkspaces`, `listWorkspaceRecords`, `defaultWorkspaceOf`, `listAllWorkspaceRecords`, `resolveWorkspacePath`, `forgetWorkspace`,
+  `listWorkspaces`, `listWorkspaceRecords`, `defaultWorkspaceOf`, `listAllWorkspaceRecords`, `resolveWorkspacePath`, `previewRefPaths`, `forgetWorkspace`,
   `reclaimWorktree`, `removeWorkspace`, `nestedWorkspaces`, `ExplicitPlacement`,
   `workspaceDiffStats`, `workspaceDiffKey`, `getWorkspace`, `renameWorkspace`, `syncWorkspaceBranch`, `branchMoveOwed`,
   `completeInitialTerminalReservation`, `ensureWorkspaceScratchDir`, `ensureGroupWorkspace`, `setWorkspacePublisher`,

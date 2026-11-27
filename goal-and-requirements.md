@@ -85,7 +85,7 @@ What ThinkRail does, at product level; the linked spec owns the detail.
   belong to the group; repository git, worktrees and delivery remain with members
   ([[submodule-web-panels]], [[submodule-server-workspaces]]).
 - **Voice input** — local dictation into every text field, extensions' included and with no work on
-  their part (the code editor and the terminal excepted), through a mic on the focused field or ⌘⇧Space /
+  their part (the code editor and the terminal excepted), through a mic on the focused field (always shown on the chat composer) or ⌘⇧Space /
   Ctrl+Shift+Space. Text lands at the cursor and is never auto-sent. NVIDIA's Nemotron streaming model runs on the host after
   a one-time, user-started download ([[submodule-server-speech]], [[submodule-web-speech]]).
 - **Chats without a project** — a chat that belongs to no repository works in its own scratch folder

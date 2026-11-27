@@ -1545,7 +1545,8 @@ recovery; they are not the default execution path when the direct capability is 
   `delegationRootDir()` (the delegation embedding); the skill catalog helpers
   `listSkillCommands(cwd, admission)` (filtered, pre-session autocomplete) / `listSkillCatalog(cwd, admission)`
   (unfiltered, the manager's `skills.state`) / `listProjectAliasSkillNames(cwd)` (present-alias count) /
-  `isProjectSkillPath(relativePath)` (watch-classification predicate) /
+  `isProjectSkillPath(relativePath)` (watch-classification predicate) / `PROJECT_SKILL_ROOTS` (the
+  repo-relative `.<alias>/skills` roots that predicate matches, the list the host's base-ref preview extracts) /
   `mayHoldProjectSkills(relativePath)` (the folders a project skill can sit in: an alias folder like
   `.claude` and its `skills/` tree without dot-folders, which pi never scans);
   `sessionReuseStatus(sessionId, workspaceId, cwd)` → `Promise<false | "idle" | "busy">` is a read-only

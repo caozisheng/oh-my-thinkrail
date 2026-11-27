@@ -616,7 +616,10 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   name }` → `{ path }`, in place, refused with `ENTRY_EXISTS` when another entry holds the name) and
   `fs.move` (`fs.copy`'s params → `{ path }`, the Cut-and-Paste move, same or another workspace, refused
   with `ENTRY_EXISTS` instead of renaming, for a folder into itself, and with `MOVE_ACROSS_DEVICES` when
-  source and destination are on different file systems),
+  source and destination are on different file systems), and from **`FS_REVEAL_PROTOCOL_VERSION`** (v152)
+  `fs.reveal` (`{ workspaceId, path }` → ack: the host's OS file manager opens with that worktree entry
+  selected — on the host's machine, which a remote browser does not see; a client hides the action from
+  older hosts),
   the **Artifacts** tool's wire from the same version: `artifacts.list` (`{ workspaceId }` →
   **`WorkspaceArtifactsSnapshot`**: `dir` (the artifacts folder, `.thinkrail/context`; agents write mockups to
   its **`WORKSPACE_MOCKUP_DIR`**, `.thinkrail/context/mockups`, the one name the host's mockup check and the
@@ -772,7 +775,11 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   `submodule-server-terminal`'s shell-selection decision for what each value spawns.
   **`PROJECT_TEMPLATE_PREVIEW_PROTOCOL_VERSION`** pins v63's additive project-located `template.list` /
   `template.get` reads, allowing Create Workspace to preview global plus current-checkout project templates
-  without sending host paths; older hosts retain a global-only fallback. `themeMode` defaults to `"fixed"`
+  without sending host paths; older hosts retain a global-only fallback.
+  **`REF_RESOURCE_PREVIEW_PROTOCOL_VERSION`** (v152) adds an optional **`baseRef`** beside `projectId` on
+  those reads and on `skill.list`: the host answers from the project's resources as they are at that ref (what
+  a worktree cut from it will hold) instead of the current checkout, and falls back to the checkout when the
+  ref does not resolve. The dialog sends it only on a v152+ host; an older host would ignore it. `themeMode` defaults to `"fixed"`
   and no pair, preserving both legacy configs
   and the explicit Dark default; `subagentsEnabled` is the host-wide subagent default (`true` for current
   behavior), overridden only by `Workspace.subagentsOverride`; `subagentMaxConcurrent` (whole number in
@@ -1144,8 +1151,8 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   **`project.setTrust`** (persist a project's trust grant → the updated `Project`; gates its committed
   cross-agent skill aliases; `resources: true` also grants pi-level resource trust, see Project trust) /
   **`skill.list`** (a pre-session, skill-only `SlashCommandInfo[]` preview for a `projectId`, resolved from
-  that project's current checkout with its **project-scoped aliases gated by trust**; the eventual worktree
-  session is authoritative) / the **Skills-manager set** — **`project.aliasSkills`** (present committed alias
+  that project's current checkout — or, with v135's optional `baseRef`, its resources at that ref — with its
+  **project-scoped aliases gated by trust**; the eventual worktree session is authoritative) / the **Skills-manager set** — **`project.aliasSkills`** (present committed alias
   names, for the presence-gated notice's count) / **`project.acknowledgeSkills`** (confirm skills that
   appeared after trust) / **`project.setSkillEnabled`** (project baseline) / **`project.setGroupEnabled`**
   (turn a plugin / source tier / `@plugins` on/off at the baseline) / **`workspace.setSkillOverride`**
@@ -1803,7 +1810,7 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 151`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 152`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
 hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 125`, on-demand Issue joins v126 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` (below), allocated above upstream's v118–v124 floors. Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
@@ -1968,7 +1975,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v151. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v152. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1979,7 +1986,7 @@ upstream numbers.
 
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138, server fallback repair v139, and subagent catalog v140. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
 
-Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
+Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Pull-request review uses v151; filesystem reveal and base-ref skill/template previews use v152. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
 
 ## Workspace capability boundary
 
@@ -2000,4 +2007,4 @@ Candidates must also be open repository projects; a group owner limits them to i
 The UI, host selection/join guards and agent reference candidates use the same predicate. Host checks
 repeat around asynchronous work. The existing project trust revocation clears both grants.
 
-Pull-request review reads and prompt argument completion use `PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151`, above the existing fork CIDR settings floor v150; upstream v133 is already the fork image-reference floor.
+Pull-request review reads and prompt argument completion use `PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151`, above the existing fork CIDR settings floor v150; upstream v133 is already the fork image-reference floor. Filesystem reveal and ref-based skill/template previews are added at v152.
