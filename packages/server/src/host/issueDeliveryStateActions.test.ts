@@ -141,3 +141,52 @@ test("state reads expose checkout snapshots and MR selectors are verified and pr
 		}),
 	).rejects.toThrow("repository-state-invalid");
 });
+
+test("merged request identity survives a changed checkout SHA while opened requests require exact head", async () => {
+	let saved: IssueDeliveryStateRecord | null = null;
+	let sha = "a".repeat(40);
+	let requestState = "opened";
+	let sourceBranch = "feature";
+	let targetBranch = "main";
+	const actions = createIssueDeliveryStateActions({
+		binding: async () => binding,
+		repositories: async () => [
+			{ projectId: "local", workspaceId: "ws", path: "/repo", name: "Repo" },
+		],
+		checkout: async () => ({ sha, tree: "b".repeat(40), branch: "feature", dirty: false }),
+		mergeRequest: async (_binding, _projectId, iid) => ({
+			iid,
+			webUrl: "https://github.com/o/r/pull/1",
+			headSha: "c".repeat(40),
+			targetBranch,
+			sourceBranch,
+			state: requestState,
+		}),
+		store: {
+			load: () => saved,
+			compareAndSet: (_id, _ref, revision, next) => {
+				if ((saved?.revision ?? 0) !== revision) return false;
+				saved = next;
+				return true;
+			},
+		},
+	});
+	const input = () => ({ repositories: [{ ...state(sha), mergeRequestId: 1 }] });
+	await expect(actions.record("s", 0, input())).rejects.toThrow("merge-request-checkout-mismatch");
+	requestState = "merged";
+	sourceBranch = "other";
+	await expect(actions.record("s", 0, input())).rejects.toThrow("merge-request-checkout-mismatch");
+	sourceBranch = "feature";
+	targetBranch = "release";
+	await expect(actions.record("s", 0, input())).rejects.toThrow("merge-request-checkout-mismatch");
+	targetBranch = "main";
+	await expect(actions.record("s", 0, input())).resolves.toMatchObject({
+		repositories: [
+			{ checkoutSha: sha, mergeRequest: { headSha: "c".repeat(40), state: "merged" } },
+		],
+	});
+	sha = "d".repeat(40);
+	await expect(actions.record("s", 1, { repositories: [state(sha)] })).resolves.toMatchObject({
+		repositories: [{ checkoutSha: sha, mergeRequest: { iid: 1, headSha: "c".repeat(40) } }],
+	});
+});
