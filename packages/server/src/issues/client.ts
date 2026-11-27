@@ -14,6 +14,7 @@ import type {
 	IssueUpdate,
 	IssueWorkflowRemote,
 } from "./remote";
+import { issueMergedResultSha } from "./remote";
 
 export type GitLabIssue = IssueRecord;
 export type GitLabNote = IssueNote;
@@ -601,6 +602,7 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 		mergeEvidence: async (iid): Promise<IssueMergeEvidence> => {
 			const mrId = positive(iid);
 			const mr = await decoded(`/merge_requests/${mrId}`, matchingIid(mergeRequest, mrId));
+			const mergeCommitSha = issueMergedResultSha(mr, "gitlab");
 			const targetSha = await decoded(
 				`/repository/branches/${encodeURIComponent(mr.targetBranch)}`,
 				(value) => {
@@ -610,13 +612,13 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 				},
 			);
 			let relationship: IssueMergeEvidence["relationship"] = "unknown";
-			if (mr.mergeCommitSha) {
+			if (mergeCommitSha) {
 				try {
 					const common = await decoded(
-						`/repository/merge_base?refs[]=${encodeURIComponent(mr.mergeCommitSha)}&refs[]=${encodeURIComponent(targetSha)}`,
+						`/repository/merge_base?refs[]=${encodeURIComponent(mergeCommitSha)}&refs[]=${encodeURIComponent(targetSha)}`,
 						(value) => commitSha(record(value).id),
 					);
-					relationship = common === mr.mergeCommitSha ? "ancestor" : "not-ancestor";
+					relationship = common === mergeCommitSha ? "ancestor" : "not-ancestor";
 				} catch {
 					// Unavailable ancestry is not negative proof.
 				}
@@ -624,14 +626,14 @@ export function createGitLabClient(options: GitLabClientOptions): GitLabClient {
 			return {
 				iid: mrId,
 				targetBranch: mr.targetBranch,
-				mergeCommitSha: mr.mergeCommitSha,
+				mergeCommitSha,
 				targetSha,
 				relationship,
 				snapshot: JSON.stringify([
 					mr.id,
 					mr.iid,
 					mr.targetBranch,
-					mr.mergeCommitSha,
+					mergeCommitSha,
 					targetSha,
 					relationship,
 				]),

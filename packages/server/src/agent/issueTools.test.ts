@@ -224,6 +224,22 @@ test("confirmation preparation supports read-only inspection and passes it to th
 	const params = { operationId: "op", inspect: true };
 	expect(Check(tool.parameters, params)).toBe(true);
 	expect(Check(tool.parameters, { operationId: "op", continueDespiteChecks: true })).toBe(true);
+	expect(
+		Check(tool.parameters, {
+			operationId: "stage",
+			report: "Design complete",
+			workflowTarget: "workflow::in-progress",
+			normalizeWorkflowLabel: true,
+		}),
+	).toBe(true);
+	expect(
+		Check(tool.parameters, {
+			operationId: "stage",
+			report: "Done",
+			workflowTarget: "workflow::unknown",
+			normalizeWorkflowLabel: true,
+		}),
+	).toBe(false);
 	expect(Check(tool.parameters, { operationId: "op", recovery: "reconcile" })).toBe(true);
 	expect(Check(tool.parameters, { operationId: "op", recovery: "resend" })).toBe(false);
 	for (const body of ["é".repeat(16001), "😀".repeat(8001)]) {

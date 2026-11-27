@@ -119,6 +119,32 @@ test("delivery state is isolated by Issue binding and repository", () => {
 	}
 });
 
+test("persisted merged requests keep source head separate from checkout and preserve target guards", () => {
+	const root = mkdtempSync(join(tmpdir(), "issue-delivery-state-"));
+	try {
+		const store = createIssueDeliveryStatePersistence(root);
+		const next = record(1);
+		const repo = next.repositories[0];
+		if (!repo) throw new Error("missing repository fixture");
+		repo.mergeRequest = {
+			iid: 9,
+			webUrl: "https://github.com/o/r/pull/9",
+			headSha: "c".repeat(40),
+			targetBranch: "main",
+			state: "opened",
+		};
+		expect(() => store.compareAndSet("local", ref, 0, next)).toThrow("requires reconciliation");
+		repo.mergeRequest.state = "merged";
+		repo.mergeRequest.targetBranch = "release";
+		expect(() => store.compareAndSet("local", ref, 0, next)).toThrow("requires reconciliation");
+		repo.mergeRequest.targetBranch = "main";
+		expect(store.compareAndSet("local", ref, 0, next)).toBe(true);
+		expect(createIssueDeliveryStatePersistence(root).load("local", ref)).toEqual(next);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("malformed evidence and symlinked record directories fail closed", () => {
 	const root = mkdtempSync(join(tmpdir(), "issue-delivery-state-"));
 	const elsewhere = mkdtempSync(join(tmpdir(), "issue-delivery-state-outside-"));

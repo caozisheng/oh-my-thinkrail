@@ -21,6 +21,7 @@ import {
 	RiFolder2Line,
 	RiFolderLine,
 	RiFolderOpenLine,
+	RiGitPullRequestLine,
 	RiHistoryLine,
 	RiHome4Line,
 	RiInboxArchiveLine,
@@ -87,6 +88,7 @@ export interface PaletteCatalogDeps {
 	readonly t: Translator;
 	readonly contextProjectId: string | null;
 	readonly canStartChat: boolean;
+	readonly reviewAvailable: boolean;
 	readonly activeWorkspace: Workspace | null;
 	readonly editors: readonly EditorInfo[];
 	readonly historyAvailable: boolean;
@@ -110,6 +112,7 @@ export interface PaletteCatalogDeps {
 
 export interface PaletteCatalogActions {
 	readonly newWorkspace: (projectId: string) => void;
+	readonly reviewPullRequest: () => void;
 	readonly newProjectlessChat: () => void;
 	readonly openDefaultWorkspace: (projectId: string) => void;
 	readonly openProject: () => void;
@@ -165,6 +168,16 @@ function workCommands(deps: PaletteCatalogDeps): Command[] {
 			...shortcutOf(deps, "workspace.new"),
 			run: () => actions.newWorkspace(contextProjectId),
 		});
+		if (deps.reviewAvailable) {
+			commands.push({
+				id: "workspace.reviewPr",
+				title: t("commands.workspace.reviewPr"),
+				group: "work",
+				icon: RiGitPullRequestLine,
+				keywords: ["pull request", "pr", "review", "github", "code review"],
+				run: actions.reviewPullRequest,
+			});
+		}
 	}
 	if (activeWorkspace) {
 		commands.push({

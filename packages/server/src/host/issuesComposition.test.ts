@@ -31,6 +31,7 @@ const reference = {
 };
 let snapshot: { sha: string; tree: string; branch: string };
 let upstreamMerged = false;
+let upstreamMergeMethod: "merge" | "squash" | "fast-forward" = "merge";
 let issueBody = "";
 let bodyWrites = 0;
 let failBodyWrite = false;
@@ -38,6 +39,7 @@ let remoteReads = 0;
 
 beforeEach(async () => {
 	upstreamMerged = false;
+	upstreamMergeMethod = "merge";
 	issueBody = "";
 	bodyWrites = 0;
 	failBodyWrite = false;
@@ -144,10 +146,15 @@ beforeEach(async () => {
 						iid: 7,
 						web_url: "https://gitlab.example/sub/group/repo/-/merge_requests/7",
 						state: upstreamMerged ? "merged" : "opened",
-						...(upstreamMerged ? { merge_commit_sha: snapshot.sha } : {}),
+						...(upstreamMerged && upstreamMergeMethod === "merge"
+							? { merge_commit_sha: snapshot.sha }
+							: {}),
+						...(upstreamMerged && upstreamMergeMethod === "squash"
+							? { squash_commit_sha: snapshot.sha }
+							: {}),
 						source_branch: snapshot.branch,
 						target_branch: "main",
-						sha: snapshot.sha,
+						sha: upstreamMerged && upstreamMergeMethod === "squash" ? "e".repeat(40) : snapshot.sha,
 						merge_status: "cannot_be_merged",
 						detailed_merge_status: "not_approved",
 						draft: true,
@@ -569,6 +576,20 @@ test("composed dependency preflight accepts real argv compatibility for exact re
 		},
 	});
 }, 20_000);
+
+for (const method of ["squash", "fast-forward"] as const) {
+	test(`registered ${method} upstream passes dependency preflight using the proven merged result`, async () => {
+		upstreamMergeMethod = method;
+		const { result } = await compatibilityFixture("pass");
+		expect(result).toMatchObject({
+			status: "passed",
+			receipt: {
+				upstreams: [{ projectId: "repo", mergeCommitSha: snapshot.sha }],
+				compatibility: [{ upstreamMergeSha: snapshot.sha }],
+			},
+		});
+	}, 20_000);
+}
 
 for (const [mode, reason] of [
 	["missing", "compatibility-missing"],

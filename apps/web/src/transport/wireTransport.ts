@@ -8,6 +8,7 @@ import type {
 	LoginPush,
 	McpStatusPayload,
 	Project,
+	PullRequestFilter,
 	ReviewChangedPayload,
 	ServerWelcome,
 	SessionCreatedPayload,
@@ -40,6 +41,7 @@ import {
 	PI_PACKAGES_PROTOCOL_VERSION,
 	PLAN_REVIEW_SUBAGENT_PROTOCOL_VERSION,
 	PLAN_SUMMARY_GENERATION_PROTOCOL_VERSION,
+	PULL_REQUEST_REVIEW_PROTOCOL_VERSION,
 	REVIEW_RICH_ANCHORS_PROTOCOL_VERSION,
 	SESSION_STATE_PROTOCOL_VERSION,
 	SPEECH_PROTOCOL_VERSION,
@@ -78,6 +80,16 @@ export function supportsExtensionCidrSettings(protocolVersion: number | null): b
 	return protocolVersion !== null && protocolVersion >= EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION;
 }
 
+export function supportsPullRequestReview(protocolVersion: number | null): boolean {
+	return protocolVersion !== null && protocolVersion >= PULL_REQUEST_REVIEW_PROTOCOL_VERSION;
+}
+
+export function rememberPullRequestFilter(projectId: string, filter: PullRequestFilter): void {
+	if (!supportsPullRequestReview(useAppStore.getState().protocolVersion)) return;
+	getTransport()
+		.request("settings.update", { config: { pullRequestFilters: { [projectId]: filter } } })
+		.catch(() => {});
+}
 export function supportsKeybindings(protocolVersion: number | null): boolean {
 	return protocolVersion !== null && protocolVersion >= KEYBINDINGS_PROTOCOL_VERSION;
 }

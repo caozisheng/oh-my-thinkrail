@@ -184,6 +184,10 @@ these structural guards do not grant trust or enable an RPC by themselves.
   code, so it needs no protocol bump. One code is named by the client and never sent by the host:
   **`FRAME_TOO_LARGE`**, a request refused before sending because its frame exceeds `WS_MAX_FRAME_BYTES`
   (below) — the composer hands that prompt back to its draft instead of losing it.
+  **`EXTENSION_UI_UNSUPPORTED`** is also used locally: the host's in-process extension UI rejects
+  `custom()` with this code so an extension can choose a supported dialog instead of treating absent
+  terminal UI as user cancellation. It adds no WS method, payload or capability; an uncaught extension
+  error still follows pi's existing notification path.
   Everything else stays a plain `error` string. Expected method-specific outcomes remain typed method
   results rather than generic WS failures; no current-layout protocol exists.
 - **Public surface (`index.ts`):** `export type *` of `piProtocol` + `domain` + `nativeClient`
@@ -411,7 +415,10 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   - the cheap-win mirrors (declared in the Node-only `pi-coding-agent`): **`SessionStats`** + **`ContextUsage`**
     (tokens/cost/context bar — display only) and **`SlashCommandInfo`** + **`SlashCommandSourceInfo`** (the
     command autocomplete rows, returned by live `session.getCommands`, skill-only pre-session `skill.list`,
-    and mapped prompt-template listings), and **`SkillCatalogEntry`** + **`SkillDecision`** (`load`/`untrusted`/`pending-ack`/
+    and mapped prompt-template listings; the additive optional `argumentCompletion` (v151, today only
+    `"pull-request"`) is ThinkRail's, not pi's: the host reads a skill's `argument-completion`
+    frontmatter key so a prompt can offer the argument — an older host omits it and prompts send the
+    command as typed), and **`SkillCatalogEntry`** + **`SkillDecision`** (`load`/`untrusted`/`pending-ack`/
     `disabled`) — the workspace Skills manager's `skills.state` rows; the additive optional `manualOnly`
     marks pi's `disable-model-invocation` skills, which pi never lists in the prompt (an older host omits it).
   - **`ExtensionCatalogEntry`** (`{ name, title, description?, enabled, tools, hasParentExtensions?, hasChildExtensions, settings?, apiVersion? }`) — one
@@ -609,7 +616,10 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   name }` → `{ path }`, in place, refused with `ENTRY_EXISTS` when another entry holds the name) and
   `fs.move` (`fs.copy`'s params → `{ path }`, the Cut-and-Paste move, same or another workspace, refused
   with `ENTRY_EXISTS` instead of renaming, for a folder into itself, and with `MOVE_ACROSS_DEVICES` when
-  source and destination are on different file systems),
+  source and destination are on different file systems), and from **`FS_REVEAL_PROTOCOL_VERSION`** (v152)
+  `fs.reveal` (`{ workspaceId, path }` → ack: the host's OS file manager opens with that worktree entry
+  selected — on the host's machine, which a remote browser does not see; a client hides the action from
+  older hosts),
   the **Artifacts** tool's wire from the same version: `artifacts.list` (`{ workspaceId }` →
   **`WorkspaceArtifactsSnapshot`**: `dir` (the artifacts folder, `.thinkrail/context`; agents write mockups to
   its **`WORKSPACE_MOCKUP_DIR`**, `.thinkrail/context/mockups`, the one name the host's mockup check and the
@@ -736,7 +746,8 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   fileLineWidthBounded, voiceInputEnabled, customLayoutPresets, defaultModel?, defaultEffort?, reviewModel?, reviewEffort?,
   favoriteModels, recentModels, reviewAutoFix, agentReviewEnabled, subagentsEnabled, subagentMaxConcurrent,
   jbcentralQuotaEnabled, jbcentralQuotaRefreshSeconds, disabledExtensions, extensionSettings, otherAgentSkills,
-  onboardingDismissed, interfaceFont, codeFont, codeFontSize, codeLigatures, fontWeightOffset, keybindings }` — an extensible
+  onboardingDismissed, interfaceFont, codeFont, codeFontSize, codeLigatures, fontWeightOffset, keybindings,
+  pullRequestFilters }` — an extensible
   bag; the five font fields join at v102 and normalize together through `normalizeFontSettings` (host load, web
   store, fonts runtime); the line-width fields join the wire at protocol v61, `terminalWindowsShell` at v62, and
   `voiceInputEnabled` (default `true`) with voice input at v117, and `questionPanelHeight`
@@ -764,7 +775,11 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   `submodule-server-terminal`'s shell-selection decision for what each value spawns.
   **`PROJECT_TEMPLATE_PREVIEW_PROTOCOL_VERSION`** pins v63's additive project-located `template.list` /
   `template.get` reads, allowing Create Workspace to preview global plus current-checkout project templates
-  without sending host paths; older hosts retain a global-only fallback. `themeMode` defaults to `"fixed"`
+  without sending host paths; older hosts retain a global-only fallback.
+  **`REF_RESOURCE_PREVIEW_PROTOCOL_VERSION`** (v152) adds an optional **`baseRef`** beside `projectId` on
+  those reads and on `skill.list`: the host answers from the project's resources as they are at that ref (what
+  a worktree cut from it will hold) instead of the current checkout, and falls back to the checkout when the
+  ref does not resolve. The dialog sends it only on a v152+ host; an older host would ignore it. `themeMode` defaults to `"fixed"`
   and no pair, preserving both legacy configs
   and the explicit Dark default; `subagentsEnabled` is the host-wide subagent default (`true` for current
   behavior), overridden only by `Workspace.subagentsOverride`; `subagentMaxConcurrent` (whole number in
@@ -781,7 +796,10 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   `EXTENSION_SETTINGS_PROTOCOL_VERSION` = v112) maps extension name → setting key → boolean or a
   validated CIDR string list for the settings an `ExtensionCatalogEntry` declares — CIDR lists are
   available at `EXTENSION_CIDR_SETTINGS_PROTOCOL_VERSION` = v150; an absent key means the descriptor's `default`, and
-  `settings.update { extensionSettings }` merges per key; `keybindings` (`KeybindingOverrides`, default `{}`,
+  `settings.update { extensionSettings }` merges per key; `pullRequestFilters` (default `{}`, from v151)
+  maps a project id to the pull-request completion's last `PullRequestFilter` (`isPullRequestFilter`
+  validates one; `DEFAULT_PULL_REQUEST_FILTER` is all open including drafts), and
+  `settings.update { pullRequestFilters }` merges per project, `null` forgetting one; `keybindings` (`KeybindingOverrides`, default `{}`,
   on the wire from **`KEYBINDINGS_PROTOCOL_VERSION`** = v136) maps a command id — the app's or a web
   extension's — to the user's chords, replacing its defaults (`[]` unbinds, an absent id keeps them); an
   update replaces the whole map, unknown ids are kept, and a malformed value is refused with
@@ -1116,11 +1134,25 @@ usually wants the path. The desktop's clipboard read and the web's decision to c
   queued it (merge queue / auto-merge), in which case the branch is never deleted; a merge that landed while
   the branch deletion failed is a success with the reason), and **`workspace.deleteRemoteBranch`** (`{ workspaceId,
   branch }` → `Ack`; `PUSH_AUTH_FAILED` as for a push) /
+  the v151 **pull-request reads** (`PULL_REQUEST_REVIEW_PROTOCOL_VERSION`, gating the prompts'
+  pull-request completion so a newer client sends the command as typed against an older host):
+  **`pr.list`** (`{ projectId, filter: { scope: "review-requested" | "mine" | "all", drafts, author? },
+  query?, cursor? }` → `PullRequestPage { pullRequests, nextCursor?, unavailable? }` — one page of the
+  project's open GitHub pull requests matching the filter and the typed words, most recently updated
+  first, each a `PullRequestSummary` with `baseRef` already resolved on the local remote and
+  `reviewRequested` for the signed-in `gh` user, **without `size`**; when it cannot list, an empty page
+  with the reason — `missing` / `unauthenticated` (the `GhSetupProblem` pair), `not-github`, or
+  `failed`), **`pr.authors`** (`{ projectId, cursor? }` → `PullRequestAuthorPage { authors, nextCursor? }`,
+  the logins of the open pull requests' authors, 100 pull requests a page, each login once per page —
+  the client merges pages; an empty page when it cannot read), **`pr.sizes`** (`{ projectId, numbers }` → `PullRequestSizeEntry[]`, the diff stats of the
+  rows on screen, leaving out any it could not read) and **`pr.get`** (`{ projectId, number }` →
+  `PullRequestSummary | null` with `size`, in any state, `null` when it does not exist or cannot be
+  read; `reviewRequested` is always `false` there) /
   **`project.setTrust`** (persist a project's trust grant → the updated `Project`; gates its committed
   cross-agent skill aliases; `resources: true` also grants pi-level resource trust, see Project trust) /
   **`skill.list`** (a pre-session, skill-only `SlashCommandInfo[]` preview for a `projectId`, resolved from
-  that project's current checkout with its **project-scoped aliases gated by trust**; the eventual worktree
-  session is authoritative) / the **Skills-manager set** — **`project.aliasSkills`** (present committed alias
+  that project's current checkout — or, with v135's optional `baseRef`, its resources at that ref — with its
+  **project-scoped aliases gated by trust**; the eventual worktree session is authoritative) / the **Skills-manager set** — **`project.aliasSkills`** (present committed alias
   names, for the presence-gated notice's count) / **`project.acknowledgeSkills`** (confirm skills that
   appeared after trust) / **`project.setSkillEnabled`** (project baseline) / **`project.setGroupEnabled`**
   (turn a plugin / source tier / `@plugins` on/off at the baseline) / **`workspace.setSkillOverride`**
@@ -1619,11 +1651,14 @@ and what it loaded, never pi's own types.
   edit, a chat load that installed something, an update, or a package or extension switch.
 - Error codes: `PACKAGE_SOURCE_INVALID` (also an unsupported `type` / `scope`, validated at the boundary),
   `PACKAGE_OFFLINE` (npm/git only; local installs work offline), `PACKAGE_UNTRUSTED`, `PACKAGE_UNKNOWN`,
-  `PACKAGE_INSTALL_FAILED`, `PACKAGE_REMOVE_FAILED`, `PACKAGE_UPDATE_FAILED`,
+  `PACKAGE_INSTALL_FAILED` (with its two named causes, `PACKAGE_NOT_FOUND` — npm found no such package
+  or dependency — and `PACKAGE_REGISTRY_UNREACHABLE`; all three carry pi's text, npm's output included),
+  `PACKAGE_REMOVE_FAILED`, `PACKAGE_UPDATE_FAILED`,
   `PACKAGE_SETTINGS_WRITE_FAILED`, and `PACKAGE_INSTALLED_UNLISTED` — the declaration was persisted but
   the host could not produce the row; of the install codes only `PACKAGE_SOURCE_INVALID`,
-  `PACKAGE_OFFLINE`, `PACKAGE_UNTRUSTED`, `PACKAGE_INSTALL_FAILED` and `PACKAGE_SETTINGS_WRITE_FAILED`
-  are raised before anything is written, and a client may claim "nothing was added" only for those.
+  `PACKAGE_OFFLINE`, `PACKAGE_UNTRUSTED`, the three install-failure codes and `PACKAGE_SETTINGS_WRITE_FAILED`
+  are raised before anything is written, and a client may claim "nothing was added" only for those. A
+  client that does not know a newer code shows the message and makes no such claim.
 
 ## Installed extensions
 
@@ -1775,7 +1810,7 @@ shell panels need `domain` + `wsProtocol`; the `pi` types + `PiEvent` are the wi
 
 ## Current protocol and additive feature floors
 
-`PROTOCOL_VERSION = 150`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
+`PROTOCOL_VERSION = 152`. Host search uses `SEARCH_PROTOCOL_VERSION = 116` and local dictation uses
 `SPEECH_PROTOCOL_VERSION = 117`; these fresh floors avoid advertising either feature on older fork
 hosts (through v115). Project groups use `PROJECT_GROUPS_PROTOCOL_VERSION = 125`, on-demand Issue joins v126 and the group home `PROJECT_GROUP_HOME_PROTOCOL_VERSION = 127` (below), allocated above upstream's v118–v124 floors. Issues content/detail/repositories retain their v113/v114/v115 floors.
 Background workspace creation is gated at
@@ -1940,7 +1975,7 @@ from generic unavailability; it authorizes no retry and adds no wire method or p
 
 ## Fork/upstream protocol reconciliation
 
-The merged host advertises v150. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
+The merged host advertises v152. Chat file attachments use v142 rather than upstream v129, which is already the fork custom-model-context floor. Existing fork floors v103–v117 remain unchanged; upstream additions
 are allocated fresh floors to avoid advertising support on an older fork host: other-agent skills v118,
 projectless chats v119, continuations v120, cache-warming settings v121, text search v122, spec sections
 v123 and question panel height v124. The fork's project groups (v125), on-demand Issue repository
@@ -1951,7 +1986,7 @@ upstream numbers.
 
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138, server fallback repair v139, and subagent catalog v140. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
 
-Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
+Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Pull-request review uses v151; filesystem reveal and base-ref skill/template previews use v152. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
 
 ## Workspace capability boundary
 
@@ -1971,3 +2006,5 @@ only: it never writes either trust field, admits native pi resources, acknowledg
 Candidates must also be open repository projects; a group owner limits them to its own members.
 The UI, host selection/join guards and agent reference candidates use the same predicate. Host checks
 repeat around asynchronous work. The existing project trust revocation clears both grants.
+
+Pull-request review reads and prompt argument completion use `PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151`, above the existing fork CIDR settings floor v150; upstream v133 is already the fork image-reference floor. Filesystem reveal and ref-based skill/template previews are added at v152.

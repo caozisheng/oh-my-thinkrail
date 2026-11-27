@@ -20,11 +20,16 @@ rule in [[submodule-workflow-skills]], not a new naming convention or role.
 The startup request must identify the design/implementation intent and provider-qualified Issue;
 context comes from the live host tool, not a guessed IID, cached conversation, or external prompt.
 Design reuses only `brainstorming`'s exploration, interview, proposal, design-artifact, and plan
-outputs, then returns for the Issue handoff before any implementation. This boundary overrides
-brainstorming's automatic build transition after approval, including its bug branch: no fix/test
-implementation or post-build spec-amendment tail runs in a design session. Approval does not change
-the session intent. Implementation uses the existing planning/todo, verification, and review
-mechanisms, with no new pipeline, task format, runtime, or implementation approval gate.
+outputs, then submits its stage report before the Issue handoff and before any implementation. Stage
+reports normalize the single workflow label to the lifecycle target while preserving unrelated labels:
+design completion sets `workflow::in-progress`, implementation completion sets `workflow::in-review`,
+and a host-verified PR/MR merge sets `workflow::done`. The host rejects the done target without a
+completed merge receipt. A failed or uncertain report is reported as such; it is never claimed as a
+completed label transition. This boundary overrides brainstorming's automatic build transition after
+approval, including its bug branch: no fix/test implementation or post-build spec-amendment tail runs
+in a design session. Approval does not change the session intent. Implementation uses the existing
+planning/todo, verification, and review mechanisms, with no new pipeline, task format, runtime, or
+implementation approval gate.
 The panel launch is intent to implement, not evidence of design approval or merge authorization.
 
 `SKILL.md` is the public entry and shared-invariants spine. It routes on demand to the 11 internal

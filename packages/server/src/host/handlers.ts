@@ -3,6 +3,7 @@ import { isAbsolute, relative, sep } from "node:path";
 import type {
 	Ack,
 	OpenBranchReview,
+	Project,
 	ReviewComment,
 	ReviewFixDetails,
 	ReviewSendResult,
@@ -76,6 +77,7 @@ import {
 	markWorkspaceUnread,
 	notifyExtUi,
 	nudgeSession,
+	PROJECT_SKILL_ROOTS,
 	probeCustomEndpoint,
 	projectTrustSummary,
 	promptSession,
@@ -135,10 +137,21 @@ import {
 	startProxyJbcentral,
 	updateJbcentral,
 } from "../auth";
-import { providerFromRemoteUrl } from "../branch-review";
+import {
+	getPullRequest,
+	listPullRequestAuthors,
+	listPullRequests,
+	providerFromRemoteUrl,
+	pullRequestSizes,
+} from "../branch-review";
 import { forgetWorkspaceChanges, revertChange, undoChange } from "../changes";
 import { selectDirectory } from "../dialog";
-import { listAvailableEditors, openEditor, revealInFileManager } from "../editors";
+import {
+	listAvailableEditors,
+	openEditor,
+	revealInFileManager,
+	revealItemInFileManager,
+} from "../editors";
 import { hostEnvironmentStatus, updateHostEnvironment } from "../environment";
 import { createExtensionQueries, listExtensionCatalog } from "../extensions";
 import {
@@ -238,6 +251,7 @@ import {
 	deleteTemplate,
 	getTemplate,
 	listTemplates,
+	PROJECT_TEMPLATE_ROOT,
 	saveTemplate,
 	templateDirs,
 } from "../templates";
@@ -288,6 +302,7 @@ import {
 	listWorkspaces,
 	nestedWorkspaces,
 	openExistingWorktree,
+	previewRefPaths,
 	reclaimWorktree,
 	recordWorkspaceActivity,
 	renameWorkspace,
@@ -710,16 +725,28 @@ function revealDataFolder(dir: string) {
 	return { ok: true } as const;
 }
 
-function resolveTemplateReadDirs(params: TemplateReadLocation) {
+const REF_PREVIEW_ROOTS = [...PROJECT_SKILL_ROOTS, PROJECT_TEMPLATE_ROOT];
+
+function knownProject(projectId: string): Project {
+	const project = listProjects().find((candidate) => candidate.id === projectId);
+	if (!project) throw new Error(`Unknown project: ${projectId}`);
+	return project;
+}
+
+async function projectPreviewCwd(project: Project, baseRef: string | undefined): Promise<string> {
+	const ref = baseRef?.trim();
+	if (!ref) return project.path;
+	return (await previewRefPaths(project, ref, REF_PREVIEW_ROOTS)) ?? project.path;
+}
+
+async function resolveTemplateReadDirs(params: TemplateReadLocation) {
 	const { workspaceId, projectId } = params;
 	if (workspaceId !== undefined && projectId !== undefined) {
 		throw new Error("Template reads accept either workspaceId or projectId, not both");
 	}
 	if (workspaceId !== undefined) return templateDirs(getWorkspace(workspaceId).worktreePath);
 	if (projectId === undefined) return templateDirs();
-	const project = listProjects().find((candidate) => candidate.id === projectId);
-	if (!project) throw new Error(`Unknown project: ${projectId}`);
-	return templateDirs(project.path);
+	return templateDirs(await projectPreviewCwd(knownProject(projectId), params.baseRef));
 }
 
 function fireReviewPrompt(
@@ -1177,6 +1204,20 @@ const handlers: WsHandlers = {
 		if (moved) nudgeBaseRefWorkspaces(p.projectId, p.ref);
 		return { ok };
 	},
+	"pr.list": (params) =>
+		listPullRequests(repositoryProject(params.projectId).path, {
+			filter: params.filter,
+			...(params.query ? { query: params.query } : {}),
+			...(params.cursor ? { cursor: params.cursor } : {}),
+		}),
+	"pr.get": (params) => getPullRequest(repositoryProject(params.projectId).path, params.number),
+	"pr.authors": (params) =>
+		listPullRequestAuthors(repositoryProject(params.projectId).path, params.cursor),
+	"pr.sizes": (params) =>
+		pullRequestSizes(
+			repositoryProject(params.projectId).path,
+			Array.isArray(params.numbers) ? params.numbers : [],
+		),
 	"github.authStatus": () => githubAuthStatus(),
 	"github.refresh": () => githubRefresh(),
 	"matrix.status": (_p, ctx) => matrixStatus(ctx),
@@ -1311,6 +1352,10 @@ const handlers: WsHandlers = {
 			notifyWorkspacePathsChanged(p.destinationWorkspaceId, moved.written);
 			return { path: moved.path };
 		});
+	},
+	"fs.reveal": (p) => {
+		revealItemInFileManager(resolveWorktreeEntry(p.workspaceId, p.path).abs);
+		return { ok: true };
 	},
 	"artifacts.list": (p) => {
 		void ensureWatch(p.workspaceId);
@@ -1499,12 +1544,10 @@ const handlers: WsHandlers = {
 	"terminal.close": (p) => {
 		return closeTerminalTab(p.workspaceId, p.tabKey, p.force ?? false);
 	},
-	"skill.list": (params) => {
-		const { projectId } = params;
-		const project = listProjects().find((candidate) => candidate.id === projectId);
-		if (!project) throw new Error(`Unknown project: ${projectId}`);
+	"skill.list": async (params) => {
+		const project = knownProject(params.projectId);
 		return listSkillCommands(
-			project.path,
+			await projectPreviewCwd(project, params.baseRef),
 			admissionContextFor(project, {}, getConfig().otherAgentSkills),
 		);
 	},
@@ -2163,12 +2206,10 @@ const handlers: WsHandlers = {
 			return { sessions };
 		});
 	},
-	"template.list": (params) => ({
-		templates: listTemplates(resolveTemplateReadDirs(params)),
+	"template.list": async (params) => ({
+		templates: listTemplates(await resolveTemplateReadDirs(params)),
 	}),
-	"template.get": (p) => {
-		return getTemplate(resolveTemplateReadDirs(p), p.name, p.scope);
-	},
+	"template.get": async (p) => getTemplate(await resolveTemplateReadDirs(p), p.name, p.scope),
 	"template.save": (p) => {
 		const dirs = templateDirs(p.workspaceId ? getWorkspace(p.workspaceId).worktreePath : undefined);
 		return saveTemplate(dirs, p.scope, p.name, p.content);

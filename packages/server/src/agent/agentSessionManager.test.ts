@@ -11,6 +11,7 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import * as readline from "node:readline";
 import {
 	getCurrentSystemPrompt,
 	getCurrentTools,
@@ -3972,6 +3973,50 @@ test("listSessions ignores a live session's transient physical rewrite but stays
 		await expect(listSessions("ws-live-rewrite", cwd)).rejects.toThrow("unreadable or malformed");
 	} finally {
 		setSessionManagerFactory(() => SessionManager.inMemory());
+	}
+});
+
+test("listSessions bounds concurrent transcript header scans", async () => {
+	const cwd = tmpCwd("trpi-concurrent-scan-");
+	const dir = defaultSessionDirFor(process.env.PI_CODING_AGENT_DIR ?? "", cwd);
+	const fixtures = Array.from({ length: 24 }, (_, index) =>
+		writeFixtureSession(dir, {
+			cwd,
+			messages: [{ role: "user", text: `session ${index}`, timestamp: 1_000 + index }],
+		}),
+	);
+	let active = 0;
+	let peak = 0;
+	let calls = 0;
+	const original = readline.createInterface;
+	const spy = spyOn(readline, "createInterface").mockImplementation(
+		new Proxy(original, {
+			apply(target, receiver, args) {
+				const lines: ReturnType<typeof original> = Reflect.apply(target, receiver, args);
+				active++;
+				calls++;
+				peak = Math.max(peak, active);
+				lines.once("close", () => active--);
+				return lines;
+			},
+		}),
+	);
+	const originalList = SessionManager.list.bind(SessionManager);
+	const listSpy = spyOn(SessionManager, "list").mockImplementation((...args) => {
+		spy.mockRestore();
+		return originalList(...args);
+	});
+	try {
+		const sessions = await listSessions("ws-concurrent-scan", cwd);
+		expect(sessions.map((session) => session.sessionId).sort()).toEqual(
+			fixtures.map((fixture) => fixture.id).sort(),
+		);
+		expect(calls).toBe(fixtures.length);
+		expect(peak).toBe(8);
+		expect(active).toBe(0);
+	} finally {
+		spy.mockRestore();
+		listSpy.mockRestore();
 	}
 });
 

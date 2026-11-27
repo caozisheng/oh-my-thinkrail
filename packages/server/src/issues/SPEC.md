@@ -153,6 +153,9 @@ extends that delivery port with GitLab-only approval evidence and merge operatio
 exposes the delivery port; `remoteFor` deliberately remains the read/comment port. These types grant
 no workflow authorization. Provider closure responses expose nullable `closedAt`; the confirmed host
 operation requires a non-null read-back before returning a close receipt.
+The barrel's `issueMergedResultSha(request, provider)` selects a merged request's resulting commit:
+merge commit first, then squash commit, then the GitLab source head as a fast-forward candidate.
+Unmerged requests have no result. Selection alone is not ancestry proof.
 
 GitHub updates use PATCH with only supplied fields (`description` maps to `body`), so label-only
 writes never replace the description. PR operations first read verified repository identity/path;
@@ -191,9 +194,10 @@ Malformed delivery responses fail with sanitized `RESOURCE_UNAVAILABLE`, without
   `mergeMergeRequest(iid, sha)` sends a full SHA as GitLab's merge precondition; after the single
   write it performs bounded MR readback. `mergeEvidence(iid)` reads fresh MR detail, the exact named
   target branch SHA from the verified project/repository, and compares the provider-reported merge
-  commit against that target. It returns the exact observed merge/target SHAs and an explicit
+  result selected by `issueMergedResultSha` against that target. It returns the exact observed
+  result/target SHAs and an explicit
   `ancestor`, `not-ancestor`, or `unknown` relationship with a snapshot. Merged state or target SHA
-  alone is never ancestry evidence; missing merge SHA or incomplete compare evidence remains
+  alone is never ancestry evidence; missing result SHA or incomplete compare evidence remains
   unknown. This does not authorize merge, prove approval/CI, or close the issue itself.
 - Writes are single-attempt with bounded response reads and no automatic retries. Non-2xx responses,
   transport failures, deadlines, token echoes, and malformed success bodies (including mismatched
@@ -463,8 +467,11 @@ client, binding, credential or approval state. `IssueStartupContext` optionally 
 ids, display name, actual path and primary/associated/reference role. They are data, not executable configuration;
 the prompt requires per-repository instruction lookup, forbids combining project configuration, and
 states that membership is not a shell sandbox or proof that cross-repository builds work. In design,
-reference repositories are read through their advertised absolute paths using the read-only file tools;
-the prompt does not imply that the primary workspace's relative paths can address them or grant write access.
+all host-provided repositories are read-only context: use read-only file tools and their advertised absolute
+paths to inspect instructions, specs and source; do not write repository files or run repository-writing
+commands, and do not create or join implementation worktrees. Reference repositories remain identified as
+separate main checkouts; the prompt does not imply that the primary workspace's relative paths can address
+them. Implementation retains its existing user-confirmed join flow for references.
 `contexts(reference, stage)` verifies source Default directories for design and every recorded completed
 worktree for implementation without creating implementation directories. Host composition refreshes
 this projection at startup and on bound `issue_context` reads; the pure prompt factory performs no I/O.

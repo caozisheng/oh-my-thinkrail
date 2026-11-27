@@ -9,11 +9,13 @@ Use for an explicit design or implementation stage. Design is design-only. Imple
 ## Automatic steps
 
 1. For design, follow the existing `brainstorming` workflow and stop before implementation; return here for Issue handoff.
-2. For implementation, reuse the existing plan/TODO mechanisms, inspect owning specs and code, and implement the confirmed requirements.
-3. Keep durable decisions in owning specs when boundaries, contracts or documented behavior change.
-4. Verify and self-review the implementation. Do not assume a stage update succeeded because work is complete.
-5. Evaluate implementation delivery readiness independently of stage publication.
-6. Before stage reporting, read the calling contract below. For preparation rejection or uncertain execution, follow `refusals-and-recovery.md`; do not change action or IDs by trial and error.
+2. Before handing off a completed design, automatically submit its stage report through `issue_run_operation({operationId, report, workflowTarget:"workflow::in-progress", normalizeWorkflowLabel:true})`. This records the report and advances the workflow label even when it is missing, stale or duplicated.
+3. For implementation, reuse the existing plan/TODO mechanisms, inspect owning specs and code, and implement the confirmed requirements.
+4. Keep durable decisions in owning specs when boundaries, contracts or documented behavior change.
+5. Verify and self-review the implementation. Do not assume a stage update succeeded because work is complete.
+6. On implementation completion, automatically submit its report with `workflowTarget:"workflow::in-review"` and `normalizeWorkflowLabel:true` before delivery assessment.
+7. Evaluate implementation delivery readiness independently of stage publication.
+8. Before stage reporting, read the calling contract below. For preparation rejection or uncertain execution, follow `refusals-and-recovery.md`; do not change action or IDs by trial and error.
 
 ## Host capabilities
 
@@ -24,7 +26,7 @@ Stage reporting uses its own host operation and durable journal. Provider stage 
 The tool's optional fields describe several different operations, not one combinable payload. Match the installed host contract; use advertised `issue_run_operation` with the same payload shape as
 `issue_prepare_confirmation`; `SKILL.md` owns legacy fallback only when unavailable:
 
-- Stage report: `issue_run_operation({operationId, report})`. **Omit `action`**; the bound session determines design versus implementation. Do not send `projectId`, `expectedRevision`, `expectedSha` or a custom `deliveryState` as a stage report.
+- Stage report: `issue_run_operation({operationId, report, workflowTarget, normalizeWorkflowLabel:true})`. **Omit `action`**; the bound session determines design versus implementation. Targets are `workflow::in-progress` for design, `workflow::in-review` for implementation, or `workflow::done` after a host-observed merge. `normalizeWorkflowLabel` ignores only missing, stale or duplicate source workflow labels; other warnings still apply. Do not send `projectId`, `expectedRevision`, `expectedSha` or a custom `deliveryState` as a stage report.
 - Journal inspection: `issue_prepare_confirmation({operationId, inspect:true})` using the original operationId. Omit `action`, `projectId` and the report/state fields; this inspects the operation journal, not general host health.
 - Remote MR/CI inspection: `issue_prepare_confirmation({operationId, action:"ready-mr" | "merge-mr", inspect:true, projectId, mergeRequestId, expectedSha?, targetBranch?})`. This is read-only and returns the bound provider's current MR identity/state, head SHA, target SHA, pipeline and readiness facts; it does not prepare a confirmation or mutate the MR. Use the local repository id from fresh `issue_context` for `projectId`.
 - Delivery-state read: `issue_prepare_confirmation({operationId, action:"read-delivery-state"})`; do not add `inspect:true` or `projectId`.
@@ -40,4 +42,4 @@ Design approval in the request covers only the design; it does not authorize imp
 
 ## Handoff
 
-Design: attempt a concise Issue handoff and return to the caller; summary publication is best-effort under `SKILL.md`. Implementation: route to `validation.md` and `stage-delivery-decoupling.md`; do not let a failed stage record block separately eligible delivery.
+Design: submit the design stage report before returning to the caller; this is the handoff that records `workflow::in-progress`. Then attempt a concise Issue summary under `SKILL.md` on a best-effort basis. Implementation: after a host-verified merge, submit a completion report with `workflowTarget:"workflow::done"` and `normalizeWorkflowLabel:true`; the host requires the completed merge receipt. Route pre-merge implementation work to `validation.md` and `stage-delivery-decoupling.md`; do not let a failed stage record block separately eligible delivery.

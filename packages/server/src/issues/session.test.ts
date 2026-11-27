@@ -120,11 +120,42 @@ test("design startup tells the agent how to read reference repositories from the
 	});
 
 	expect(prompt).toContain(
-		"For design, read reference repositories through their advertised absolute paths with the read-only file tools",
+		"Use read-only file tools with each repository's advertised absolute path",
 	);
 	expect(prompt).toContain(
 		"do not use the primary workspace's relative path to look for reference files",
 	);
+});
+
+test("design startup treats every bound repository as read-only and keeps implementation worktrees out of scope", () => {
+	const prompt = createIssueStartupPrompt({
+		...context(),
+		repositories: [
+			{ projectId: "local", workspaceId: "w", name: "app", path: "/work/app", role: "primary" },
+			{
+				projectId: "api",
+				workspaceId: "api-default",
+				name: "api",
+				path: "/work/api",
+				role: "associated",
+			},
+			{
+				projectId: "core",
+				workspaceId: "core-default",
+				name: "core",
+				path: "/work/core",
+				role: "reference",
+			},
+		],
+	});
+
+	expect(prompt).toContain("Design is read-only across every host-provided repository");
+	expect(prompt).toContain(
+		"Use read-only file tools with each repository's advertised absolute path",
+	);
+	expect(prompt).toContain("Do not edit, create, delete or format repository files");
+	expect(prompt).toContain("Do not create or join implementation worktrees");
+	expect(prompt).not.toContain("issue_join_repository");
 });
 
 test("design startup is explicit, Chinese, pure and preserves the whole Issue and every comment", () => {

@@ -158,7 +158,7 @@ export function createIssueDeliveryStateActions(options: IssueDeliveryStateActio
 				if (
 					observed.iid !== mergeRequestId ||
 					observed.sourceBranch !== actual.branch ||
-					observed.headSha !== actual.sha ||
+					(observed.state !== "merged" && observed.headSha !== actual.sha) ||
 					observed.targetBranch !== data.targetBranch
 				)
 					stop("merge-request-checkout-mismatch");
@@ -170,7 +170,10 @@ export function createIssueDeliveryStateActions(options: IssueDeliveryStateActio
 					state: observed.state,
 				};
 			}
-			if (mergeRequest?.headSha !== actual.sha || mergeRequest.targetBranch !== data.targetBranch)
+			if (
+				(mergeRequest?.state !== "merged" && mergeRequest?.headSha !== actual.sha) ||
+				mergeRequest?.targetBranch !== data.targetBranch
+			)
 				mergeRequest = undefined;
 			nextRepositories.push({
 				...(metadata as unknown as IssueDeliveryRepositoryState),

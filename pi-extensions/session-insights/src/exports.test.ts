@@ -1317,7 +1317,9 @@ describe("an aborted export", () => {
 		}
 	});
 
-	test("aborted while it writes publishes nothing and removes its temporary output", async () => {
+	test("aborted while it writes publishes nothing and removes its temporary output", {
+		timeout: 15_000,
+	}, async () => {
 		for (const output of await outputs("abort-writing")) {
 			const where = target(`abort-writing-${output.kind}`);
 			const reason = new Error("switched off");

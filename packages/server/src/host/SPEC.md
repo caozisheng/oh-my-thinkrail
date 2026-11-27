@@ -45,6 +45,13 @@ inspection reports missing/prepared/uncertain/completed status. Deterministic pr
 intent reservation; after reservation, uncertain mutation stays fenced unless readback proves and adopts
 its original successful result.
 
+Stage reports carry a host-constrained workflow target. Design reports target `workflow::in-progress`,
+implementation reports target `workflow::in-review`, and a later implementation report may target
+`workflow::done` only when the same Issue has a completed host-observed merge receipt. The explicit
+`normalizeWorkflowLabel` flag replaces missing, stale or duplicate `workflow::` labels while preserving
+all unrelated labels; it suppresses only source-label warnings, not closed-Issue, missing-design or
+dirty-checkout checks. The frozen report and target are revalidated together before note and label writes.
+
 Host composition rechecks project trust, workspace ownership, committed checkout SHA/branch and live
 provider identity. Auxiliary-repository delivery ports remain scoped to the bound Issue IID rather than a
 placeholder IID. Delivery requires a canonical origin push URL equal to the authenticated project's HTTP
@@ -485,7 +492,10 @@ nudges `fsChanged`. Nothing cleans the folder: sent messages keep naming its fil
   the **Skills-manager set**: `skill.list` / `skills.state` / `project.skills` build
   the admission context from `projects` (+ the
   workspace's `skillOverrides` when workspace-scoped) and pass it into agent's `listSkillCommands`/
-  `listSkillCatalog`; the **MCP set** (`mcp.*`, `host/mcp.ts`) composes `agent`'s MCP
+  `listSkillCatalog`; `skill.list` and the project-located `template.list`/`template.get` with a `baseRef`
+  read from `workspaces`' `previewRefPaths(project, baseRef, [...PROJECT_SKILL_ROOTS, PROJECT_TEMPLATE_ROOT])`
+  folder instead of the project checkout (same admission, so trust gates are unchanged), falling back to the
+  checkout when the preview is `null`; the **MCP set** (`mcp.*`, `host/mcp.ts`) composes `agent`'s MCP
   service with `projects` (approvals, overrides, pi-level trust) and publishes `mcp.status` snapshots (topic
   subscribed only by clients at `MCP_PROTOCOL_VERSION` or later) plus `session.resourcesChanged`
   invalidations. Every request that names a workspace resolves it and its project; one without (user scope
@@ -1042,7 +1052,7 @@ nudges `fsChanged`. Nothing cleans the folder: sent messages keep naming its fil
   the handler (`REPOSITORY_ONLY_METHODS` — git, changes, reviews, pull requests, turns, diff stats and
   base, and the plan's review doors `todo.review` / `startReview` / `reviewAll` / `requestFix`, which
   would reach a git-backed review snapshot — plus project close/rename/trust/skills,
-  `workspace.create`/`listExisting`, `git.listBranches`/`prefetch`); **the capability matrix of a chat
+  `workspace.create`/`listExisting`, `git.listBranches`/`prefetch`, `pr.list`/`pr.get`/`pr.sizes`/`pr.authors`); **the capability matrix of a chat
   is files, terminal and Plan, never git, review or specs**: `fs.readDir` lists a chat's folder without
   the git-ignore decoration, the `/blob` route answers 404 for a chat before any git, the
   Agent-review resolver handed to `agent` answers `false` for a chat (so its sessions get neither
@@ -1150,7 +1160,8 @@ inotify watch per folder; background runs in big repositories would otherwise ex
 and settle do not depend on it. `setArtifactsPublisher` fans
 the index's change out as the pathless `workspace.artifactsChanged` nudge to v135+ sockets of that
 workspace. `fs.delete`, `fs.rename` and `fs.move` run their mutation inside `withUserRemoval` (a move locks
-both workspaces in id order), `fs.copy` and `fs.move` first call `prepareArtifactsDestination` for their
+both workspaces in id order); `fs.reveal` resolves its path through `fs`'s `resolveWorktreeEntry` (contained,
+never `.git`) before handing it to `editors.revealItemInFileManager`; `fs.copy` and `fs.move` first call `prepareArtifactsDestination` for their
 destination folder, and `workspace.remove` / `chat.delete` call `removeWorkspaceArtifacts` once the
 workspace or chat record is gone.
 
@@ -1853,6 +1864,12 @@ Delivery-state reads include current participating checkout snapshots; registrat
 verifies membership and snapshots, and permits append-only membership expansion without erasing history.
 An optional MR IID selector is fetched from the bound provider and checked against source/target/head;
 agent-provided MR facts are rejected. Refresh preserves matching observed identity and drops stale identity.
+For merged requests, the observed source head is historical and may differ from the current checkout;
+registration and refresh retain the identity while source/worktree/target still match. Open requests
+continue to require exact checkout/head equality. Dependency preflight pairs the proven merge result
+(merge commit, squash commit, or GitLab fast-forward head) with the live target, independently of
+the historical source head. Missing ancestry proof still blocks, and request mismatch refusals name
+the failed identity field.
 Incomplete registration is compared by repository identity, not count, and reports missing/extra local IDs
 before any merge or compatibility conclusion. These records remain metadata, never authorization.
 
