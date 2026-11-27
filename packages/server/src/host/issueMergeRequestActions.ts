@@ -108,6 +108,84 @@ export interface IssueMergeRequestActionOptions {
 	journal: IssueConfirmationStore;
 }
 export function createIssueMergeRequestActions(options: IssueMergeRequestActionOptions) {
+	async function inspect(
+		sessionId: string,
+		input: { projectId: string; iid: number; expectedSha?: string; targetBranch?: string },
+	) {
+		if (!input.projectId || !Number.isSafeInteger(input.iid) || input.iid <= 0)
+			blocked("input-invalid");
+		const binding = await options.binding(sessionId);
+		if (binding.stage !== "implementation") blocked("session-stage-invalid");
+		const repositories = await options.repositories(binding);
+		const matches = repositories.filter((repository) => repository.projectId === input.projectId);
+		if (matches.length !== 1) blocked("repository-not-participating");
+		const repository = matches[0];
+		if (!repository) blocked("repository-not-participating");
+		const { remote, guard } = await options.access(binding, repository.projectId);
+		const [project, request] = await Promise.all([
+			remote.project(),
+			remote.mergeRequest(input.iid),
+		]);
+		guard();
+		const [targetResult, readinessResult] = await Promise.allSettled([
+			remote.targetBranchSha(request.targetBranch),
+			remote.mergeReadiness && validSha(request.sha)
+				? remote.mergeReadiness(input.iid, request.sha)
+				: Promise.resolve(null),
+		]);
+		guard();
+		const targetSha = targetResult.status === "fulfilled" ? targetResult.value : null;
+		const readiness = readinessResult.status === "fulfilled" ? readinessResult.value : null;
+		const readinessMatches =
+			readiness?.iid === request.iid &&
+			readiness.expectedSha === request.sha &&
+			readiness.actualSha === request.sha &&
+			readiness.sourceBranch === request.sourceBranch &&
+			readiness.targetBranch === request.targetBranch;
+		const identityValid =
+			request.id > 0 &&
+			request.iid === input.iid &&
+			request.sourceProjectId === project.id &&
+			request.targetProjectId === project.id;
+		return {
+			status: identityValid ? "observed" : "identity-mismatch",
+			repository: { projectId: repository.projectId, remoteProjectId: String(project.id) },
+			request: {
+				id: request.id,
+				iid: request.iid,
+				webUrl: request.webUrl,
+				state: request.state,
+				draft: request.draft,
+				sourceBranch: request.sourceBranch,
+				targetBranch: request.targetBranch,
+				sourceProjectId: request.sourceProjectId,
+				targetProjectId: request.targetProjectId,
+				headSha: request.sha,
+				mergeStatus: request.mergeStatus,
+				detailedMergeStatus: request.detailedMergeStatus,
+				pipeline: request.headPipeline,
+			},
+			target: { branch: request.targetBranch, sha: validSha(targetSha) ? targetSha : null },
+			readiness:
+				readiness && readinessMatches && identityValid
+					? {
+							checks: readiness.checks,
+							approval: readiness.approval,
+							expectedSha: readiness.expectedSha,
+							actualSha: readiness.actualSha,
+						}
+					: null,
+			readFailures: {
+				target: targetResult.status === "rejected",
+				readiness: readinessResult.status === "rejected",
+			},
+			matchesExpected: {
+				headSha: input.expectedSha === undefined || request.sha === input.expectedSha,
+				targetBranch:
+					input.targetBranch === undefined || request.targetBranch === input.targetBranch,
+			},
+		};
+	}
 	async function prepare(
 		sessionId: string,
 		action: "ready-mr" | "merge-mr",
@@ -376,5 +454,5 @@ export function createIssueMergeRequestActions(options: IssueMergeRequestActionO
 			},
 		};
 	}
-	return { prepare, execute, observe };
+	return { inspect, prepare, execute, observe };
 }

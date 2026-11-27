@@ -255,6 +255,8 @@ describe("pi-thinkrail-workflow extension", () => {
 			"utf8",
 		);
 		expect(implementation).toContain("issue_prepare_confirmation({operationId, inspect:true})");
+		expect(implementation).toContain('action:"ready-mr" | "merge-mr", inspect:true');
+		expect(implementation).toContain("does not prepare a confirmation or mutate the MR");
 		expect(implementation).toContain(
 			'issue_prepare_confirmation({operationId, action:"read-delivery-state"})',
 		);

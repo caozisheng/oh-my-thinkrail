@@ -96,6 +96,7 @@ function fixture() {
 	});
 	return {
 		actions,
+		remote,
 		journal,
 		setDraft: (value: boolean) => {
 			mr.draft = value;
@@ -137,6 +138,80 @@ test("ready confirmation changes draft state only and returns without merging", 
 			headSha: "a".repeat(40),
 		});
 		expect(f.dispatched).toBe(1);
+	} finally {
+		f.dispose();
+	}
+});
+
+test("MR inspection returns provider state and readiness without preparing or dispatching a mutation", async () => {
+	const f = fixture();
+	try {
+		await expect(
+			f.actions.inspect("session", {
+				projectId: "local",
+				iid: 8,
+				expectedSha: "d".repeat(40),
+				targetBranch: "release",
+			}),
+		).resolves.toMatchObject({
+			status: "observed",
+			request: { iid: 8, draft: false, headSha: "a".repeat(40), targetBranch: "main" },
+			target: { branch: "main", sha: "b".repeat(40) },
+			readiness: { checks: "passed", approval: "satisfied" },
+			matchesExpected: { headSha: false, targetBranch: false },
+		});
+		expect(f.dispatched).toBe(0);
+		expect(await f.journal.inspect("session", "inspect-only")).toMatchObject({
+			status: "missing",
+		});
+	} finally {
+		f.dispose();
+	}
+});
+
+test.each(["pending", "failed", "unknown"] as const)(
+	"MR inspection reports %s checks without requiring merge readiness",
+	async (checks) => {
+		const f = fixture();
+		f.setDraft(true);
+		f.setReadiness({
+			iid: 8,
+			expectedSha: "a".repeat(40),
+			actualSha: "a".repeat(40),
+			sourceBranch: "feature",
+			targetBranch: "main",
+			checks,
+			approval: "required",
+			snapshot: "ci-state",
+		});
+		try {
+			expect(await f.actions.inspect("session", { projectId: "local", iid: 8 })).toMatchObject({
+				status: "observed",
+				request: { draft: true },
+				readiness: { checks, approval: "required" },
+			});
+			expect(f.dispatched).toBe(0);
+		} finally {
+			f.dispose();
+		}
+	},
+);
+
+test("MR inspection preserves observed request state when readiness reads fail", async () => {
+	const f = fixture();
+	f.remote.mergeReadiness = async () => {
+		throw new Error("private provider response");
+	};
+	try {
+		const result = await f.actions.inspect("session", { projectId: "local", iid: 8 });
+		expect(result).toMatchObject({
+			status: "observed",
+			request: { iid: 8, headSha: "a".repeat(40) },
+			readiness: null,
+			readFailures: { target: false, readiness: true },
+		});
+		expect(JSON.stringify(result)).not.toContain("private provider response");
+		expect(f.dispatched).toBe(0);
 	} finally {
 		f.dispose();
 	}

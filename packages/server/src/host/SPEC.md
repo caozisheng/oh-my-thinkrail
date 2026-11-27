@@ -1843,8 +1843,10 @@ automation policy helper therefore refuses auto-advance until such evidence exis
 cross-repository helpers are exposed through operation-specific Issue actions. `draft`, `auto-merge` and `manual`
 records do not grant push, ready, merge or close on their own.
 
-The Issue confirmation dispatcher exposes local delivery-state read/record and separately confirmed MR
-ready/merge actions. Ready and merge remain separate operations; merge requires provider-observed head-
+The Issue confirmation dispatcher exposes local delivery-state read/record, read-only provider MR
+inspection (`action:"ready-mr"` or `"merge-mr"` with `inspect:true`), and separately confirmed MR
+ready/merge actions. Inspection returns bound request identity, head and target SHAs, pipeline and
+provider readiness without journaling or mutation. Ready and merge remain separate operations; merge requires provider-observed head-
 bound checks/approval and target ancestry. Cross-repository dependency ordering, actual merge-SHA
 pairing and compatibility evidence gate explicit dependency preflight and automatic advancement.
 Delivery-state reads include current participating checkout snapshots; registration uses revision CAS,
@@ -1874,8 +1876,11 @@ branch SHA. Uncertain writes are observed/reconciled under the original operatio
 IssuesService, trusted project and managed workspace lookup. The private `<dataDir>/issue-sessions`
 root is provisioned lazily before session creation. Server composition installs context/summary
 callbacks with `setIssueToolHost` and the async association probe for missing tool recovery after
-session services are available, and clears both on shutdown. A bound Issue session with missing core
-registry definitions receives one gated resource reload; absent bindings and intentional extension disablement do not trigger it.
+session services are available, and clears both on shutdown. A bound Issue session rechecks its tools
+at attachment, before a new prompt and after each settlement. Missing core definitions request a gated
+resource reload; loaded but inactive Issue tools are restored to the active set. Failed or deferred
+probes remain eligible for a later attempt. Issue tools are always-on host tools, so stale extension
+switches do not suppress repair.
 No credential crosses this seam. The new v109 `issues.beginDesign` and
 `issues.beginImplementation` actions require the exact `IssueSessionStartupTarget` (including its
 effective locale) and are gated independently at `ISSUES_SESSION_STARTUP_PROTOCOL_VERSION`.

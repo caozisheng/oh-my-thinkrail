@@ -17,7 +17,7 @@ Use only when dispatch or remote outcome is uncertain and recovery is needed for
 
 ## Host capabilities
 
-Preparation rejection before intent reservation is distinct from uncertain execution. `inspect:true` is available only for operations and input shapes accepted by its contract; it is not a general diagnostic endpoint, and action-specific reads are not substitutes for inspecting a rejected stage request. The host's inspect/reconcile support is authoritative; no shell, direct API, replacement ID or hand-edited journal recovery is allowed.
+Preparation rejection before intent reservation is distinct from uncertain execution. `inspect:true` without an action inspects the local journal; for current provider MR/CI facts, use `action:"ready-mr"` or `action:"merge-mr"` with `inspect:true` and the local `projectId` plus `mergeRequestId`. That route is read-only and does not create an operation. Neither route is a general diagnostic endpoint. The host's inspect/reconcile support is authoritative; no shell, direct API, replacement ID or hand-edited journal recovery is allowed.
 
 ## Completion, questions and recovery
 

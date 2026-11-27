@@ -135,6 +135,8 @@ beforeEach(async () => {
 					}),
 				);
 			if (address.includes("/issues?")) return new Response("[]");
+			if (address.endsWith("/merge_requests/7/approvals"))
+				return new Response(JSON.stringify({ id: 7, iid: 7, approvals_left: 0 }));
 			if (address.includes("/api/v4/projects/42/merge_requests/7"))
 				return new Response(
 					JSON.stringify({
@@ -149,6 +151,7 @@ beforeEach(async () => {
 						merge_status: "cannot_be_merged",
 						detailed_merge_status: "not_approved",
 						draft: true,
+						head_pipeline: { id: 17, sha: snapshot.sha, status: "success" },
 						title: "Draft: Fixture",
 						commit: { id: snapshot.sha },
 						source_project_id: 42,
@@ -268,6 +271,34 @@ test("direct Issue close reports actionable missing close fields without writing
 test("MR ready and merge are reached through the composed host routes", async () => {
 	const prepare = host.agentSessions.prepareConfirmation;
 	if (!prepare) throw new Error("Issue confirmation tool is unavailable");
+	const inspected = await prepare("session", {
+		operationId: "inspect-mr",
+		action: "ready-mr",
+		inspect: true,
+		reason: "Monitor the requested MR while its CI is pending",
+		projectId: "repo",
+		mergeRequestId: 7,
+		expectedSha: snapshot.sha,
+	});
+	expect(inspected).toMatchObject({
+		status: "observed",
+		request: {
+			iid: 7,
+			draft: true,
+			headSha: snapshot.sha,
+			targetBranch: "main",
+			pipeline: { sha: snapshot.sha, status: "success" },
+		},
+		target: { branch: "main", sha: snapshot.sha },
+		readiness: { checks: "passed", approval: "satisfied" },
+		matchesExpected: { headSha: true, targetBranch: true },
+	});
+	expect(
+		await host.agentSessions.prepareConfirmation?.("session", {
+			operationId: "inspect-mr",
+			inspect: true,
+		}),
+	).toEqual({ status: "missing" });
 	const ready = await prepare("session", {
 		operationId: "ready-mr",
 		action: "ready-mr",
@@ -277,6 +308,10 @@ test("MR ready and merge are reached through the composed host routes", async ()
 		expectedSha: snapshot.sha,
 	});
 	expect(ready).toMatchObject({ digest: expect.any(String) });
+	expect(await prepare("session", { operationId: "ready-mr", inspect: true })).toMatchObject({
+		status: "prepared",
+		questions: { questions: [{ header: "Ready for review" }] },
+	});
 	await expect(
 		prepare("session", {
 			operationId: "merge-mr",

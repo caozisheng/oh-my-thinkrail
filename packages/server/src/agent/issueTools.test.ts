@@ -15,6 +15,7 @@ import {
 	createIssuePrepareConfirmationTool,
 	createIssueRecordSummaryTool,
 	createIssueRunOperationTool,
+	ISSUE_TOOL_NAMES,
 	type IssueToolHost,
 	issueToolsExtension,
 	setIssueToolHost,
@@ -340,6 +341,7 @@ test("extension registers the issue tools without injecting global issue instruc
 		"issue_execute_confirmation",
 		"issue_run_operation",
 	]);
+	expect(tools.map((tool) => tool.name)).toEqual([...ISSUE_TOOL_NAMES]);
 	expect(tools.every((tool) => !tool.promptGuidelines?.length)).toBe(true);
 	expect(hooks).toEqual([]);
 	expect(childExtensionFactories("workspace")).not.toContain(issueToolsExtension);

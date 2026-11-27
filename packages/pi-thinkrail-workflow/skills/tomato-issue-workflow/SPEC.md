@@ -71,9 +71,11 @@ A possibly dispatched write is never resent. Use `recovery:"reconcile"` with the
 the host adopts only an exact successful result it freshly observes twice, otherwise it keeps the write
 fenced. `design-and-implementation.md` owns payload shapes and local-versus-provider project IDs. Do not
 assume the installed host/session advertises the direct tool. Only when unavailable, use advertised legacy
-prepare/execute with the unchanged card and actual submitted receipt. Reads, delivery-state registration,
-compatibility preflight and automation use their action-specific host routes, not the mutation tool. No
-host-path bypass. Real provider-session behavior remains unverified by use.
+prepare/execute with the unchanged card and actual submitted receipt. Read-only MR inspection uses
+`issue_prepare_confirmation` with `action:"ready-mr"` or `"merge-mr"` and `inspect:true`; it reports
+bound-provider state and readiness without journaling or mutation. Journal inspection omits `action`.
+Delivery-state registration, compatibility preflight and automation use their action-specific host
+routes, not the mutation tool. No host-path bypass. Real provider-session behavior remains unverified by use.
 
 Design and implementation may alternate; acceptance and closure remain distinct tracker actions.
 Stage records are not delivery gates. Assess actual advertised provider/host support for each operation

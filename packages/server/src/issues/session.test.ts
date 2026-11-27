@@ -228,6 +228,15 @@ test("summary publication does not gate either startup mode or force recovery", 
 	}
 });
 
+test("unavailable Issue tools isolate the failed action instead of freezing repository work", () => {
+	const prompt = createIssueStartupPrompt({ ...context(), stage: "implementation" });
+	expect(prompt).toContain("continue independently authorized repository work");
+	expect(prompt).not.toContain("stop work and report the blocker");
+	expect(prompt).not.toContain(
+		"Failed context reads or mismatched Issue identity still block work",
+	);
+});
+
 test("startup prefers direct explicit operations while retaining host boundaries and legacy-only fallback", () => {
 	const prompt = createIssueStartupPrompt({ ...context(), stage: "implementation", locale: "en" });
 	for (const contract of [

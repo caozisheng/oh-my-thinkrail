@@ -757,7 +757,9 @@ recovery; they are not the default execution path when the direct capability is 
       Pending acknowledgements are not receipts, but may precede a valid restart custom response.
       Restart response content includes the host-correlated opaque toolCallId for model callers of
       Issue execution; this informational text never replaces structured receipt validation. The prepare
-      tool's `inspect:true` mode returns frozen card/status without mutation. `continueDespiteChecks:true`
+      tool's `inspect:true` mode without an action returns a frozen journal card/status without mutation;
+      with `action:"ready-mr"` or `action:"merge-mr"` it reads the bound provider's current request,
+      target SHA, pipeline and readiness facts without journaling or mutation. `continueDespiteChecks:true`
       requests a warned one-shot policy card; it grants no authority until this same trusted receipt
       rule accepts the exact warning preview. Changed facts require renewed review. Refusal continuation
       cards carry a host-local continuationId passed to execute with the real questionnaire receipt;
@@ -1171,8 +1173,10 @@ recovery; they are not the default execution path when the direct capability is 
     The bound Issue tools (`issueTools.ts`) are registered for top-level sessions by the named
     `issue-tools` inline extension in `sharedFactories`, shared by source/dev and bundled CLI/desktop
     loaders, never by the curated child extension set. It is always-on, not a `builtin:` slot: pi package switches must not disable it. Its name is reserved in `HOST_EXTENSION_NAMES`, separately from the optional `HOST_BUILTIN_EXTENSION_NAMES` slots. Host descriptor registration claims include it so installed extensions cannot take its tools. `IssueSessionStore` association probing runs at
-    registration reconciliation points; if a bound session is missing its core tool definitions and the
-    extension is not intentionally disabled, one gated resource reload is requested per attachment. The
+    registration, before idle prompt admission and after settlement. All seven Issue tools are checked:
+    missing definitions request one gated reload per probe; loaded inactive host tools are reactivated
+    without reloading. Concurrent probes share a promise, and failed probes can try at the next boundary.
+    This always-on host extension is independent of extension switches. The
     probe fails closed and never reconstructs tools or binding from transcript content. `issue_join_repository` accepts exactly
     `{ projectId }` (a local project id): it asks the host's optional `joinCandidate`, then the user through
     `ctx.ui.confirm` (refusing without a UI), and only on confirmation calls `joinRepository`; a decline

@@ -114,6 +114,7 @@ import {
 	toSkillCommands,
 	withoutSpecRule,
 } from "./extensions";
+import { ISSUE_TOOL_NAMES } from "./issueTools";
 import {
 	createMcpSessionHost,
 	type McpProjectPolicy,
@@ -213,7 +214,7 @@ interface Entry {
 	subagentToolsRefreshPending: boolean;
 	reviewToolRefreshPending: boolean;
 	extensionToolsRefreshPending: boolean;
-	issueToolsRecoveryAttempted: boolean;
+	issueToolsRecovery: Promise<void> | null;
 	withheldExtensionTools: Set<string>;
 	nudgePromptPending: boolean;
 	lastPublishedState: string | null;
@@ -838,24 +839,41 @@ function applySpecTools(entry: Entry): void {
 	if (kept.length !== active.length) entry.session.setActiveToolsByName(kept);
 }
 
-async function recoverMissingIssueTools(entry: Entry): Promise<void> {
-	const { session } = entry;
-	try {
-		if (
-			!(await issueToolsRequiredResolver(session.sessionId)) ||
-			entry.disposed ||
-			entry.resourcesClosing ||
-			!["issue_context", "issue_record_summary", "issue_delete_note"].some(
-				(tool) => !session.getToolDefinition(tool),
-			)
-		)
-			return;
-		const disposition = await requestSessionReload(session.sessionId);
-		if (disposition === "deferred") entry.issueToolsRecoveryAttempted = false;
-	} catch {
-		if (!entry.disposed && !entry.resourcesClosing)
-			log.warn(`Issue tool restoration failed for ${session.sessionId}`);
-	}
+function recoverMissingIssueTools(entry: Entry): Promise<void> {
+	if (entry.issueToolsRecovery) return entry.issueToolsRecovery;
+	const recovery = (async () => {
+		if (entry.disposed || entry.resourcesClosing) return;
+		const { session } = entry;
+		try {
+			if (!(await issueToolsRequiredResolver(session.sessionId))) return;
+			if (entry.disposed || entry.resourcesClosing) return;
+			if (ISSUE_TOOL_NAMES.some((tool) => !session.getToolDefinition(tool))) {
+				if ((await requestSessionReload(session.sessionId)) === "deferred") return;
+				if (entry.disposed || entry.resourcesClosing) return;
+			}
+			const issueTools = session
+				.getAllTools()
+				.filter((tool) => tool.sourceInfo.path === "<inline:issue-tools>")
+				.map((tool) => tool.name)
+				.filter((name) => session.getToolDefinition(name));
+			const active = new Set(session.getActiveToolNames());
+			const missingActive = issueTools.filter((name) => !active.has(name));
+			if (missingActive.length > 0) session.setActiveToolsByName([...active, ...missingActive]);
+		} catch {
+			if (!entry.disposed && !entry.resourcesClosing)
+				log.warn(`Issue tool restoration failed for ${session.sessionId}`);
+		}
+	})();
+	entry.issueToolsRecovery = recovery;
+	void recovery.then(
+		() => {
+			if (entry.issueToolsRecovery === recovery) entry.issueToolsRecovery = null;
+		},
+		() => {
+			if (entry.issueToolsRecovery === recovery) entry.issueToolsRecovery = null;
+		},
+	);
+	return recovery;
 }
 
 function applyExtensionTools(entry: Entry, { allowReload = true } = {}): void {
@@ -881,10 +899,7 @@ function applyExtensionTools(entry: Entry, { allowReload = true } = {}): void {
 		session.setActiveToolsByName([...kept, ...restored]);
 	}
 	if (!allowReload || entry.reloadRunning) return;
-	if (!disabled.has("issue-tools") && !entry.issueToolsRecoveryAttempted) {
-		entry.issueToolsRecoveryAttempted = true;
-		void recoverMissingIssueTools(entry);
-	}
+	void recoverMissingIssueTools(entry);
 	if (
 		enabledExtensionMissing(session, disabled) ||
 		loadsDisabledExtensionSkills(session.resourceLoader.getSkills().skills) ||
@@ -1142,6 +1157,9 @@ function runGatedReload(entry: Entry): Promise<void> {
 }
 
 function admitRun(entry: Entry): void {
+	if (entry.disposed || entry.resourcesClosing || sessions.get(entry.session.sessionId) !== entry) {
+		throw new Error(`Unknown session: ${entry.session.sessionId}`);
+	}
 	if (entry.reloadRunning) {
 		throw new Error("The chat is reloading its resources — try again in a moment.");
 	}
@@ -1313,7 +1331,7 @@ async function prepareSessionEntry(
 		subagentToolsRefreshPending: false,
 		reviewToolRefreshPending: false,
 		extensionToolsRefreshPending: false,
-		issueToolsRecoveryAttempted: false,
+		issueToolsRecovery: null,
 		withheldExtensionTools: new Set(),
 		nudgePromptPending: false,
 		lastPublishedState: null,
@@ -1389,6 +1407,7 @@ async function prepareSessionEntry(
 			if (entry.subagentToolsRefreshPending) applySubagentTools(entry);
 			if (entry.reviewToolRefreshPending) applyReviewTool(entry);
 			if (entry.extensionToolsRefreshPending) applyExtensionTools(entry);
+			void recoverMissingIssueTools(entry);
 			reconsiderPendingReload(entry);
 			scheduleMcpStatusRefresh(sessionId);
 			void reconcileMcpSessions([sessionId]);
@@ -2532,6 +2551,7 @@ async function steerEntry(
 /** Start an idle chat's initial prompt; acknowledge Pi admission, not model-turn completion. */
 export async function startInitialSessionPrompt(sessionId: string, text: string): Promise<void> {
 	const entry = mustGetEntry(sessionId);
+	if (!entry.session.isStreaming) await recoverMissingIssueTools(entry);
 	admitRun(entry);
 	const blocked = reloadBlockedReason(entry);
 	if (blocked) throw new Error(`Can't start an initial prompt while ${blocked}.`);
@@ -2574,6 +2594,7 @@ export async function promptSession(
 	opts: { onPreflight?: () => void } = {},
 ): Promise<void> {
 	const entry = mustGetEntry(sessionId);
+	if (!entry.session.isStreaming) await recoverMissingIssueTools(entry);
 	admitRun(entry);
 	if (entry.session.isStreaming) {
 		await steerEntry(entry, text, images);
@@ -2625,6 +2646,7 @@ async function followUpEntry(
 	images: ImageContent[] | undefined,
 	answersDialogs: boolean,
 ): Promise<void> {
+	if (!entry.session.isStreaming) await recoverMissingIssueTools(entry);
 	admitRun(entry);
 	if (entry.session.isStreaming) {
 		const disposition = await queueSessionMessage(entry, "followUp", text, images, () =>
