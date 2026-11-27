@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { IssueMergeRequest } from "../issues";
 import type {
 	IssueCompatibilityEvidence,
 	IssueDependencyMerge,
@@ -33,6 +34,7 @@ function harness(
 		relationship?: "ancestor" | "not-ancestor" | "unknown";
 		target?: () => string;
 		actualRequestTarget?: string;
+		request?: Partial<IssueMergeRequest>;
 		compatibility?: (
 			merge: IssueDependencyMerge,
 			sha: string,
@@ -78,6 +80,7 @@ function harness(
 						mergeCommitSha: mergeSha,
 						squashCommitSha: null,
 						headPipeline: null,
+						...opts.request,
 					};
 				},
 				mergeEvidence: async (iid: number) => {
@@ -142,6 +145,29 @@ describe("Issue repository dependency preflight", () => {
 		const sourceOnly = harness([repo("a"), repo("b", ["a"])]);
 		// The MR's source SHA is e...; the receipt must retain merge evidence a..., not source SHA.
 		expect((await sourceOnly.gate.preflight("b")).upstreams[0]?.mergeCommitSha).toBe(a);
+	});
+	for (const [field, value] of [
+		["iid", 999],
+		["state", "opened"],
+		["targetBranch", "release"],
+		["targetProjectId", 999],
+	] as const) {
+		test(`identifies the upstream request ${field} mismatch`, async () => {
+			const { gate } = harness([repo("a"), repo("b", ["a"])], {
+				request: { [field]: value },
+			});
+			await expect(gate.preflight("b")).rejects.toThrow(`upstream-request-mismatch: ${field}`);
+		});
+	}
+	test("squash dependencies use the resulting commit and still require target ancestry", async () => {
+		const options = { request: { mergeCommitSha: null, squashCommitSha: a } };
+		const { gate } = harness([repo("a"), repo("b", ["a"])], options);
+		expect((await gate.preflight("b")).upstreams[0]?.mergeCommitSha).toBe(a);
+		const unrelated = harness([repo("a"), repo("b", ["a"])], {
+			...options,
+			relationship: "not-ancestor",
+		});
+		await expect(unrelated.gate.preflight("b")).rejects.toThrow("upstream-merge-unproven");
 	});
 	test("rejects stale tree, unknown compatibility, and independent CI as proof", async () => {
 		const stale = harness([repo("a"), repo("b", ["a"])], {

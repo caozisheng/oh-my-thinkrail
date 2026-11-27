@@ -1855,6 +1855,12 @@ Delivery-state reads include current participating checkout snapshots; registrat
 verifies membership and snapshots, and permits append-only membership expansion without erasing history.
 An optional MR IID selector is fetched from the bound provider and checked against source/target/head;
 agent-provided MR facts are rejected. Refresh preserves matching observed identity and drops stale identity.
+For merged requests, the observed source head is historical and may differ from the current checkout;
+registration and refresh retain the identity while source/worktree/target still match. Open requests
+continue to require exact checkout/head equality. Dependency preflight pairs the proven merge result
+(merge commit, squash commit, or GitLab fast-forward head) with the live target, independently of
+the historical source head. Missing ancestry proof still blocks, and request mismatch refusals name
+the failed identity field.
 Incomplete registration is compared by repository identity, not count, and reports missing/extra local IDs
 before any merge or compatibility conclusion. These records remain metadata, never authorization.
 

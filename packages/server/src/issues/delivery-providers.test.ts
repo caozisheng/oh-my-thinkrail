@@ -285,6 +285,62 @@ describe("provider delivery primitives", () => {
 		});
 	});
 
+	for (const method of ["squash", "fast-forward"] as const) {
+		test(`GitLab ${method} evidence verifies the resulting commit, never just merged state`, async () => {
+			const sourceSha = "a".repeat(40);
+			const resultSha = method === "squash" ? "c".repeat(40) : sourceSha;
+			let state = "merged";
+			let common = resultSha;
+			const comparisons: string[] = [];
+			const remote = createGitLabClient({
+				instanceUrl: "https://gitlab.test",
+				project: 42,
+				token,
+				fetch: async (url, init) => {
+					expect(init.method ?? "GET").toBe("GET");
+					const parsed = new URL(url);
+					if (parsed.pathname.endsWith("/merge_requests/9"))
+						return Response.json({
+							id: 100,
+							iid: 9,
+							web_url: "https://gitlab.test/octo/app/-/merge_requests/9",
+							state,
+							source_branch: "issue/7",
+							target_branch: "main",
+							sha: sourceSha,
+							merge_commit_sha: null,
+							squash_commit_sha: method === "squash" ? resultSha : null,
+							merge_status: "can_be_merged",
+						});
+					if (parsed.pathname.endsWith("/repository/branches/main"))
+						return Response.json({ name: "main", commit: { id: "d".repeat(40) } });
+					if (parsed.pathname.endsWith("/repository/merge_base")) {
+						comparisons.push(parsed.searchParams.getAll("refs[]")[0] ?? "");
+						return Response.json({ id: common });
+					}
+					throw new Error(`Unexpected ${url}`);
+				},
+			});
+			if (!remote.mergeEvidence) throw new Error("Missing merge evidence capability");
+			await expect(remote.mergeEvidence(9)).resolves.toMatchObject({
+				mergeCommitSha: resultSha,
+				targetSha: "d".repeat(40),
+				relationship: "ancestor",
+			});
+			expect(comparisons).toEqual([resultSha]);
+			common = "e".repeat(40);
+			await expect(remote.mergeEvidence(9)).resolves.toMatchObject({
+				relationship: "not-ancestor",
+			});
+			state = "opened";
+			await expect(remote.mergeEvidence(9)).resolves.toMatchObject({
+				mergeCommitSha: null,
+				relationship: "unknown",
+			});
+			expect(comparisons).toEqual([resultSha, resultSha]);
+		});
+	}
+
 	test("GitLab draft creation uses the portable Draft title prefix", async () => {
 		let written: Record<string, unknown> | undefined;
 		const remote = createGitLabClient({

@@ -247,7 +247,7 @@ function record(value: unknown): IssueDeliveryStateRecord {
 		repositories.some(
 			(repo) =>
 				repo.mergeRequest &&
-				(repo.mergeRequest.headSha !== repo.checkoutSha ||
+				((repo.mergeRequest.state !== "merged" && repo.mergeRequest.headSha !== repo.checkoutSha) ||
 					repo.mergeRequest.targetBranch !== repo.targetBranch),
 		)
 	)
