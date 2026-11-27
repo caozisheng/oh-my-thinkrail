@@ -136,6 +136,17 @@ function fixture() {
 				targetSha: "d".repeat(40),
 			});
 		},
+		recordDesignReceipt: () => {
+			prepared.set("design", {
+				digest: "design-digest",
+				payload: {
+					stage: "design",
+					reference: binding.reference,
+					report: "Design handoff",
+				},
+			});
+			completed.set("design", { stage: "design", noteId: 1, digest: "design-digest" });
+		},
 	};
 }
 
@@ -250,17 +261,21 @@ test("label normalization ignores only an incorrect or missing source workflow l
 
 test("label normalization does not bypass unrelated stage checks", async () => {
 	const f = fixture();
+	f.binding.stage = "implementation";
+	f.recordDesignReceipt();
+	f.setLabels(["team", "workflow::in-progress"]);
 	f.setDirty(true);
 	await expect(
 		f.actions.prepare("session", {
 			operationId: "dirty-normalize",
-			report: "Design",
+			report: "Implementation",
 			normalizeWorkflowLabel: true,
 		}),
 	).rejects.toThrow("Checkout is dirty");
-	f.binding.stage = "implementation";
+	const g = fixture();
+	g.binding.stage = "implementation";
 	await expect(
-		f.actions.prepare("session", {
+		g.actions.prepare("session", {
 			operationId: "missing-design",
 			report: "Implementation",
 			normalizeWorkflowLabel: true,
