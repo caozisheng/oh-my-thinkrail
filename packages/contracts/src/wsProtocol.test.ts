@@ -641,10 +641,13 @@ test("revealing a worktree entry in the OS file manager is pinned to v152", () =
 test("base-branch skill and template previews are pinned to v152", () => {
 	expect(PROTOCOL_VERSION).toBe(152);
 	expect(REF_RESOURCE_PREVIEW_PROTOCOL_VERSION).toBe(152);
-	expect(REF_RESOURCE_PREVIEW_PROTOCOL_VERSION).toBeGreaterThan(PULL_REQUEST_REVIEW_PROTOCOL_VERSION);
+	expect(REF_RESOURCE_PREVIEW_PROTOCOL_VERSION).toBeGreaterThan(
+		PULL_REQUEST_REVIEW_PROTOCOL_VERSION,
+	);
 	expect(WS_METHODS.templateList).toBe("template.list");
 	expect(WS_METHODS.skillList).toBe("skill.list");
 });
+
 test("installed extensions are pinned to v146", () => {
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(INSTALLED_EXTENSIONS_PROTOCOL_VERSION);
 	expect(INSTALLED_EXTENSIONS_PROTOCOL_VERSION).toBe(146);

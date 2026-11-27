@@ -77,7 +77,6 @@ user-attached worktrees as external; this recovery seam is not a general adoptio
   callers fall back to the current checkout. Callers provide skill and template roots; this module has
   no knowledge of those concepts.
 - **Owns:** `listExistingWorktrees(projectId)` (**async** — parses `git worktree list --porcelain -z` read
-
   through `gitAsync`, the same request-path-read rule `git/SPEC.md` states for `gitStatus`/`listCommits`:
   this is the Existing-Worktree dialog's populate call, so a slow/large registry must not freeze the host's
   event loop; each listed path is resolved, since git prints `C:/…` on Windows and the row's path becomes the

@@ -20,7 +20,7 @@ import type {
 	Project,
 	ProjectGroupRemove,
 	ProjectGroupStatus,
-	type SlashCommandInfo,
+	SlashCommandInfo,
 	SubagentCatalogEntry,
 	Template,
 	TemplateInfo,
