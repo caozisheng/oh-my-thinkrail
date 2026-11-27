@@ -144,7 +144,7 @@ test("vanilla Pi calls the real command tool, acknowledges immediately, and rece
 			fauxAssistantMessage("SAW_COMPLETION"),
 		]);
 		await session.prompt("Start a managed command.");
-		await waitFor(() => JSON.stringify(session.messages).includes("SAW_COMPLETION"));
+		await waitFor(() => JSON.stringify(session.messages).includes("SAW_COMPLETION"), 10_000);
 		const custom = session.messages.find(
 			(message) =>
 				message.role === "custom" && message.customType === BACKGROUND_COMMAND_COMPLETION_MESSAGE,

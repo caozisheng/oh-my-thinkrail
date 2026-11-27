@@ -1001,7 +1001,7 @@ test.each([promptSession, startInitialSessionPrompt, followUpSession])(
 			await started;
 			await removeSession(session.sessionId);
 			release();
-			await expect(sending).rejects.toThrow("Unknown session");
+			await expect(sending).rejects.toThrow(/closing|Unknown session/);
 			expect(calls).toBe(0);
 		} finally {
 			release();

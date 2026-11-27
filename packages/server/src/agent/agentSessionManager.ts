@@ -1156,10 +1156,14 @@ function runGatedReload(entry: Entry): Promise<void> {
 	return entry.reloadRunning;
 }
 
-function admitRun(entry: Entry): void {
-	if (entry.disposed || entry.resourcesClosing || sessions.get(entry.session.sessionId) !== entry) {
+function assertSessionEntryLive(entry: Entry): void {
+	if (entry.resourcesClosing) throw new Error("The chat is closing.");
+	if (entry.disposed || sessions.get(entry.session.sessionId) !== entry) {
 		throw new Error(`Unknown session: ${entry.session.sessionId}`);
 	}
+}
+
+function admitRun(entry: Entry): void {
 	if (entry.reloadRunning) {
 		throw new Error("The chat is reloading its resources — try again in a moment.");
 	}
@@ -2563,7 +2567,10 @@ async function steerEntry(
 /** Start an idle chat's initial prompt; acknowledge Pi admission, not model-turn completion. */
 export async function startInitialSessionPrompt(sessionId: string, text: string): Promise<void> {
 	const entry = mustGetEntry(sessionId);
-	if (!entry.session.isStreaming) await recoverMissingIssueTools(entry);
+	if (!entry.session.isStreaming) {
+		await recoverMissingIssueTools(entry);
+		assertSessionEntryLive(entry);
+	}
 	admitRun(entry);
 	const blocked = reloadBlockedReason(entry);
 	if (blocked) throw new Error(`Can't start an initial prompt while ${blocked}.`);
@@ -2606,7 +2613,10 @@ export async function promptSession(
 	opts: { onPreflight?: () => void } = {},
 ): Promise<void> {
 	const entry = mustGetEntry(sessionId);
-	if (!entry.session.isStreaming) await recoverMissingIssueTools(entry);
+	if (!entry.session.isStreaming) {
+		await recoverMissingIssueTools(entry);
+		assertSessionEntryLive(entry);
+	}
 	admitRun(entry);
 	if (entry.session.isStreaming) {
 		await steerEntry(entry, text, images);
@@ -2658,7 +2668,10 @@ async function followUpEntry(
 	images: ImageContent[] | undefined,
 	answersDialogs: boolean,
 ): Promise<void> {
-	if (!entry.session.isStreaming) await recoverMissingIssueTools(entry);
+	if (!entry.session.isStreaming) {
+		await recoverMissingIssueTools(entry);
+		assertSessionEntryLive(entry);
+	}
 	admitRun(entry);
 	if (entry.session.isStreaming) {
 		const disposition = await queueSessionMessage(entry, "followUp", text, images, () =>
