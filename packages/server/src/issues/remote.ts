@@ -60,6 +60,17 @@ export interface IssueMergeRequest {
 	squashCommitSha: string | null;
 	headPipeline: { id: number | null; sha: string | null; status: string } | null;
 }
+export function issueMergedResultSha(
+	request: IssueMergeRequest,
+	provider: IssueProvider,
+): string | null {
+	if (request.state !== "merged") return null;
+	return (
+		request.mergeCommitSha ??
+		request.squashCommitSha ??
+		(provider === "gitlab" ? request.sha : null)
+	);
+}
 export interface IssueMergeEvidence {
 	iid: number;
 	targetBranch: string;

@@ -32,6 +32,7 @@ export type {
 	IssueMergeRequest,
 	IssueRecord,
 } from "./remote";
+export { issueMergedResultSha } from "./remote";
 export type {
 	IssueBinding,
 	IssueBindingPersistence,

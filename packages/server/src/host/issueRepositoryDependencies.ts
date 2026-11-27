@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { IssueProvider } from "@thinkrail/contracts";
 import { CodedError } from "@thinkrail/shared/codedError";
 import { isSafeRef } from "../git";
-import type { IssueDeliveryRemote } from "../issues";
+import { type IssueDeliveryRemote, issueMergedResultSha } from "../issues";
 
 export interface IssueDependencyRepository {
 	projectId: string;
@@ -133,14 +133,15 @@ export function createIssueRepositoryDependencies(options: IssueRepositoryDepend
 		if ((await remote.project()).id !== entry.remoteProjectId) refuse("upstream-binding-changed");
 		if (!remote.mergeEvidence) refuse("merge-evidence-unavailable");
 		const request = await remote.mergeRequest(iid);
-		if (
-			request.iid !== iid ||
-			request.state !== "merged" ||
-			!request.mergeCommitSha ||
-			request.targetBranch !== entry.targetBranch ||
-			request.targetProjectId !== entry.remoteProjectId
-		)
-			refuse("upstream-request-mismatch");
+		for (const [field, expected] of [
+			["iid", iid],
+			["state", "merged"],
+			["targetBranch", entry.targetBranch],
+			["targetProjectId", entry.remoteProjectId],
+		] as const) {
+			if (request[field] !== expected) refuse(`upstream-request-mismatch: ${field}`);
+		}
+		const mergeCommitSha = issueMergedResultSha(request, entry.provider);
 		const evidence = await remote.mergeEvidence(iid);
 		if (
 			evidence.iid !== iid ||
@@ -149,7 +150,7 @@ export function createIssueRepositoryDependencies(options: IssueRepositoryDepend
 			!oid(evidence.mergeCommitSha) ||
 			!oid(evidence.targetSha) ||
 			!evidence.snapshot ||
-			request.mergeCommitSha !== evidence.mergeCommitSha
+			mergeCommitSha !== evidence.mergeCommitSha
 		)
 			refuse("upstream-merge-unproven");
 		if ((await remote.targetBranchSha(entry.targetBranch)) !== evidence.targetSha)
