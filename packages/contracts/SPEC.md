@@ -1986,7 +1986,7 @@ upstream numbers.
 
 The fork retains all existing floors through v127. New upstream capabilities are allocated above them: extension editor text v128, custom model context v129, project order v130, Files copy/delete v131, workspace path resolution v132, image references v133, Issue workspace recovery v134, Artifacts v135, keybindings v136 and artifact roles v137, and user-level MCP servers v138, server fallback repair v139, and subagent catalog v140. Browser view keeps its upstream v122 route floor. Upstream original v115–v121 numbers must not gate these features on fork hosts.
 
-Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Pull-request review uses v151; filesystem reveal and base-ref skill/template previews use v152. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
+Extension queries use v145, installed extensions v146 and extension Browse v147, above Matrix floors v143–v144. Group issue workflows use v149. Typed extension CIDR settings use v150. Pull-request review uses v151, filesystem reveal v152, and base-ref skill/template previews v152. Earlier fork hosts at v131/v132 only implement Files mutations and workspace path resolution, and must not advertise installed-extension support.
 
 ## Workspace capability boundary
 
@@ -2007,4 +2007,4 @@ Candidates must also be open repository projects; a group owner limits them to i
 The UI, host selection/join guards and agent reference candidates use the same predicate. Host checks
 repeat around asynchronous work. The existing project trust revocation clears both grants.
 
-Pull-request review reads and prompt argument completion use `PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151`, above the existing fork CIDR settings floor v150; upstream v133 is already the fork image-reference floor. Filesystem reveal and ref-based skill/template previews are added at v152.
+Pull-request review reads and prompt argument completion use `PULL_REQUEST_REVIEW_PROTOCOL_VERSION = 151`, above the existing fork CIDR settings floor v150; upstream v133 is already the fork image-reference floor. Filesystem reveal uses v152; ref-based skill/template previews use v152.
