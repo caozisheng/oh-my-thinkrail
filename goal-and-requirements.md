@@ -77,7 +77,10 @@ What ThinkRail does, at product level; the linked spec owns the detail.
 - **Projects → workspaces** — a git repo is a project; a workspace is a git worktree, plus the built-in
   Default workspace (the project folder itself) and existing worktrees attached in place
   ([[submodule-server-workspaces]]). A Git repository URL can be cloned into a chosen new host folder and
-  opened as a project, with optional shallow history and cancellation ([[submodule-server-projects]]).
+  opened as a project, with optional shallow history and cancellation ([[submodule-server-projects]]);
+  new projects and clones start in one host-wide projects folder (default `~/thinkrail`). An agent can
+  open a repository itself — reusing a known project, or cloning one only after the user approves — and
+  then start a workspace in it ([[submodule-server-agent]]).
 - **Matrix mobile control** — connect a dedicated bot and a single explicitly authorized Matrix MXID; use standard Spaces and rooms to read active trusted-project sessions and steer, follow up, stop, or answer current agent interactions from Matrix clients. Matrix rooms are plaintext projections, not state owners; the homeserver can read history and only the exact configured controller may control ThinkRail ([[submodule-server-matrix]]).
 
 - **Project group workbench** — an imported group has its own Home, conversations, terminal, Specs
