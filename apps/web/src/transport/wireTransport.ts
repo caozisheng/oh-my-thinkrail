@@ -90,7 +90,6 @@ export function rememberPullRequestFilter(projectId: string, filter: PullRequest
 		.request("settings.update", { config: { pullRequestFilters: { [projectId]: filter } } })
 		.catch(() => {});
 }
-
 export function supportsKeybindings(protocolVersion: number | null): boolean {
 	return protocolVersion !== null && protocolVersion >= KEYBINDINGS_PROTOCOL_VERSION;
 }

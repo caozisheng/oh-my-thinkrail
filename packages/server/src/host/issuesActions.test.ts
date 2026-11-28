@@ -995,6 +995,8 @@ test("Issue tool requirement probe validates the durable session workspace assoc
 	await f.host.connect({ projectId: "one", input: f.input });
 	const launched = await f.host.beginDesign({ ...f.target, locale: "en" });
 	expect(await f.host.sessionRequiresIssueTools(launched.sessionId)).toBe(true);
+	const restarted = createIssuesHost(f.options);
+	expect(await restarted.sessionRequiresIssueTools(launched.sessionId)).toBe(true);
 	expect(await f.host.sessionRequiresIssueTools("unbound-session")).toBe(false);
 });
 

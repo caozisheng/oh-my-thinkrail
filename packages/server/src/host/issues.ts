@@ -1082,6 +1082,40 @@ export function createIssuesHost(
 			await confirmationBinding(sessionId);
 			return automationActions().advance(sessionId, request.operationId, request.projectId);
 		}
+		if (request.inspect && (request.action === "ready-mr" || request.action === "merge-mr")) {
+			const allowed = new Set([
+				"operationId",
+				"action",
+				"inspect",
+				"projectId",
+				"mergeRequestId",
+				"expectedSha",
+				"targetBranch",
+				"reason",
+			]);
+			if (
+				Object.keys(request).some((key) => !allowed.has(key)) ||
+				typeof request.operationId !== "string" ||
+				!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.operationId) ||
+				typeof request.projectId !== "string" ||
+				!request.projectId ||
+				!Number.isSafeInteger(request.mergeRequestId) ||
+				Number(request.mergeRequestId) <= 0 ||
+				(request.expectedSha !== undefined &&
+					(typeof request.expectedSha !== "string" ||
+						!/^[a-fA-F0-9]{40}$/.test(request.expectedSha))) ||
+				(request.targetBranch !== undefined && typeof request.targetBranch !== "string") ||
+				(request.reason !== undefined &&
+					(typeof request.reason !== "string" || request.reason.length > 8000))
+			)
+				invalid();
+			return mergeRequests(undefined, undefined, store).inspect(sessionId, {
+				projectId: request.projectId,
+				iid: request.mergeRequestId as number,
+				...(typeof request.expectedSha === "string" ? { expectedSha: request.expectedSha } : {}),
+				...(typeof request.targetBranch === "string" ? { targetBranch: request.targetBranch } : {}),
+			});
+		}
 		const run: typeof continuations.run = direct
 			? async (_sessionId, _operationId, _phase, _snapshot, attempt) => attempt(false)
 			: continuations.run;
@@ -1160,6 +1194,7 @@ export function createIssuesHost(
 						payload?.stage === "implementation" ||
 						payload?.stage === "update-body" ||
 						payload?.stage === "close-issue" ||
+						payload?.stage === "ready-mr" ||
 						payload?.stage === "merge-mr" ||
 						payload?.stage === "issue-automation-policy"
 					)
@@ -1627,9 +1662,9 @@ export function createIssuesHost(
 	 * caller. An unbound session, a fenced launch or any reconciliation failure simply yields none.
 	 */
 	async function sessionRequiresIssueTools(sessionId: string): Promise<boolean> {
-		if (!store) return false;
 		try {
-			const association = await store.get(sessionId);
+			if (!store && !existsSync(join(root, "issue-sessions"))) return false;
+			const association = await issueSessionStore().get(sessionId);
 			if (!association) return false;
 			const ws = getWorkspace(association.workspaceId);
 			return ws.projectId === association.projectId && ws.kind !== "chat" && ws.kind !== "external";

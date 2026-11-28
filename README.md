@@ -64,6 +64,7 @@ repository address — only `github.com` is GitHub, every other host is GitLab. 
 - New Issue sessions load the built-in Tomato workflow skill and start once with the Issue body and
   complete comments, using the effective interface language. Reopening a session only opens its history.
   Session-bound tools read current Issue context and publish deliberate summaries without exposing tokens.
+  Implementation sessions can also read the bound provider's current MR state, target SHA and CI/readiness facts; this inspection is read-only and does not change MR state.
   Summary publication is best-effort: missing tools or failed/uncertain posting do not block work or ending
   the session. The chat handoff reports work results and publication status separately; automatic turn-end
   posting is not enforced.
@@ -96,7 +97,8 @@ Starting implementation does not require design approval. Completing design and 
 reports advances the workflow label to `workflow::in-progress` and `workflow::in-review`; a host-verified
 PR/MR merge advances it to `workflow::done`. These transitions replace stale or duplicate workflow labels
 and preserve unrelated labels. Label updates do not create, ready or merge requests, or close the Issue;
-those remain separate provider operations.
+those remain separate provider operations. Read-only MR/CI inspection is available; automated
+push/MR/CI/merge delivery is not implemented.
 
 - **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. You can also attach existing git worktrees or explicitly work in the project folder.
 

@@ -93,6 +93,7 @@ import {
 	sessionImageSource,
 	sessionReuseStatus,
 	setAgentReviewEnabledResolver,
+	setIssueToolsRequiredResolver,
 	setSessionCreatedPublisher,
 	setSessionDeletedPublisher,
 	setSessionManagerFactory,
@@ -104,11 +105,13 @@ import {
 	setSubagentsEnabledResolver,
 	settleCredentialWritesForShutdown,
 	settleSessionsForShutdown,
+	startInitialSessionPrompt,
 	steerSession,
 	toWireModel,
 } from "./agentSessionManager";
 import { writeCacheWarmingMode } from "./cacheWarming";
 import { setDisabledExtensionsResolver } from "./extensions";
+import { ISSUE_TOOL_NAMES } from "./issueTools";
 import { configurePiRuntime } from "./piRuntime";
 import { admissionContextFor } from "./skillAdmission";
 import { assessRespondability, TOOL_RESPONSE_STOPPED_ERROR } from "./toolResponses";
@@ -867,6 +870,148 @@ test("a disabled workspace creates chats without active subagent tools", async (
 		if (sessionId) await removeSession(sessionId);
 	}
 });
+
+test.each([null, ...ISSUE_TOOL_NAMES])(
+	"a bound session restores inactive tools and missing definition %s",
+	async (missingTool) => {
+		let bound = false;
+		setIssueToolsRequiredResolver(async () => bound);
+		const originalSetActiveTools = AgentSession.prototype.setActiveToolsByName;
+		const originalGetToolDefinition = AgentSession.prototype.getToolDefinition;
+		const originalReload = AgentSession.prototype.reload;
+		let reloads = 0;
+		let sessionId: string | undefined;
+		AgentSession.prototype.setActiveToolsByName = function (names) {
+			return originalSetActiveTools.call(
+				this,
+				names.filter((name) => !name.startsWith("issue_")),
+			);
+		};
+		try {
+			const session = await createSession({
+				cwd: tmpCwd("trpi-issue-tools-lost-"),
+				workspaceId: "ws-issue-tools-lost",
+				model: toWireModel(fauxA.getModel()),
+			});
+			sessionId = session.sessionId;
+			AgentSession.prototype.setActiveToolsByName = originalSetActiveTools;
+			AgentSession.prototype.getToolDefinition = function (name) {
+				if (name === missingTool && reloads === 0) return undefined;
+				return originalGetToolDefinition.call(this, name);
+			};
+			AgentSession.prototype.reload = async function (...args) {
+				await originalReload.apply(this, args);
+				if (this.sessionId === sessionId) reloads++;
+			};
+			bound = true;
+			fauxA.setResponses([
+				(context) => {
+					const tools = new Set(getCurrentTools(context.messages).map((tool) => tool.name));
+					return fauxAssistantMessage(
+						ISSUE_TOOL_NAMES.every((name) => tools.has(name))
+							? "ISSUE_TOOLS_RESTORED"
+							: "ISSUE_TOOLS_STILL_MISSING",
+					);
+				},
+			]);
+			await promptSession(sessionId, "Check the bound Issue tools.");
+			expect(seen(sessionId)).toContain("ISSUE_TOOLS_RESTORED");
+			expect(reloads).toBe(missingTool === null ? 0 : 1);
+		} finally {
+			AgentSession.prototype.setActiveToolsByName = originalSetActiveTools;
+			AgentSession.prototype.getToolDefinition = originalGetToolDefinition;
+			AgentSession.prototype.reload = originalReload;
+			setIssueToolsRequiredResolver(null);
+			if (sessionId) await removeSession(sessionId);
+		}
+	},
+);
+
+test("a failed Issue resource reload can recover at settlement without reopening the chat", async () => {
+	const originalDefinition = AgentSession.prototype.getToolDefinition;
+	const originalReload = AgentSession.prototype.reload;
+	let sessionId: string | undefined;
+	let reloads = 0;
+	let restored = () => {};
+	const restoration = new Promise<void>((resolve) => {
+		restored = resolve;
+	});
+	try {
+		const session = await createSession({
+			cwd: tmpCwd("trpi-issue-reload-retry-"),
+			workspaceId: "ws-issue-reload-retry",
+			model: toWireModel(fauxA.getModel()),
+		});
+		sessionId = session.sessionId;
+		setIssueToolsRequiredResolver(async (id) => id === sessionId);
+		AgentSession.prototype.getToolDefinition = function (name) {
+			if (this.sessionId === sessionId && name === "issue_run_operation" && reloads < 2)
+				return undefined;
+			return originalDefinition.call(this, name);
+		};
+		AgentSession.prototype.reload = async function (...args) {
+			if (this.sessionId === sessionId && ++reloads === 1)
+				throw new Error("fixture reload failure");
+			await originalReload.apply(this, args);
+			if (this.sessionId === sessionId) restored();
+		};
+		fauxA.setResponses([fauxAssistantMessage("CONTINUE_LOCAL_WORK")]);
+		await promptSession(sessionId, "Continue the authorized local work.");
+		await restoration;
+		expect(reloads).toBe(2);
+		expect(seen(sessionId)).toContain("CONTINUE_LOCAL_WORK");
+	} finally {
+		AgentSession.prototype.getToolDefinition = originalDefinition;
+		AgentSession.prototype.reload = originalReload;
+		setIssueToolsRequiredResolver(null);
+		if (sessionId) await removeSession(sessionId);
+	}
+});
+
+test.each([promptSession, startInitialSessionPrompt, followUpSession])(
+	"Issue tool recovery cannot admit a prompt after the session closes (%s)",
+	async (send) => {
+		const session = await createSession({
+			cwd: tmpCwd("trpi-issue-recovery-close-"),
+			workspaceId: "ws-issue-recovery-close",
+			model: toWireModel(fauxA.getModel()),
+		});
+		let probing = () => {};
+		let release = () => {};
+		const started = new Promise<void>((resolve) => {
+			probing = resolve;
+		});
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		setIssueToolsRequiredResolver(async () => {
+			probing();
+			await gate;
+			return true;
+		});
+		const originalPrompt = AgentSession.prototype.prompt;
+		let calls = 0;
+		AgentSession.prototype.prompt = async function (...args) {
+			if (this.sessionId === session.sessionId) calls++;
+			return originalPrompt.apply(this, args);
+		};
+		const sending = send(session.sessionId, "Do the requested work.");
+		void sending.catch(() => {});
+		try {
+			await started;
+			await removeSession(session.sessionId);
+			release();
+			await expect(sending).rejects.toThrow(/closing|Unknown session/);
+			expect(calls).toBe(0);
+		} finally {
+			release();
+			await sending.catch(() => {});
+			AgentSession.prototype.prompt = originalPrompt;
+			setIssueToolsRequiredResolver(null);
+			if (hasSession(session.sessionId)) await removeSession(session.sessionId);
+		}
+	},
+);
 
 test("session registration reconciles a policy change that lands after extension binding", async () => {
 	const workspaceId = "ws-subagents-bind-race";
