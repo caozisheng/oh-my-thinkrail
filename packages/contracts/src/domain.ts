@@ -1544,6 +1544,10 @@ export interface GithubAuthStatus {
 	scopes?: string[];
 }
 
+export interface GitlabAuthStatus {
+	connected: boolean;
+}
+
 export interface HostEnvironmentVar {
 	name: string;
 	value: string;

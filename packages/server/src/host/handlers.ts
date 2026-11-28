@@ -192,6 +192,7 @@ import {
 	remoteRefOidAsync,
 } from "../git";
 import { githubAuthStatus, githubRefresh } from "../github";
+import { gitlabAuthStatus, gitlabRefresh } from "../gitlab";
 import { clampLimit, getHistoryIndex } from "../history";
 import { localesDir, readLocalLocales } from "../locales";
 import { logger } from "../log";
@@ -1220,6 +1221,8 @@ const handlers: WsHandlers = {
 		),
 	"github.authStatus": () => githubAuthStatus(),
 	"github.refresh": () => githubRefresh(),
+	"gitlab.authStatus": () => gitlabAuthStatus(),
+	"gitlab.refresh": () => gitlabRefresh(),
 	"matrix.status": (_p, ctx) => matrixStatus(ctx),
 	"matrix.configure": (p, ctx) => matrixConfigure(p, ctx),
 	"matrix.disconnect": (_p, ctx) => matrixDisconnect(ctx),

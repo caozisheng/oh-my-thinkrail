@@ -513,7 +513,7 @@ are the Top Bar's Connection Status and the Chat Header's Session Stats Bar.
 | Voice input | `panels/VoiceSettings.tsx` → `VoiceSettings` | Dictation switch, model download, language, shortcut |
 | Terminal | `panels/TerminalSettings.tsx` → `TerminalSettings` | Scrollback and, on Windows, the shell |
 | Workspaces | `panels/WorkspacesSettings.tsx` → `WorkspacesSettings` | The settle period for idle workspaces |
-| Integrations | `panels/GithubSettings.tsx` → `GithubSettings` | Local GitHub CLI status (section id `github`) |
+| Integrations | `panels/GithubSettings.tsx` → `GithubSettings` | Local GitHub and GitLab CLI auth status, plus Matrix (section id `github`) |
 | Notifications | `panels/NotificationsSettings.tsx` → `NotificationsSettings` | Attention notifications and browser permission |
 | Privacy | `panels/PrivacySettings.tsx` → `PrivacySettings` | Additional usage-data sharing |
 | Updates | `updates/UpdateSettings.tsx` → `UpdateSettings` (injected, desktop only) | Software updates |

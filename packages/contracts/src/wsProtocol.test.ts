@@ -159,6 +159,13 @@ test("retired workspace activity keeps only its empty snapshot compatibility met
 	expect(Object.hasOwn(WS_CHANNELS, "sessionActivity")).toBe(false);
 });
 
+test("GitLab CLI auth status is read-only and carries no credentials", () => {
+	expect(WS_METHODS.gitlabAuthStatus).toBe("gitlab.authStatus");
+	expect(WS_METHODS.gitlabRefresh).toBe("gitlab.refresh");
+	const status: WsMethodMap["gitlab.authStatus"]["result"] = { connected: true };
+	expect(status).toEqual({ connected: true });
+});
+
 test("system theme settings advance the protocol", () => {
 	expect(THEME_SYSTEM_PROTOCOL_VERSION).toBe(58);
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(THEME_SYSTEM_PROTOCOL_VERSION);
