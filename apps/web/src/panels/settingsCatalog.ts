@@ -14,6 +14,7 @@ import {
 	MCP_USER_SERVERS_PROTOCOL_VERSION,
 	OTHER_AGENT_SKILLS_PROTOCOL_VERSION,
 	PI_PACKAGES_PROTOCOL_VERSION,
+	PROJECTS_FOLDER_PROTOCOL_VERSION,
 	QUESTION_PANEL_PROTOCOL_VERSION,
 	SUBAGENT_CATALOG_PROTOCOL_VERSION,
 	SUBAGENT_CONCURRENCY_PROTOCOL_VERSION,
@@ -583,6 +584,14 @@ export const SETTING = {
 		label: "settings.workspaces.title",
 		description: "settings.workspaces.description",
 		keywords: ["idle", "settled", "shelf"],
+	},
+	projectsFolder: {
+		id: "projects-folder",
+		section: SettingsSection.Workspaces,
+		label: "settings.workspaces.projectsFolder.label",
+		description: "settings.workspaces.projectsFolder.description",
+		keywords: ["clone", "new project", "directory", "path", "location"],
+		requiresProtocolVersion: PROJECTS_FOLDER_PROTOCOL_VERSION,
 	},
 	githubCli: {
 		id: "github-cli",

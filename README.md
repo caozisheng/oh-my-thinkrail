@@ -100,7 +100,7 @@ and preserve unrelated labels. Label updates do not create, ready or merge reque
 those remain separate provider operations. Read-only MR/CI inspection is available; automated
 push/MR/CI/merge delivery is not implemented.
 
-- **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. You can also attach existing git worktrees or explicitly work in the project folder.
+- **Isolated workspaces.** Open any git repo as a project and create `git worktree` workspaces from it, each with its own branch and working directory. Agents can then work in parallel without touching your original codebase; when they finish, merge the results you want to keep and delete the rest. Ask a chat to do something "in a side workspace" and the agent starts that workspace and its chat itself, then checks how its chats and pull requests are doing. That works for a repository you don't have yet, too: after you approve, the agent clones it into your projects folder (`~/thinkrail` by default) and opens it as a project, for example to fix a good first issue it found for you. You can also attach existing git worktrees or explicitly work in the project folder.
 
 Issue listing, confirmed stage reports and per-repository Draft PR/MR delivery are available on GitHub
 and GitLab with the same label transitions. Provider-specific approval receipts and merge remain outside
@@ -283,6 +283,11 @@ sha256sum --check --ignore-missing SHA256SUMS
 install -Dm755 "thinkrail-linux-$arch" ~/.local/bin/thinkrail
 thinkrail --no-open
 ```
+
+* `thinkrail` needs `git` on your PATH and a model provider. You can sign in with JetBrains AI from the app or use your own provider credentials. The first launch walks you through connecting a provider and picking a project; **Start a new project** creates an empty git repository in your projects folder (`~/thinkrail` by default; change it in **Settings → Workspaces**).
+* **Add project → Clone repository…** clones a Git URL into a new folder on the computer running ThinkRail and opens it as a project. It starts in your projects folder; choose another parent folder or folder name, optionally limit the history depth, or cancel an in-progress clone.
+* GitHub and other Git hosts work with the Git credentials and SSH keys already on your machine.
+* `thinkrail --help` lists the flags, and `thinkrail --version` prints the build.
 
 On a remote Linux machine keep the default `localhost` bind and connect through an SSH tunnel:
 `ssh -L 24242:127.0.0.1:24242 user@host`, then open `http://127.0.0.1:24242` locally.

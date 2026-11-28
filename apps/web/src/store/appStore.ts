@@ -66,6 +66,7 @@ import {
 	isControlMessage,
 	isLineWidth,
 	isLocalePreference,
+	isProjectsFolder,
 	isPullRequestFilter,
 	isQuestionPanelHeight,
 	isSettleIdleDays,
@@ -1300,6 +1301,7 @@ interface AppState {
 	disabledSubagents: string[];
 	subagentMaxConcurrent: number;
 	settleIdleDays: number | null;
+	projectsFolder: string;
 	jbcentralQuotaEnabled: boolean;
 	jbcentralQuotaRefreshSeconds: number;
 	terminalReplayKb: number;
@@ -1782,6 +1784,9 @@ function configPatch(config: AppConfig) {
 		settleIdleDays: isSettleIdleDays(config.settleIdleDays)
 			? config.settleIdleDays
 			: DEFAULT_CONFIG.settleIdleDays,
+		projectsFolder: isProjectsFolder(config.projectsFolder)
+			? config.projectsFolder
+			: DEFAULT_CONFIG.projectsFolder,
 		jbcentralQuotaEnabled: config.jbcentralQuotaEnabled ?? DEFAULT_CONFIG.jbcentralQuotaEnabled,
 		jbcentralQuotaRefreshSeconds:
 			config.jbcentralQuotaRefreshSeconds ?? DEFAULT_CONFIG.jbcentralQuotaRefreshSeconds,
@@ -2820,6 +2825,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 	disabledSubagents: DEFAULT_CONFIG.disabledSubagents,
 	subagentMaxConcurrent: DEFAULT_CONFIG.subagentMaxConcurrent,
 	settleIdleDays: DEFAULT_CONFIG.settleIdleDays,
+	projectsFolder: DEFAULT_CONFIG.projectsFolder,
 	jbcentralQuotaEnabled: DEFAULT_CONFIG.jbcentralQuotaEnabled,
 	jbcentralQuotaRefreshSeconds: DEFAULT_CONFIG.jbcentralQuotaRefreshSeconds,
 	terminalReplayKb: DEFAULT_CONFIG.terminalReplayKb,
