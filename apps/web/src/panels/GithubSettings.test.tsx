@@ -11,7 +11,14 @@ test("Integrations includes Matrix on supported hosts without a nested settings 
 	initial.protocolVersion = MATRIX_PROTOCOL_VERSION;
 	try {
 		const markup = view({});
+		expect(markup).toContain(String(EN["settings.gitlab.title"]));
 		expect(markup).toContain(String(EN["settings.matrix.title"]));
+		expect(markup.indexOf(String(EN["settings.github.title"]))).toBeLessThan(
+			markup.indexOf(String(EN["settings.gitlab.title"])),
+		);
+		expect(markup.indexOf(String(EN["settings.gitlab.title"]))).toBeLessThan(
+			markup.indexOf(String(EN["settings.matrix.title"])),
+		);
 		expect(markup).toContain('data-setting-id="matrix-integration"');
 		expect(markup).not.toContain('data-testid="settings-matrix"');
 	} finally {

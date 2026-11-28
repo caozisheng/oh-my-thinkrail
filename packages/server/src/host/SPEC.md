@@ -161,6 +161,9 @@ one exact canonical origin; the saved connection retains that consent, and each 
 against the acknowledged address class. The exception never covers loopback, link-local, cloud metadata,
 redirects or another origin.
 
+The host's `gitlab.authStatus` and `gitlab.refresh` requests delegate to the server-only `gitlab` module,
+which reports the local `glab auth status` result without returning account or credential material.
+
 The host catalog includes open, trusted repository projects and their session snapshots; it rereads
 project openness/trust and exact project/workspace/session ownership before every control operation.
 Control validation enumerates only the exact workspace, not the global catalog. Transcript reads

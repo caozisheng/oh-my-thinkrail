@@ -21,6 +21,7 @@ import type {
 	GitCommit,
 	GitDiffScope,
 	GithubAuthStatus,
+	GitlabAuthStatus,
 	GitStatus,
 	HistoryScope,
 	HistorySearchResult,
@@ -560,6 +561,8 @@ export const WS_METHODS = {
 	gitPrefetch: "git.prefetch",
 	githubAuthStatus: "github.authStatus",
 	githubRefresh: "github.refresh",
+	gitlabAuthStatus: "gitlab.authStatus",
+	gitlabRefresh: "gitlab.refresh",
 	matrixStatus: "matrix.status",
 	matrixConfigure: "matrix.configure",
 	matrixDisconnect: "matrix.disconnect",
@@ -1279,6 +1282,8 @@ export interface WsMethodMap {
 	"git.prefetch": { params: { projectId: string; ref: string }; result: { ok: boolean } };
 	"github.authStatus": { params: Record<string, never>; result: GithubAuthStatus };
 	"github.refresh": { params: Record<string, never>; result: GithubAuthStatus };
+	"gitlab.authStatus": { params: Record<string, never>; result: GitlabAuthStatus };
+	"gitlab.refresh": { params: Record<string, never>; result: GitlabAuthStatus };
 	"matrix.status": { params: Record<string, never>; result: MatrixStatus };
 	"matrix.configure": { params: MatrixConnectionInput; result: MatrixStatus };
 	"matrix.disconnect": { params: Record<string, never>; result: MatrixStatus };

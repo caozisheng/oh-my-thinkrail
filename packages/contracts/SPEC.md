@@ -35,6 +35,12 @@ never contains secret material. `matrix.status`, `.configure`, `.disconnect`, `.
 offer it. Connection status reports host-observed bridge progress, not remote room membership as proof
 of controller authorization.
 
+## Local GitLab CLI status
+
+`GitlabAuthStatus` contains only `connected`; `gitlab.authStatus` and `gitlab.refresh` report the local
+`glab` CLI authentication state, matching the read-only GitHub CLI status surface. Neither request
+accepts credentials, and no token or account details are returned.
+
 ## Issue integration
 
 Protocol v149 enables the existing Issue launch, repository-association and recovery methods for

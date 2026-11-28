@@ -9,12 +9,14 @@ references: [central-integration, submodule-web-issues]
 tags: [ui]
 ---
 
-## Matrix in Integrations
+## Integrations
 
-The existing Integrations section retains its `github` identity and GitHub CLI status. It also renders
-Matrix as an embedded Settings group on v143+ hosts, without a nested page heading or separate nav
-entry. The former `integrations` Matrix route resolves to `github`; Matrix search results target that
-same section. Protocol gating remains inside the Matrix contributor so older hosts keep GitHub intact.
+The existing Integrations section retains its `github` identity and GitHub CLI status. It renders the
+local GitLab CLI authentication status below GitHub and above Matrix. Both are embedded Settings groups
+without nested page headings or separate nav entries; Matrix appears only on v143+ hosts. Neither CLI
+integration accepts or stores credentials; each only reports local CLI authentication and offers Refresh.
+The former `integrations` Matrix route resolves to `github`; Matrix search results target that same
+section. Protocol gating remains inside the Matrix contributor so older hosts keep GitHub intact.
 
 ## Responsibility
 

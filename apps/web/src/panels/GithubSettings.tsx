@@ -11,6 +11,7 @@ import { SkeletonRows } from "@thinkrail/ui/skeleton";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { SettingsGroup, SettingsPage, SettingsRow } from "@/settingsKit";
 import { getTransport } from "@/transport";
+import { GitlabSettings } from "./GitlabSettings";
 import { MatrixSettings } from "./MatrixSettings";
 import { SETTING, settingProps } from "./settingsCatalog";
 
@@ -146,6 +147,7 @@ export function GithubStatusView({
 					}
 				/>
 			</SettingsGroup>
+			<GitlabSettings />
 			<MatrixSettings embedded />
 		</SettingsPage>
 	);
