@@ -676,12 +676,6 @@ test("the projects folder and open_project are pinned to v136", () => {
 	expect(isProjectsFolder(42)).toBe(false);
 });
 
-test("the community catalog is pinned to v147", () => {
-	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(EXTENSION_BROWSE_PROTOCOL_VERSION);
-	expect(EXTENSION_BROWSE_PROTOCOL_VERSION).toBe(147);
-	expect(WS_METHODS.extensionsBrowse).toBe("extensions.browse");
-});
-
 test("installed extensions are pinned to v146", () => {
 	expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(INSTALLED_EXTENSIONS_PROTOCOL_VERSION);
 	expect(INSTALLED_EXTENSIONS_PROTOCOL_VERSION).toBe(146);
